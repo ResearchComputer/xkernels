@@ -85,6 +85,13 @@ kernels/                            # repo root (git)
 CUDA/HIP source lives next to its kernel type (`ops/<type>/cuda/`), not in a
 separate top-level `csrc/`, keeping each kernel type cohesive.
 
+**CUDA vs. HIP backends:** by default a single `cuda/*.cu` source serves both
+vendors — `torch.utils.cpp_extension` auto-hipifies it under a ROCm install. The
+compiled extension registers as `Backend.CUDA` on NVIDIA and `Backend.HIP` on
+AMD (the build detects the toolchain). A dedicated `ops/<type>/hip/` directory is
+added only when a kernel needs genuinely AMD-specific source that hipify cannot
+produce; the FFN example does not need one.
+
 ## Components
 
 ### Dispatch layer
