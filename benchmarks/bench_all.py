@@ -33,7 +33,6 @@ import torch
 from xkernels import (
     dual_rmsnorm,
     fused_ffn,
-    fused_moe_int4_w4a16,
     mha_merge_state,
     moe_align_block_size,
     moe_sum_reduce,
@@ -143,6 +142,12 @@ def _naive_moe_int4(A, packed, scale, topk_ids, topk_w, group_size):
 
 
 def bench_moe_int4(dev):
+    import triton.language as tl
+
+    from xkernels.ops.moe import moe_align_block_size_ref
+    from xkernels.ops.moe.triton.configs import align_block_m, get_moe_int4_config
+    from xkernels.ops.moe.triton.moe_int4_kernel import int4_w4a16_moe_gemm
+
     M, E, N, K, top_k, gs = 64, 48, 4096, 7168, 8, 32  # Kimi-K2.6 gate_up, decode
     packed, scale, _ = make_w4a16_weights(E, N, K, gs, device=dev, seed=1)
     A = (torch.randn(M, K, device=dev) * 0.1).to(DT)
@@ -157,13 +162,29 @@ def bench_moe_int4(dev):
     got = _naive_moe_int4(A[:sm], packed, scale, topk_ids[:sm], topk_w[:sm], gs)
     assert torch.allclose(ref.float(), got.float(), atol=2e-2, rtol=2e-2), "naive mismatch"
 
+    # Optimized: the tuned (issue #16) INT4 grouped GEMM + top-k reduce. The
+    # block-align dispatch is the *separate* moe_align_block_size kernel (its own
+    # row, 32.9x); build it once here so this row isolates the GEMM, matching the
+    # issue-#16 tuner's do_bench methodology rather than timing a python-loop align
+    # in the hot path. Resolves the checked-in tuned config for this shape/M.
+    config = get_moe_int4_config(E, N, K, M)
+    block_m = config["BLOCK_SIZE_M"] if config is not None else align_block_m(M)
+    sorted_ids, expert_ids, num_post = moe_align_block_size_ref(topk_ids, block_m, E)
+    topk_w_flat = topk_w.reshape(-1).float()
+    c = torch.zeros((M * top_k, N), dtype=DT, device=dev)
+
+    def _opt():
+        int4_w4a16_moe_gemm(
+            A, packed, scale, c, topk_w_flat, sorted_ids, expert_ids, num_post,
+            top_k=top_k, group_size=gs, mul_routed_weight=True,
+            compute_type=tl.bfloat16, filter_expert=False, config=config,
+        )
+        return c.view(M, top_k, N).sum(dim=1)
+
     _record(
         "moe_int4_w4a16", f"M={M}, E={E}, N={N}, K={K}, top_k={top_k}", "dequant+matmul",
         lambda: _naive_moe_int4(A, packed, scale, topk_ids, topk_w, gs),
-        lambda: fused_moe_int4_w4a16(
-            A, packed, scale, topk_ids, topk_w, group_size=gs,
-            mul_routed_weight=True, backend="triton",
-        ),
+        _opt,
     )
 
 

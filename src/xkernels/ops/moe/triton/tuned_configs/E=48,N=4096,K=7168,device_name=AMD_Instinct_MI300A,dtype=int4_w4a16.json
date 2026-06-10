@@ -1,0 +1,147 @@
+{
+  "_provenance": {
+    "device": "AMD_Instinct_MI300A",
+    "date": "2026-06-11",
+    "triton": "3.7.0",
+    "metric": "median ms, triton.do_bench, bf16 activations",
+    "shape": {
+      "E": 48,
+      "N": 4096,
+      "K": 7168,
+      "top_k": 8,
+      "group_size": 32
+    }
+  },
+  "1": {
+    "BLOCK_SIZE_M": 64,
+    "BLOCK_SIZE_N": 128,
+    "BLOCK_SIZE_K": 64,
+    "GROUP_SIZE_M": 8,
+    "waves_per_eu": 2,
+    "matrix_instr_nonkdim": 16,
+    "kpack": 2,
+    "num_warps": 4,
+    "num_stages": 3,
+    "_ms": 0.337
+  },
+  "2": {
+    "BLOCK_SIZE_M": 64,
+    "BLOCK_SIZE_N": 64,
+    "BLOCK_SIZE_K": 128,
+    "GROUP_SIZE_M": 1,
+    "waves_per_eu": 2,
+    "matrix_instr_nonkdim": 16,
+    "kpack": 2,
+    "num_warps": 4,
+    "num_stages": 2,
+    "_ms": 0.54264
+  },
+  "4": {
+    "BLOCK_SIZE_M": 16,
+    "BLOCK_SIZE_N": 128,
+    "BLOCK_SIZE_K": 128,
+    "GROUP_SIZE_M": 1,
+    "waves_per_eu": 3,
+    "matrix_instr_nonkdim": 16,
+    "kpack": 2,
+    "num_warps": 4,
+    "num_stages": 2,
+    "_ms": 0.78471
+  },
+  "8": {
+    "BLOCK_SIZE_M": 64,
+    "BLOCK_SIZE_N": 128,
+    "BLOCK_SIZE_K": 64,
+    "GROUP_SIZE_M": 8,
+    "waves_per_eu": 2,
+    "matrix_instr_nonkdim": 16,
+    "kpack": 2,
+    "num_warps": 4,
+    "num_stages": 3,
+    "_ms": 1.14601
+  },
+  "16": {
+    "BLOCK_SIZE_M": 16,
+    "BLOCK_SIZE_N": 128,
+    "BLOCK_SIZE_K": 128,
+    "GROUP_SIZE_M": 1,
+    "waves_per_eu": 3,
+    "matrix_instr_nonkdim": 16,
+    "kpack": 2,
+    "num_warps": 4,
+    "num_stages": 2,
+    "_ms": 1.35976
+  },
+  "32": {
+    "BLOCK_SIZE_M": 64,
+    "BLOCK_SIZE_N": 128,
+    "BLOCK_SIZE_K": 64,
+    "GROUP_SIZE_M": 8,
+    "waves_per_eu": 2,
+    "matrix_instr_nonkdim": 16,
+    "kpack": 2,
+    "num_warps": 4,
+    "num_stages": 3,
+    "_ms": 1.37142
+  },
+  "64": {
+    "BLOCK_SIZE_M": 64,
+    "BLOCK_SIZE_N": 128,
+    "BLOCK_SIZE_K": 64,
+    "GROUP_SIZE_M": 8,
+    "waves_per_eu": 2,
+    "matrix_instr_nonkdim": 16,
+    "kpack": 2,
+    "num_warps": 4,
+    "num_stages": 3,
+    "_ms": 1.38497
+  },
+  "128": {
+    "BLOCK_SIZE_M": 64,
+    "BLOCK_SIZE_N": 128,
+    "BLOCK_SIZE_K": 64,
+    "GROUP_SIZE_M": 8,
+    "waves_per_eu": 2,
+    "matrix_instr_nonkdim": 16,
+    "kpack": 2,
+    "num_warps": 4,
+    "num_stages": 3,
+    "_ms": 1.40864
+  },
+  "256": {
+    "BLOCK_SIZE_M": 64,
+    "BLOCK_SIZE_N": 128,
+    "BLOCK_SIZE_K": 64,
+    "GROUP_SIZE_M": 8,
+    "waves_per_eu": 2,
+    "matrix_instr_nonkdim": 16,
+    "kpack": 2,
+    "num_warps": 4,
+    "num_stages": 3,
+    "_ms": 1.43405
+  },
+  "512": {
+    "BLOCK_SIZE_M": 128,
+    "BLOCK_SIZE_N": 128,
+    "BLOCK_SIZE_K": 64,
+    "GROUP_SIZE_M": 8,
+    "waves_per_eu": 1,
+    "matrix_instr_nonkdim": 16,
+    "kpack": 2,
+    "num_warps": 8,
+    "num_stages": 2,
+    "_ms": 1.84958
+  },
+  "4096": {
+    "BLOCK_SIZE_M": 256,
+    "BLOCK_SIZE_N": 128,
+    "BLOCK_SIZE_K": 64,
+    "GROUP_SIZE_M": 8,
+    "waves_per_eu": 0,
+    "matrix_instr_nonkdim": 16,
+    "kpack": 2,
+    "num_warps": 8,
+    "num_stages": 2,
+    "_ms": 9.69371
+  }
+}

@@ -63,27 +63,18 @@ import triton.language as tl
 from ...._backends import Backend
 from ...._dispatch import register
 from ..w4a16 import moe_align_block_size_ref
-from .configs import get_autotune_configs, prune_configs
+from .configs import (
+    align_block_m,
+    get_autotune_configs,
+    get_moe_int4_config,
+    prune_configs,
+)
 
 __all__ = ["int4_w4a16_moe_gemm", "fused_moe_int4_kernel"]
 
 
-@triton.autotune(
-    configs=get_autotune_configs(),
-    key=["N", "K", "EM", "num_valid_tokens"],
-    prune_configs_by={"early_config_prune": prune_configs},
-)
-@triton.heuristics(
-    {
-        # Computed AFTER autotune picks BLOCK_SIZE_K (heuristics is the inner
-        # decorator). K is the logical (unpacked) contraction length and is
-        # normally a multiple of pack(8) and group(32), but guard it anyway so
-        # K masking is only emitted when actually needed.
-        "EVEN_K": lambda a: a["K"] % a["BLOCK_SIZE_K"] == 0,
-    }
-)
 @triton.jit
-def fused_moe_int4_kernel(
+def _fused_moe_int4_kernel(
     a_ptr,  # [M, K] bf16 activations (token rows, pre-permute)
     b_ptr,  # [E, N, K // 8] int32 packed uint4b8 weights
     c_ptr,  # [EM, N] or [M, top_k, N] output
@@ -256,6 +247,22 @@ def fused_moe_int4_kernel(
     tl.store(c_ptrs, accumulator, mask=c_mask)
 
 
+# Autotuned entry point (unchanged name): used for untuned shapes and by the
+# offline tuner. Built explicitly from the jit body so the production launch can
+# also call ``_fused_moe_int4_kernel`` directly with a resolved config. The
+# EVEN_K heuristic is computed AFTER autotune picks BLOCK_SIZE_K; the direct path
+# passes EVEN_K explicitly instead.
+fused_moe_int4_kernel = triton.autotune(
+    configs=get_autotune_configs(),
+    key=["N", "K", "EM", "num_valid_tokens"],
+    prune_configs_by={"early_config_prune": prune_configs},
+)(
+    triton.heuristics(
+        {"EVEN_K": lambda a: a["K"] % a["BLOCK_SIZE_K"] == 0}
+    )(_fused_moe_int4_kernel)
+)
+
+
 def int4_w4a16_moe_gemm(
     a: torch.Tensor,
     b_packed: torch.Tensor,
@@ -271,6 +278,7 @@ def int4_w4a16_moe_gemm(
     mul_routed_weight: bool,
     compute_type: tl.dtype = tl.bfloat16,
     filter_expert: bool = True,
+    config: dict | None = None,
 ) -> torch.Tensor:
     """Launch the grouped INT4 W4A16 fused-MoE GEMM.
 
@@ -298,6 +306,11 @@ def int4_w4a16_moe_gemm(
         mul_routed_weight: fold routing weight into the output (down GEMM).
         compute_type: output / accumulate-cast dtype.
         filter_expert: honor ``-1`` expert ids (EP). Set False when no filtering.
+        config: optional resolved launch config (``BLOCK_SIZE_*``, ``GROUP_SIZE_M``,
+            ``num_warps``, ``num_stages`` and AMD knobs). When given, the kernel is
+            launched directly with these meta-params and **no runtime autotune**;
+            the caller must have aligned ``sorted_token_ids`` to ``BLOCK_SIZE_M``.
+            When ``None``, the autotuned entry point is used (untuned fallback).
 
     Returns:
         ``c`` (written in place).
@@ -311,13 +324,7 @@ def int4_w4a16_moe_gemm(
 
     num_valid_tokens = topk_weights.numel() if topk_weights is not None else a.shape[0] * top_k
 
-    def grid(meta):
-        return (
-            triton.cdiv(sorted_token_ids.shape[0], meta["BLOCK_SIZE_M"])
-            * triton.cdiv(N, meta["BLOCK_SIZE_N"]),
-        )
-
-    fused_moe_int4_kernel[grid](
+    common = (
         a,
         b_packed,
         c,
@@ -340,12 +347,42 @@ def int4_w4a16_moe_gemm(
         b_scale.stride(0),
         b_scale.stride(1),
         b_scale.stride(2),
+    )
+    common_kw = dict(
         group_k=group_size,
         top_k=top_k,
         MUL_ROUTED_WEIGHT=mul_routed_weight,
         compute_type=compute_type,
         FILTER_EXPERT=filter_expert,
     )
+
+    if config is not None:
+        bm = config["BLOCK_SIZE_M"]
+        bn = config["BLOCK_SIZE_N"]
+        grid = (triton.cdiv(sorted_token_ids.shape[0], bm) * triton.cdiv(N, bn),)
+        _fused_moe_int4_kernel[grid](
+            *common,
+            **common_kw,
+            BLOCK_SIZE_M=bm,
+            BLOCK_SIZE_N=bn,
+            BLOCK_SIZE_K=config["BLOCK_SIZE_K"],
+            GROUP_SIZE_M=config["GROUP_SIZE_M"],
+            EVEN_K=(K % config["BLOCK_SIZE_K"] == 0),
+            waves_per_eu=config.get("waves_per_eu", 0),
+            matrix_instr_nonkdim=config.get("matrix_instr_nonkdim", 16),
+            kpack=config.get("kpack", 2),
+            num_warps=config["num_warps"],
+            num_stages=config["num_stages"],
+        )
+        return c
+
+    def grid(meta):
+        return (
+            triton.cdiv(sorted_token_ids.shape[0], meta["BLOCK_SIZE_M"])
+            * triton.cdiv(N, meta["BLOCK_SIZE_N"]),
+        )
+
+    fused_moe_int4_kernel[grid](*common, **common_kw)
     return c
 
 
@@ -365,8 +402,13 @@ def _moe_int4_w4a16_triton(
     mul_routed_weight: bool = True,
 ) -> torch.Tensor:
     M, top_k = topk_ids.shape
-    E, N, _ = packed.shape
-    block_m = 16 if M <= 32 else 64
+    E, N, kp = packed.shape
+    K = kp * 8
+    # Resolve a checked-in tuned config first; the token-slot alignment block
+    # MUST equal the kernel BLOCK_SIZE_M (see align_block_m), so derive it from
+    # the config when present, else from the decode/prefill M heuristic.
+    config = get_moe_int4_config(E, N, K, M)
+    block_m = config["BLOCK_SIZE_M"] if config is not None else align_block_m(M)
     sorted_ids, expert_ids, num_post = moe_align_block_size_ref(topk_ids, block_m, E)
     c = torch.zeros((M * top_k, N), dtype=A.dtype, device=A.device)
     compute_type = tl.bfloat16 if A.dtype == torch.bfloat16 else tl.float32
@@ -384,6 +426,7 @@ def _moe_int4_w4a16_triton(
         mul_routed_weight=mul_routed_weight,
         compute_type=compute_type,
         filter_expert=False,
+        config=config,
     )
     return c.view(M, top_k, N).sum(dim=1)
 
