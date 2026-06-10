@@ -1,9 +1,11 @@
 """Mixture-of-Experts kernels.
 
-Ships the INT4 W4A16 grouped fused-MoE GEMM (issue #1) and the weighted top-k
-reduction (issue #5). Each public op dispatches across a pure-torch reference
-(default on CPU / no Triton) and an autotuned Triton backend.
+Ships the INT4 W4A16 grouped fused-MoE GEMM (issue #1), the weighted top-k
+reduction (issue #5), and the block-align dispatch builder (issue #4). Each
+public op dispatches across a pure-torch reference (default on CPU / no Triton)
+and, where available, an autotuned Triton backend.
 """
+from .align import moe_align_block_size
 from .interface import fused_moe_int4_w4a16
 from .sum_reduce import moe_sum_reduce
 from .w4a16 import dequant_w4a16, make_w4a16_weights, moe_align_block_size_ref
@@ -22,6 +24,7 @@ except Exception:
 
 __all__ = [
     "fused_moe_int4_w4a16",
+    "moe_align_block_size",
     "moe_sum_reduce",
     "dequant_w4a16",
     "make_w4a16_weights",
