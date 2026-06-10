@@ -13,7 +13,7 @@ authors = [{ name = "Xiaozhe Yao" }]
 dependencies = ["torch>=2.1"]
 
 [project.optional-dependencies]
-triton = ["triton>=2.1"]
+triton = ["triton>=3.0"]
 bench = ["pandas", "matplotlib"]
 dev = ["pytest>=7", "ruff>=0.4", "pre-commit"]
 

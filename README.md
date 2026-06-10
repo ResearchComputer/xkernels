@@ -24,6 +24,12 @@ y = fused_ffn(x, w_gate, w_up, w_down)            # backend="auto"
 y = fused_ffn(x, w_gate, w_up, w_down, backend="triton")  # force a backend
 ```
 
+```python
+from xkernels import fused_moe_int4_w4a16  # INT4 W4A16 grouped fused-MoE GEMM
+
+out = fused_moe_int4_w4a16(A, packed, scale, topk_ids, topk_w, group_size=32)
+```
+
 Override globally with `XKERNELS_BACKEND=reference|triton|cuda|hip`.
 
 ## Layout

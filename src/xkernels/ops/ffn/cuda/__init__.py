@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import torch
 
-from ..._backends import Backend, detect_vendor
-from ..._dispatch import register
+from ...._backends import Backend, detect_vendor
+from ...._dispatch import register
 from .._activation import SwigluAct
 from . import _cuda  # compiled extension; ImportError if not built
 
