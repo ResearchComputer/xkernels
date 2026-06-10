@@ -22,6 +22,11 @@ try:  # pragma: no cover - requires triton
 except Exception:
     pass
 
+try:  # pragma: no cover - requires triton
+    from .triton import align_kernel  # noqa: F401
+except Exception:
+    pass
+
 __all__ = [
     "fused_moe_int4_w4a16",
     "moe_align_block_size",
