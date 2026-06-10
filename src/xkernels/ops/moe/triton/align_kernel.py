@@ -110,7 +110,13 @@ def _align_expert_ids(
     block_size: tl.constexpr,
     EXPERTS_P2: tl.constexpr,  # next_pow2(num_experts + 1)
 ):
-    """Block ``b`` belongs to ``#{e in [1, num_experts] : cumsum[e] <= b*block}``."""
+    """Block ``b`` belongs to ``#{e in [1, num_experts] : cumsum[e] <= b*block}``.
+
+    Vectorized scan of the monotone ``cumsum``. ``EXPERTS_P2`` is
+    ``next_pow2(num_experts + 1)`` because ``tl.arange`` needs a power-of-2 length
+    and the lanes must reach index ``num_experts`` (we read ``cumsum[1..num_experts]``);
+    masked / out-of-range lanes load the ``_I32_MAX`` sentinel so they never count.
+    """
     b = tl.program_id(0)
     off = b * block_size
     e = tl.arange(0, EXPERTS_P2)

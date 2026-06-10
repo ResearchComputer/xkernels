@@ -25,8 +25,9 @@ from .w4a16 import moe_align_block_size_ref
 
 __all__ = ["moe_align_block_size"]
 
-# The reference (in w4a16.py, shared with the INT4 GEMM launcher) is the oracle
-# and the only backend for now.
+# The reference (in w4a16.py, shared with the INT4 GEMM launcher) is the oracle.
+# The TRITON backend (bit-for-bit identical) self-registers from
+# triton/align_kernel.py, imported for its side effect by ops/moe/__init__.py.
 register("moe_align_block_size", Backend.REFERENCE)(moe_align_block_size_ref)
 
 
