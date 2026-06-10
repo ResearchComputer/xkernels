@@ -6,8 +6,8 @@ import torch
 import triton
 import triton.language as tl
 
-from ..._backends import Backend
-from ..._dispatch import register
+from ...._backends import Backend
+from ...._dispatch import register
 from .._activation import SwigluAct
 
 
