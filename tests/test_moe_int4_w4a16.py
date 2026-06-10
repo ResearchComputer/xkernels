@@ -131,6 +131,37 @@ def test_dequant_roundtrip():
     torch.testing.assert_close(dequant_w4a16(packed, scale, 32), w_ref)
 
 
+def test_tuned_config_path_matches_reference(monkeypatch):
+    """A resolved tuned config drives the direct (non-autotune) launch correctly.
+
+    Monkeypatches ``get_moe_int4_config`` (as imported into the kernel module) to
+    return a valid config; the wrapper then aligns to its ``BLOCK_SIZE_M`` and
+    takes the direct launch path. Output must still match the grouped-MoE oracle.
+    """
+    if not _HAS_TRITON:
+        pytest.skip("triton backend not registered (triton not installed)")
+    dev = _device()
+    from xkernels.ops.moe.triton import moe_int4_kernel as kmod
+
+    cfg = {
+        "BLOCK_SIZE_M": 16, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 64,
+        "GROUP_SIZE_M": 1, "num_warps": 2, "num_stages": 2,
+        "waves_per_eu": 0, "matrix_instr_nonkdim": 16, "kpack": 2,
+    }
+    monkeypatch.setattr(kmod, "get_moe_int4_config", lambda *a, **k: cfg)
+
+    group_size = 32
+    M, E, N, K, top_k = 4, 8, 128, 128, 4
+    packed, scale, A, topk_ids, topk_w = _inputs(M, E, N, K, top_k, dev, group_size)
+    got = fused_moe_int4_w4a16(
+        A, packed, scale, topk_ids, topk_w,
+        group_size=group_size, mul_routed_weight=True, backend=Backend.TRITON,
+    )
+    ref = _ref_grouped(A, packed, scale, topk_ids, topk_w, group_size, True)
+    atol = rtol = 3e-3 if _INTERP else 2e-2
+    torch.testing.assert_close(got.float(), ref.float(), atol=atol, rtol=rtol)
+
+
 if __name__ == "__main__":
     import sys
 
