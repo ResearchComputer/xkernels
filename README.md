@@ -43,13 +43,15 @@ or `sbatch slurm/bench_all_beverin.sbatch`.
 |--------|-------|--------------:|----------:|--------:|
 | `moe_int4_w4a16` | M=64, E=48, N=4096, K=7168, top_k=8 | 32.8 ms (dequant+matmul) | 2.02 ms | **16.3×** |
 | `moe_sum_reduce` | M=8192, top_k=8, H=7168 | 3.21 ms (torch reduce) | 0.38 ms | **8.4×** |
+| `moe_align_block_size` | M=16384, top_k=8, E=48, block=16 | 54.4 ms (torch argsort+pad) | 1.65 ms | **32.9×** |
 | `dual_rmsnorm` | T=8192, d=(1536,512) | 0.25 ms (2× sequential RMSNorm) | 0.05 ms | **5.0×** |
 | `mha_merge_state` | T=8192, H=128, D=128 | 2.57 ms (torch merge) | 0.80 ms | **3.2×** |
 | `fused_ffn` | M=4096, 4096→11008 (fp16) | 5.56 ms (unfused torch) | 5.49 ms | **1.0×** |
 
 Naive baselines: `moe_int4_w4a16` vs per-expert dequant(int4→bf16)+matmul;
 `moe_sum_reduce` / `mha_merge_state` vs their torch oracles; `dual_rmsnorm` vs
-two sequential RMSNorm launches; `fused_ffn` vs the unfused `reference` backend.
+two sequential RMSNorm launches; `moe_align_block_size` vs the torch argsort +
+per-expert padding reference; `fused_ffn` vs the unfused `reference` backend.
 
 Notes:
 
@@ -59,9 +61,13 @@ Notes:
   2.11+rocm7.2 build the **bf16** GEMM misses the MFMA/hipBLASLt path and runs
   ~470× slower than fp16 (0.8 vs 358 TFLOP/s; see `benchmarks/probe_ffn.py`) —
   a stack issue, not a kernel one.
-- **`moe_align_block_size`** ships a reference backend only; the Triton perf
-  kernel (device-atomic histogram + padded prefix-sum) is a tracked follow-up
-  (issue #4), so there is no speedup to report yet.
+- **`moe_align_block_size` 32.9×** — the Triton perf backend (vLLM/SGLang-style
+  4-stage histogram + padded prefix-sum + scatter, issue #4) is validated
+  bit-for-bit against the reference. The win is large because the reference pays
+  a full `argsort` plus a 48-iteration per-expert Python padding loop with
+  per-step host syncs; the kernel collapses that into 5 launches. The speedup
+  holds across token counts (≈14× at M=16, rising to ≈33× at M=16384) — swept in
+  `bench_moe_align_block_size.py`.
 - **`hierarchical_all_reduce`** (distributed) does *not* beat a flat all-reduce on
   the 2-node / 4-NIC-per-node MI300A stack — RCCL's flat collective is already
   topology-aware. Full analysis in `docs/issue-12-hierarchical-all-reduce.md`.

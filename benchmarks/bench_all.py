@@ -12,10 +12,12 @@ Naive baselines (what "speedup vs naive PyTorch" measures here):
   * moe_sum_reduce   -> torch weighted top-k reduce (`moe_sum_reduce_ref`)
   * fused_ffn        -> the `reference` backend (unfused torch matmuls + SiLU)
   * moe_int4_w4a16   -> per-expert dequant(int4->bf16) + grouped matmul
+  * moe_align_block_size -> torch argsort + per-expert padding loop (the reference)
 
-`moe_align_block_size` (reference-only; perf kernel is tracked follow-up) and the
-distributed `hierarchical_all_reduce` (see docs/issue-12-*) are not single-GPU
-speedup-vs-torch stories and are reported separately in the README.
+The distributed `hierarchical_all_reduce` (see docs/issue-12-*) is not a
+single-GPU speedup-vs-torch story and is reported separately in the README.
+`moe_align_block_size` is additionally swept across token counts standalone in
+`bench_moe_align_block_size.py`.
 
 Run on one gfx942 GPU (see slurm/bench_all_beverin.sbatch). Timing uses
 `xkernels.utils.benchmarking.benchmark` (Triton `do_bench` when available).
@@ -33,6 +35,7 @@ from xkernels import (
     fused_ffn,
     fused_moe_int4_w4a16,
     mha_merge_state,
+    moe_align_block_size,
     moe_sum_reduce,
 )
 from xkernels.ops.attention.reference import merge_state_ref
@@ -87,6 +90,17 @@ def bench_moe_sum_reduce(dev):
         "moe_sum_reduce", f"M={M}, top_k={TOP_K}, H={H}", "torch reduce",
         lambda: moe_sum_reduce_ref(y, w),
         lambda: moe_sum_reduce(y, w),
+    )
+
+
+def bench_moe_align(dev):
+    M, top_k, E, block = 16384, 8, 48, 16  # Kimi-K2.6 top_k/experts; decode block
+    g = torch.Generator(device=dev).manual_seed(0)
+    topk_ids = torch.randint(0, E, (M, top_k), generator=g, dtype=torch.int32, device=dev)
+    _record(
+        "moe_align_block_size", f"M={M}, top_k={top_k}, E={E}, block={block}", "torch argsort+pad",
+        lambda: moe_align_block_size(topk_ids, block, E, backend="reference"),
+        lambda: moe_align_block_size(topk_ids, block, E, backend="triton"),
     )
 
 
@@ -165,6 +179,7 @@ def main():
         bench_merge_state,
         bench_dual_rmsnorm,
         bench_moe_sum_reduce,
+        bench_moe_align,
         bench_ffn,
         bench_moe_int4,
     ):

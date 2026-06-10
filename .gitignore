@@ -9,6 +9,7 @@ dist/
 .ruff_cache/
 .venv/
 venv/
+uv.lock
 *.csv
 *.pdf
 .DS_Store
