@@ -6,8 +6,14 @@ two independent RMSNorms over differently-sized feature dims in a single launch.
 from .interface import dual_rmsnorm
 
 # Import the Triton backend for its registration side effect. Optional.
+# The import is routed through the optional ``_triton_compat`` redirect so the kernel
+# binds ``tokenspeed_triton`` (not stock ``triton``) when running inside
+# tokenspeed; see ``xkernels/_triton_compat.py``.
 try:  # pragma: no cover - requires triton
-    from .triton import dual_rmsnorm_kernel  # noqa: F401
+    from ..._triton_compat import triton_import_ctx
+
+    with triton_import_ctx():
+        from .triton import dual_rmsnorm_kernel  # noqa: F401
 except Exception:
     pass
 

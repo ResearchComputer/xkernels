@@ -11,19 +11,32 @@ from .sum_reduce import moe_sum_reduce
 from .w4a16 import dequant_w4a16, make_w4a16_weights, moe_align_block_size_ref
 
 # Import Triton backends for their registration side effects. Optional — guard
-# each so the package imports without Triton installed.
+# each so the package imports without Triton installed. Routed through the
+# optional ``_triton_compat`` redirect so the kernels bind ``tokenspeed_triton`` (not
+# stock ``triton``) inside tokenspeed; see ``xkernels/_triton_compat.py``.
+# This matters for ``moe_int4_kernel`` in particular: its ``tl.dot`` asserts that
+# both operands share the same dtype *object*, which fails across packages.
 try:  # pragma: no cover - requires triton
-    from .triton import moe_int4_kernel  # noqa: F401
+    from ..._triton_compat import triton_import_ctx
+
+    with triton_import_ctx():
+        from .triton import moe_int4_kernel  # noqa: F401
 except Exception:
     pass
 
 try:  # pragma: no cover - requires triton
-    from .triton import sum_reduce_kernel  # noqa: F401
+    from ..._triton_compat import triton_import_ctx
+
+    with triton_import_ctx():
+        from .triton import sum_reduce_kernel  # noqa: F401
 except Exception:
     pass
 
 try:  # pragma: no cover - requires triton
-    from .triton import align_kernel  # noqa: F401
+    from ..._triton_compat import triton_import_ctx
+
+    with triton_import_ctx():
+        from .triton import align_kernel  # noqa: F401
 except Exception:
     pass
 
