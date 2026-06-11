@@ -1,6 +1,6 @@
 """xkernels — customized compute kernels across vendors and kernel types."""
 
-from .ops.attention import mha_merge_state
+from .ops.attention import dsa_indexer_logits, dsa_indexer_topk, mha_merge_state
 from .ops.comm import (
     build_topology_groups,
     flat_all_reduce,
@@ -20,6 +20,8 @@ __all__ = [
     "moe_sum_reduce",
     "mxfp4_paged_gather",
     "mha_merge_state",
+    "dsa_indexer_logits",
+    "dsa_indexer_topk",
     "dual_rmsnorm",
     "build_topology_groups",
     "flat_all_reduce",
