@@ -6,9 +6,15 @@ split-KV MLA on AMD MI300A.
 """
 from .interface import mha_merge_state
 
-# Import the Triton backend for its registration side effect. Optional.
+# Import the Triton backend for its registration side effect. Optional. Routed
+# through the optional ``_triton_compat`` redirect so the kernel binds ``tokenspeed_triton``
+# (not stock ``triton``) inside tokenspeed; see
+# ``xkernels/_triton_compat.py``.
 try:  # pragma: no cover - requires triton
-    from .triton import merge_state_kernel  # noqa: F401
+    from ..._triton_compat import triton_import_ctx
+
+    with triton_import_ctx():
+        from .triton import merge_state_kernel  # noqa: F401
 except Exception:
     pass
 
