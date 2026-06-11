@@ -259,6 +259,18 @@ def test_flash_mla_with_kvcache_dual_cache():
     torch.testing.assert_close(out.float(), eo.float(), atol=atol, rtol=atol)
 
 
+def test_top_level_exports():
+    import xkernels
+
+    for name in (
+        "sparse_mla_attention",
+        "flash_mla_sparse_fwd",
+        "flash_mla_with_kvcache",
+        "get_mla_metadata",
+    ):
+        assert hasattr(xkernels, name), name
+
+
 @pytest.mark.skipif(not _HAS_FP8, reason="torch lacks float8_e4m3fn")
 def test_flash_mla_with_kvcache_single_cache():
     """Degenerate single-cache decode (no extra compressed cache)."""

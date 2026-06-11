@@ -1,6 +1,14 @@
 """xkernels — customized compute kernels across vendors and kernel types."""
 
-from .ops.attention import dsa_indexer_logits, dsa_indexer_topk, mha_merge_state
+from .ops.attention import (
+    dsa_indexer_logits,
+    dsa_indexer_topk,
+    flash_mla_sparse_fwd,
+    flash_mla_with_kvcache,
+    get_mla_metadata,
+    mha_merge_state,
+    sparse_mla_attention,
+)
 from .ops.comm import (
     build_topology_groups,
     flat_all_reduce,
@@ -22,6 +30,10 @@ __all__ = [
     "mha_merge_state",
     "dsa_indexer_logits",
     "dsa_indexer_topk",
+    "sparse_mla_attention",
+    "flash_mla_sparse_fwd",
+    "flash_mla_with_kvcache",
+    "get_mla_metadata",
     "dual_rmsnorm",
     "build_topology_groups",
     "flat_all_reduce",
