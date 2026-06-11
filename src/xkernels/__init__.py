@@ -8,6 +8,7 @@ from .ops.comm import (
     residual_rmsnorm,
 )
 from .ops.ffn import fused_ffn
+from .ops.gather import mxfp4_paged_gather
 from .ops.moe import fused_moe_int4_w4a16, moe_align_block_size, moe_sum_reduce
 from .ops.norm import dual_rmsnorm
 
@@ -17,6 +18,7 @@ __all__ = [
     "fused_moe_int4_w4a16",
     "moe_align_block_size",
     "moe_sum_reduce",
+    "mxfp4_paged_gather",
     "mha_merge_state",
     "dual_rmsnorm",
     "build_topology_groups",
