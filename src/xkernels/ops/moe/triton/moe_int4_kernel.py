@@ -62,7 +62,7 @@ import triton.language as tl
 
 from ...._backends import Backend
 from ...._dispatch import register
-from ..w4a16 import moe_align_block_size_ref
+from ..w4a16 import moe_align_block_size_ep, moe_align_block_size_ref
 from .configs import (
     align_block_m,
     get_autotune_configs,
@@ -416,16 +416,27 @@ def _moe_int4_w4a16_triton(
     group_size: int = 32,
     mul_routed_weight: bool = True,
     fused_combine: bool = False,
+    expert_map: torch.Tensor | None = None,
 ) -> torch.Tensor:
     M, top_k = topk_ids.shape
-    E, N, kp = packed.shape
+    E, N, kp = packed.shape  # E == E_local (rank-local expert count under EP)
     K = kp * 8
     # Resolve a checked-in tuned config first; the token-slot alignment block
     # MUST equal the kernel BLOCK_SIZE_M (see align_block_m), so derive it from
     # the config when present, else from the decode/prefill M heuristic.
     config = get_moe_int4_config(E, N, K, M)
     block_m = config["BLOCK_SIZE_M"] if config is not None else align_block_m(M)
-    sorted_ids, expert_ids, num_post = moe_align_block_size_ref(topk_ids, block_m, E)
+    if expert_map is not None:
+        # Expert parallelism (issue #26): topk_ids are GLOBAL ids; remap to the
+        # E_local rows of the rank-local weight tensor and drop slots routed to
+        # other ranks' experts. ``expert_ids`` then indexes ``packed`` directly.
+        # Non-local token-slots are never gathered, so the GEMM writes this rank's
+        # partial output (the caller all-reduces the partials across the EP group).
+        sorted_ids, expert_ids, num_post = moe_align_block_size_ep(
+            topk_ids, block_m, expert_map.numel(), expert_map
+        )
+    else:
+        sorted_ids, expert_ids, num_post = moe_align_block_size_ref(topk_ids, block_m, E)
     if fused_combine:
         # Fused weighted top-k combine: the kernel atomic-accumulates into a single
         # [M, N] fp32 buffer, so there is no [M*top_k, N] scratch and no separate

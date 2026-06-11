@@ -8,7 +8,12 @@ and, where available, an autotuned Triton backend.
 from .align import moe_align_block_size
 from .interface import fused_moe_int4_w4a16
 from .sum_reduce import moe_sum_reduce
-from .w4a16 import dequant_w4a16, make_w4a16_weights, moe_align_block_size_ref
+from .w4a16 import (
+    dequant_w4a16,
+    make_w4a16_weights,
+    moe_align_block_size_ep,
+    moe_align_block_size_ref,
+)
 
 # Import Triton backends for their registration side effects. Optional — guard
 # each so the package imports without Triton installed. Routed through the
@@ -47,4 +52,5 @@ __all__ = [
     "dequant_w4a16",
     "make_w4a16_weights",
     "moe_align_block_size_ref",
+    "moe_align_block_size_ep",
 ]

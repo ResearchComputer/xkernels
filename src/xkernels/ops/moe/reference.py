@@ -28,30 +28,40 @@ def moe_w4a16_ref(
     group_size: int = 32,
     mul_routed_weight: bool = True,
     fused_combine: bool = False,
+    expert_map: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Reference grouped MoE GEMM: ``out[m] = sum_j w[m,j] * (A[m] @ W[e]^T)``.
 
     Args:
         A: ``[M, K]`` activations (bf16 or fp32).
-        packed: ``[E, N, K // 8]`` int32 packed weights.
-        scale: ``[E, N, K // group_size]`` group scales.
-        topk_ids: ``[M, top_k]`` int32 expert ids.
+        packed: ``[E, N, K // 8]`` int32 packed weights (rank-local under EP).
+        scale: ``[E, N, K // group_size]`` group scales (rank-local under EP).
+        topk_ids: ``[M, top_k]`` int32 **global** expert ids.
         topk_w: ``[M, top_k]`` fp32 routing weights.
         group_size: quant group size.
         mul_routed_weight: fold routing weights into the sum (matches down GEMM).
         fused_combine: accepted for API parity with the Triton backend; the
             reference already returns the combined ``[M, N]`` result, so it is a
             no-op here.
+        expert_map: optional ``[num_global_experts]`` global->local row map for
+            expert parallelism (issue #26); ``-1`` = expert not on this rank. When
+            given, only locally-held experts contribute, so the result is this
+            rank's partial output.
 
     Returns:
         ``[M, N]`` output in ``A.dtype`` (fp32 accumulation).
     """
-    W = dequant_w4a16(packed, scale, group_size)  # [E, N, K] bf16
+    W = dequant_w4a16(packed, scale, group_size)  # [E_local, N, K] bf16
     M, topk = topk_ids.shape
     out = torch.zeros(M, W.shape[1], dtype=torch.float32, device=A.device)
+    emap = None if expert_map is None else expert_map.to(A.device)
     for m in range(M):
         for j in range(topk):
             e = int(topk_ids[m, j])
+            if emap is not None:
+                e = int(emap[e])
+                if e < 0:  # expert not on this rank -> skip (partial output)
+                    continue
             contrib = A[m].float() @ W[e].float().T
             if mul_routed_weight:
                 contrib = topk_w[m, j].float() * contrib

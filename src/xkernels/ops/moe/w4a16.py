@@ -14,6 +14,7 @@ __all__ = [
     "dequant_w4a16",
     "make_w4a16_weights",
     "moe_align_block_size_ref",
+    "moe_align_block_size_ep",
 ]
 
 
@@ -89,6 +90,60 @@ def moe_align_block_size_ref(
         torch.tensor(expert_ids, dtype=torch.int32, device=topk_ids.device),
         torch.tensor([w], dtype=torch.int32, device=topk_ids.device),
     )
+
+
+def moe_align_block_size_ep(
+    topk_ids: torch.Tensor,
+    block_size: int,
+    num_experts: int,
+    expert_map: torch.Tensor,
+    truncate: bool = True,
+):
+    """Expert-parallel (``ep_size > 1``) dispatch builder (issue #26).
+
+    Under expert parallelism the router still emits **global** ``topk_ids`` over
+    all ``num_experts`` experts, but each rank only holds a *subset* of the expert
+    weights. ``expert_map`` is the per-rank lookup ``[num_experts]`` giving, for
+    each global expert id, its **local** weight-row index in ``[0, E_local)`` —
+    or ``-1`` if that expert lives on another rank.
+
+    This remaps each routed slot's global expert id to its local row, sends every
+    non-local slot to a sentinel id (``E_local``) that is *not* iterated by the
+    block builder, and then reuses the standard per-expert sort/pad over the
+    ``E_local`` local experts only. Non-local slots are therefore dropped from
+    this rank's compute (the kernel never gathers them), so the GEMM produces this
+    rank's **partial** MoE output; summing the partials across ranks (the
+    production all-reduce) reconstructs the full dense result.
+
+    Args:
+        topk_ids: ``[M, top_k]`` int32 **global** expert ids.
+        block_size: GEMM block size each (local) expert run is padded up to.
+        num_experts: total number of **global** experts.
+        expert_map: ``[num_experts]`` int (any width) mapping global id -> local
+            row (``-1`` if not on this rank). ``E_local = (expert_map >= 0).sum()``
+            and the local rows must be ``0..E_local-1`` (the standard contiguous
+            per-rank expert slice).
+        truncate: as in :func:`moe_align_block_size_ref`.
+
+    Returns:
+        ``(sorted_token_ids, expert_ids, num_tokens_post_padded)`` where
+        ``expert_ids`` holds **local** expert rows and indexes the rank-local
+        ``[E_local, N, K // 8]`` weight tensor passed to the GEMM.
+    """
+    expert_map = expert_map.to(device=topk_ids.device)
+    e_local = int((expert_map >= 0).sum().item())
+    if e_local == 0:
+        # This rank owns no experts: empty dispatch, the GEMM writes nothing.
+        return moe_align_block_size_ref(
+            torch.full_like(topk_ids, 0), block_size, 0, truncate=truncate
+        )
+    # Remap global -> local row; non-local global ids -> sentinel ``e_local`` so
+    # they sort past the local experts and are skipped by the block builder
+    # (which only iterates ``range(num_experts=e_local)``).
+    sentinel = torch.full_like(expert_map, e_local)
+    local_ids = torch.where(expert_map >= 0, expert_map, sentinel).to(torch.int64)
+    remapped = local_ids[topk_ids.long()].to(torch.int32)
+    return moe_align_block_size_ref(remapped, block_size, e_local, truncate=truncate)
 
 
 def make_w4a16_weights(E: int, N: int, K: int, group_size: int = 32, *, device="cuda", seed=0):
