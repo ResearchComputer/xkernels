@@ -77,7 +77,10 @@ def test_align_invariants(M, top_k, num_experts, block_size):
 
 def test_auto_backend_resolves_to_reference_on_cpu():
     # On a CPU/none-vendor build, "auto" resolves to reference even once the
-    # Triton backend is registered (Triton needs a GPU at runtime).
+    # Triton backend is registered (Triton needs a GPU at runtime). On a GPU box
+    # auto resolves to Triton, so this CPU-vendor assertion only applies there.
+    if torch.cuda.is_available() and not _INTERP:
+        pytest.skip("auto resolves to the Triton backend on a GPU vendor")
     topk_ids = _make_topk_ids(8, 2, 4)
     sorted_ids, expert_ids, num_post = moe_align_block_size(topk_ids, 4, 4)  # backend="auto"
     assert sorted_ids.dtype == torch.int32 and num_post.numel() == 1
@@ -171,13 +174,17 @@ def test_triton_matches_reference_randomized(seed):
     if not _HAS_TRITON:
         pytest.skip("triton backend not registered")
     dev = _device()
-    g = torch.Generator(device=dev).manual_seed(seed)
-    M = int(torch.randint(1, 40, (1,), generator=g).item())
-    top_k = int(torch.randint(1, 9, (1,), generator=g).item())
-    num_experts = int(torch.randint(2, 33, (1,), generator=g).item())
-    block_size = int(2 ** torch.randint(2, 6, (1,), generator=g).item())
+    # Host-side scalar draws use a CPU generator (the values become python ints);
+    # the device tensor uses a matching-device generator (a CUDA generator with a
+    # CPU output tensor — or vice-versa — raises a device-mismatch error).
+    gc = torch.Generator().manual_seed(seed)
+    M = int(torch.randint(1, 40, (1,), generator=gc).item())
+    top_k = int(torch.randint(1, 9, (1,), generator=gc).item())
+    num_experts = int(torch.randint(2, 33, (1,), generator=gc).item())
+    block_size = int(2 ** torch.randint(2, 6, (1,), generator=gc).item())
     # Skew the routing so some experts get many slots and some get none.
-    logits = torch.randn(M, top_k, num_experts, generator=g, device=dev)
+    gd = torch.Generator(device=dev).manual_seed(seed)
+    logits = torch.randn(M, top_k, num_experts, generator=gd, device=dev)
     topk_ids = logits.argmax(dim=-1).to(torch.int32)
     got = moe_align_block_size(topk_ids, block_size, num_experts, backend=Backend.TRITON)
     ref = moe_align_block_size_ref(topk_ids, block_size, num_experts)
