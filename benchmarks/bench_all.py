@@ -68,6 +68,29 @@ def bench_merge_state(dev):
     )
 
 
+def bench_sparse_mla(dev):
+    from xkernels import sparse_mla_attention
+    from xkernels._backends import Backend
+    from xkernels.ops.attention.sparse_mla_reference import sparse_mla_attention_ref
+
+    T, H, D, D_V, Kv, topk = 8, 128, 512, 448, 8192, 512
+    sm_scale = 1.0 / (D**0.5)
+    q = torch.randn(T, H, D, device=dev, dtype=DT)
+    kv = torch.randn(Kv, D, device=dev, dtype=DT)
+    idx = torch.randint(0, Kv, (T, topk), device=dev, dtype=torch.int32)
+    sink = torch.randn(H, device=dev)
+    _record(
+        "sparse_mla", f"T={T}, H={H}, D={D}, topk={topk}", "torch gather+softmax",
+        lambda: sparse_mla_attention_ref(
+            q, kv, idx, sm_scale=sm_scale, attn_sink=sink, d_v=D_V
+        ),
+        lambda: sparse_mla_attention(
+            q, kv, idx, sm_scale=sm_scale, attn_sink=sink, d_v=D_V,
+            backend=Backend.TRITON,
+        ),
+    )
+
+
 def bench_dual_rmsnorm(dev):
     T, D1, D2 = 8192, 1536, 512
     x1 = torch.randn(T, D1, device=dev, dtype=DT)
@@ -198,6 +221,7 @@ def main():
 
     for fn in (
         bench_merge_state,
+        bench_sparse_mla,
         bench_dual_rmsnorm,
         bench_moe_sum_reduce,
         bench_moe_align,
