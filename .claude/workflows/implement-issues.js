@@ -9,12 +9,20 @@
 //   Workflow({ scriptPath: '.claude/workflows/implement-issues.js', args: { dryRun: true } })
 //
 // args (all optional):
-//   issues:    number[]  explicit issue allow-list (overrides the label filter)
-//   label:     string    issue label to scan when no explicit list (default 'enhancement')
-//   reviewer:  string    GitHub login to request review from (default 'xzyao-agent')
-//   draft:     boolean    open PRs as draft (default true)
-//   onDevice:  boolean    require MI300A/beverin validation before shipping (default true)
-//   dryRun:    boolean    scan + report the worklist only; do NOT implement or open PRs
+//   issues:     number[] explicit issue allow-list (overrides the label filter)
+//   label:      string   issue label to scan when no explicit list (default 'enhancement')
+//   reviewer:   string   GitHub login to request review from (default 'xzyao-agent')
+//   draft:      boolean  open PRs as draft (default true)
+//   onDevice:   boolean  require MI300A/beverin validation before shipping (default true)
+//   dryRun:     boolean  scan + report the worklist only; do NOT implement or open PRs
+//   repo:       string   owner/name (default 'ResearchComputer/kernels')
+//   mainRepo:   string   path to the prepared local checkout (.venv lives here)
+//   scratchBase:string   cluster scratch root for on-device validation
+//   skillsCscs: string   path to the CSCS cluster skill doc the agents read
+//
+// NOTE: this runs in the Workflow-tool JS sandbox, NOT Node.js — there is no
+// `process`, `require`, filesystem, `execSync`, or `Date.now()`. `gh` and SLURM
+// are run by the delegated agents (via their Bash tool), not by this script.
 
 export const meta = {
   name: 'implement-issues',
@@ -26,16 +34,23 @@ export const meta = {
   ],
 }
 
-const REPO = 'ResearchComputer/kernels'
-const MAIN_REPO = '/home/xiayao/Documents/research/kernels'
+const REPO = (args && args.repo) || 'ResearchComputer/kernels'
+const MAIN_REPO = (args && args.mainRepo) || '/home/xiayao/Documents/research/kernels'
 const VENV = MAIN_REPO + '/.venv'
+const SCRATCH_BASE = (args && args.scratchBase) || '/capstor/scratch/cscs/xyao'
+const SKILLS_CSCS = (args && args.skillsCscs) || '/home/xiayao/Documents/xzyao/skills/clusters/cscs/README.md'
 
 const REVIEWER = (args && args.reviewer) || 'xzyao-agent'
 const LABEL = (args && args.label) || 'enhancement'
 const DRAFT = !(args && args.draft === false) // default true
 const ON_DEVICE = !(args && args.onDevice === false) // default true (decision: always validate on beverin)
 const DRY_RUN = !!(args && args.dryRun)
-const ONLY = args && Array.isArray(args.issues) ? args.issues : null
+// issues allow-list: coerce to a clean array of positive ints; anything else -> null (label scan)
+const _issuesArg =
+  args && Array.isArray(args.issues)
+    ? args.issues.map((n) => parseInt(n, 10)).filter((n) => Number.isInteger(n) && n > 0)
+    : null
+const ONLY = _issuesArg && _issuesArg.length ? _issuesArg : null
 
 const SCAN_SCHEMA = {
   type: 'object',
@@ -65,6 +80,10 @@ const SCAN_SCHEMA = {
         },
         required: ['number', 'reason'],
       },
+    },
+    error: {
+      type: ['string', 'null'],
+      description: 'non-null if gh is unavailable/unauthenticated or errored; issues/skipped will be empty',
     },
   },
   required: ['issues', 'skipped'],
@@ -102,11 +121,15 @@ function scanPrompt() {
   const rule = ONLY
     ? `Return ALL of the explicit issue numbers in 'issues' (do not drop them even if a PR exists — but note any existing PR in their 'reason'). Leave 'skipped' empty.\n`
     : `Return open '${LABEL}' issues that are NOT already addressed in 'issues'; put already-addressed ones in 'skipped' with the covering PR number.\n`
-  return base + rule + `Return JSON only — do not implement anything.`
+  const onErr =
+    `\nIf the gh CLI is unavailable, unauthenticated, or any command exits non-zero ` +
+    `(check exit codes / stderr), do NOT silently report an empty worklist: set "error" ` +
+    `to a one-line description and return empty 'issues' and 'skipped'. Only return an empty ` +
+    `'issues' with error=null when gh genuinely lists no matching issues.\n`
+  return base + rule + onErr + `Return JSON only — do not implement anything.`
 }
 
 function implementPrompt(issue) {
-  const slugHint = `<short-kebab-slug>`
   return `You are implementing GitHub issue #${issue.number} of ${REPO} end-to-end.
 
 TITLE: ${issue.title}
@@ -126,7 +149,8 @@ Read the source files it references. Write down a concrete mini-spec: acceptance
 
 == STEP 2 — Branch off latest main ==
   git fetch origin main
-  git switch -c <type>/issue-${issue.number}-${slugHint} origin/main
+  git switch -c <type>/issue-${issue.number}-<slug> origin/main
+Pick a concrete short kebab-case <slug> derived from the issue (e.g. 'bf16-gemm', 'fused-combine') — do NOT leave a literal placeholder in the branch name.
 (type = feat for new kernels/features, fix for bug fixes, bench for benchmarks/characterization.)
 
 == STEP 3 — TDD implementation ==
@@ -141,11 +165,11 @@ All must pass. If anything fails, fix it and rerun. Set testsPassed accordingly.
 
 == STEP 5 — On-device validation on beverin / MI300A (${ON_DEVICE ? 'REQUIRED' : 'optional'}) ==
 ${ON_DEVICE
-      ? `This is mandatory before opening the PR. First READ ${'/home/xiayao/Documents/xzyao/skills/clusters/cscs/README.md'} and the existing slurm/*_beverin.sbatch scripts in this repo (working templates: partition mi300, account a-infra02, --environment=tokenspeed-rocm-aiter-myofi).
-  - rsync THIS worktree to a UNIQUE per-issue scratch path so concurrent agents do not clobber each other, e.g. /capstor/scratch/cscs/xyao/kernels-issue-${issue.number}
+      ? `This is mandatory before opening the PR. First READ ${SKILLS_CSCS} and the existing slurm/*_beverin.sbatch scripts in this repo (working templates: partition mi300, account a-infra02, --environment=tokenspeed-rocm-aiter-myofi).
+  - rsync THIS worktree to a UNIQUE per-issue scratch path so concurrent agents do not clobber each other, e.g. ${SCRATCH_BASE}/kernels-issue-${issue.number}
   - Write or adapt a slurm/<name>_beverin.sbatch for your kernel/test; submit it with REPO pointing at your unique scratch path: sbatch --export=ALL,REPO=<scratch-path> slurm/<name>_beverin.sbatch
-  - Poll the job's .out log until the job leaves the queue; parse correctness (bf16 atol/rtol ~ 2e-2, i.e. max|err| within tolerance) and any perf numbers.
-  - GATE: set onDevicePassed=true only if on-device correctness passes. If the cluster is unreachable or it fails, set onDevicePassed=false and record exactly what happened in notes — still open a DRAFT PR documenting the state rather than claiming success.`
+  - Poll the job's .out log until the job leaves the queue, but BOUND the wait: these validation jobs are short, so if the job stays PENDING or has not finished after ~30 min of wall-clock, stop waiting (scancel it), set onDevicePassed=false, and record the timeout in notes rather than blocking forever. Parse correctness (bf16 atol/rtol ~ 2e-2, i.e. max|err| within tolerance) and any perf numbers.
+  - GATE: set onDevicePassed=true only if on-device correctness passes. If the cluster is unreachable, it times out, or it fails, set onDevicePassed=false and record exactly what happened in notes — still open a DRAFT PR documenting the state rather than claiming success.`
       : `Skipped (onDevice=false). Set onDevicePassed=null.`}
 
 == STEP 6 — Commit & push ==
@@ -172,6 +196,10 @@ Return the structured result (issue number, branch, prUrl, shipped, testsPassed,
 
 phase('Scan')
 const scan = await agent(scanPrompt(), { schema: SCAN_SCHEMA, label: 'scan-issues' })
+if (scan && scan.error) {
+  log(`Scan aborted: ${scan.error}`)
+  return { error: scan.error, implemented: [] }
+}
 let issues = (scan && scan.issues) || []
 if (scan && scan.skipped && scan.skipped.length) {
   log(`Skipped (already addressed by a PR): ${scan.skipped.map((s) => '#' + s.number).join(', ')}`)
