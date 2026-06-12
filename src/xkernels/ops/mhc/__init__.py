@@ -8,10 +8,7 @@ V4's ``mhc_pre`` — a portable gfx942 replacement for the NVIDIA-only
 tokenspeed binds it drop-in; the TileLang post-fusion that consumes its outputs
 is already portable on AMD and is untouched.
 """
-try:  # pragma: no cover - interface added in a later task
-    from .interface import hc_prenorm_gemm, tf32_hc_prenorm_gemm
-except ImportError:
-    pass
+from .interface import hc_prenorm_gemm, tf32_hc_prenorm_gemm
 
 # Import the Triton backend for its registration side effect (optional). Routed
 # through the optional ``_triton_compat`` redirect so the kernel binds
