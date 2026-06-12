@@ -20,9 +20,8 @@ rope (score-only) along the last axis.
 """
 
 import functools
+import importlib.util
 
-import tilelang
-import tilelang.language as T
 import torch
 
 from ...._backends import Backend
@@ -35,6 +34,11 @@ _LOG2E = 1.44269504
 
 @functools.lru_cache(maxsize=64)
 def _build(Tn, H, topk, dim, pe_dim, d_v, block_N, block_H, num_split, threads, sm_scale):
+    # Lazy import: keep tilelang off the ``import xkernels`` critical path (it
+    # interacts badly with tokenspeed_triton when imported at module load).
+    import tilelang
+    import tilelang.language as T
+
     scale = float(sm_scale * _LOG2E)  # exp2 domain
     dtype = T.bfloat16
     acc = T.float32
@@ -47,12 +51,9 @@ def _build(Tn, H, topk, dim, pe_dim, d_v, block_N, block_H, num_split, threads, 
         Q_pe: T.Tensor([Tn, H, pe_dim], dtype),
         KV: T.Tensor([Tn, topk, 1, dim], dtype),
         K_pe: T.Tensor([Tn, topk, 1, pe_dim], dtype),
-        Sink: T.Tensor([H], acc),
-        glse: T.Tensor([Tn, H, num_split], acc),
-        Op: T.Tensor([Tn, H, num_split, dim], acc),
+        glse: T.Tensor([Tn, H, num_split], dtype),
+        Op: T.Tensor([Tn, H, num_split, dim], dtype),
         Output: T.Tensor([Tn, H, d_v], dtype),
-        Lse: T.Tensor([Tn, H], acc),
-        Maxl: T.Tensor([Tn, H], acc),
     ):
         # ---- split: per (token, head-tile, split) flash partial ----
         with T.Kernel(Tn, H // VBH, num_split, threads=threads) as (bx, by, bz):
@@ -69,6 +70,7 @@ def _build(Tn, H, topk, dim, pe_dim, d_v, block_N, block_H, num_split, threads, 
             ssum = T.alloc_fragment([block_H], acc)
             lsum = T.alloc_fragment([block_H], acc)
 
+            T.use_swizzle(10)
             T.copy(Q[bx, by * VBH:(by + 1) * VBH, :], Q_l)
             T.copy(Q_pe[bx, by * VBH:(by + 1) * VBH, :], Qpe_l)
             T.fill(acc_o, 0)
@@ -106,37 +108,44 @@ def _build(Tn, H, topk, dim, pe_dim, d_v, block_N, block_H, num_split, threads, 
             T.copy(lsum, glse[bx, by * VBH:(by + 1) * VBH, bz])
             T.copy(acc_o, Op[bx, by * VBH:(by + 1) * VBH, bz, :])
 
-        # ---- combine: reduce splits + fold the sink, write Output/Lse/Maxl ----
+        # ---- combine: reduce the per-split partials (sink-LESS), write Output ----
+        # Byte-for-byte the proven AMD reference combine. The attention **sink**
+        # is applied entirely wrapper-side as an exact per-(token,head) rescale
+        # (out *= sigmoid(lnZ_real - sink)); keeping the kernel unmodified avoids
+        # the TileLang LayoutInference failure the in-kernel sink fold triggered.
         with T.Kernel(H, Tn, threads=128) as (by, bz):
-            po = T.alloc_fragment([dim], acc)
+            po = T.alloc_fragment([dim], dtype)
             oacc = T.alloc_fragment([dim], acc)
-            lmax = T.alloc_var(acc)
+            lse_split = T.alloc_var(acc)
             llog = T.alloc_var(acc)
-            sink2 = T.alloc_var(acc)
+            lmax = T.alloc_var(acc)
+            sc = T.alloc_var(acc)
 
-            sink2 = Sink[by] * _LOG2E  # sink logit in the log2 domain
-            lmax = sink2
+            T.clear(llog)
+            T.clear(oacc)
+            lmax = -T.infinity(acc)
             for k in T.serial(num_split):
                 lmax = T.max(lmax, glse[bz, by, k])
-            llog = T.exp2(sink2 - lmax)  # sink term (no value)
-            for k in T.serial(num_split):
-                llog += T.exp2(glse[bz, by, k] - lmax)
+            for k in T.Pipelined(num_split, num_stages=1):
+                lse_split = glse[bz, by, k]
+                llog += T.exp2(lse_split - lmax)
             llog = T.log2(llog) + lmax
-            T.clear(oacc)
             for k in T.serial(num_split):
                 for i in T.Parallel(dim):
                     po[i] = Op[bz, by, k, i]
-                sc = T.exp2(glse[bz, by, k] - llog)
+                lse_split = glse[bz, by, k]
+                sc = T.exp2(lse_split - llog)
                 for i in T.Parallel(dim):
                     oacc[i] += po[i] * sc
-            for i in T.Parallel(d_v):
+            for i in T.Parallel(dim):
                 Output[bz, by, i] = oacc[i]
-            Lse[bz, by] = llog / _LOG2E   # natural-log lse (incl. sink)
-            Maxl[bz, by] = lmax / _LOG2E  # max logit (natural)
 
-    # Output(7), Lse(8), Maxl(9) are the returned tensors; the rest are inputs
-    # (glse/Op are caller-allocated scratch the split kernel writes).
-    return tilelang.compile(kernel, out_idx=[7, 8, 9], target="hip")
+    # Output(6) is the only returned tensor; glse(4)/Op(5) are caller-allocated
+    # scratch the kernel writes in place (glse read back for lse/sink rescale).
+    return tilelang.compile(
+        kernel, out_idx=[6], target="hip",
+        pass_configs={tilelang.PassConfigKey.TL_ENABLE_FAST_MATH: True},
+    )
 
 
 _BLOCK_N, _BLOCK_H, _THREADS = 32, 64, 128
@@ -171,24 +180,48 @@ def sparse_mla_attention_tilelang(
             f"tilelang backend needs topk % {_BLOCK_N * num_split} == 0 (got {topk})"
         )
 
+    # Pad the value/nope dim up to a multiple of 128 (e.g. V4's 448 -> 512): the
+    # FullRow gemm fragment layout TileLang infers is valid at 512 but not 448.
+    # Zeros add nothing to the q.k score or the value, and are sliced off below.
+    dim_p = ((d_v + 127) // 128) * 128
     gathered = kv[indices.to(torch.int64)]               # [Tn, topk, D]
-    nope = gathered[:, :, :d_v].contiguous()
+    nope = gathered[:, :, :d_v]
     rope = gathered[:, :, d_v:].contiguous()
-    KV = nope.view(Tn, topk, 1, d_v)
+    qn = q[:, :, :d_v]
+    if dim_p != d_v:
+        nope = torch.cat([nope, nope.new_zeros(Tn, topk, dim_p - d_v)], dim=2)
+        qn = torch.cat([qn, qn.new_zeros(Tn, H, dim_p - d_v)], dim=2)
+    KV = nope.contiguous().view(Tn, topk, 1, dim_p)
     K_pe = rope.view(Tn, topk, 1, pe_dim)
-    q_nope = q[:, :, :d_v].contiguous()
+    q_nope = qn.contiguous()
     q_rope = q[:, :, d_v:].contiguous()
-    if attn_sink is not None:
-        sink = attn_sink.float().reshape(-1).expand(H).contiguous()
-    else:  # sink=-inf disables the sink column (exp2(-inf)=0)
-        sink = torch.full((H,), -float("inf"), device=dev, dtype=torch.float32)
 
-    kern = _build(Tn, H, topk, d_v, pe_dim, d_v, _BLOCK_N, _BLOCK_H, num_split,
+    kern = _build(Tn, H, topk, dim_p, pe_dim, dim_p, _BLOCK_N, _BLOCK_H, num_split,
                   _THREADS, float(sm_scale))
-    glse = torch.empty(Tn, H, num_split, device=dev, dtype=torch.float32)
-    op = torch.empty(Tn, H, num_split, d_v, device=dev, dtype=torch.float32)
-    out, lse, maxl = kern(q_nope, q_rope, KV, K_pe, sink, glse, op)
+    glse = torch.empty(Tn, H, num_split, device=dev, dtype=torch.bfloat16)
+    op = torch.empty(Tn, H, num_split, dim_p, device=dev, dtype=torch.bfloat16)
+    out = kern(q_nope, q_rope, KV, K_pe, glse, op)[:, :, :d_v].float()  # slice padding
+
+    # glse[t,h,k] = log2(Z_k), Z_k = sum_j exp(sm_scale * q.k) over split k. The
+    # kernel output divides by Z_real = sum_k Z_k (no sink). Apply the attention
+    # sink exactly as a per-(token,head) rescale: out *= Z_real/(Z_real+exp(sink))
+    # = sigmoid(lnZ_real - sink). lse/max_logits derived here too.
+    g = glse.float()
+    gmax = g.amax(dim=2)
+    ln_z = (gmax + (g - gmax.unsqueeze(2)).exp2().sum(dim=2).clamp_min(1e-30).log2()) / _LOG2E
+    if attn_sink is not None:
+        sink = attn_sink.float().reshape(-1)[:H].unsqueeze(0)        # [1, H]
+        out = out * torch.sigmoid(ln_z - sink).unsqueeze(-1)
+        lse = ln_z + torch.nn.functional.softplus(sink - ln_z)       # ln(Z_real + e^sink)
+        maxl = torch.maximum(ln_z, sink)
+    else:
+        lse = ln_z
+        maxl = ln_z
     return out.to(q.dtype), lse, maxl
 
 
-register("sparse_mla_attention", Backend.TILELANG)(sparse_mla_attention_tilelang)
+# Register only where TileLang is installed (the from-source ROCm build, i.e. a
+# gfx942 serving image). ``find_spec`` checks availability without importing
+# tilelang — so this stays off the ``import xkernels`` critical path.
+if importlib.util.find_spec("tilelang") is not None:
+    register("sparse_mla_attention", Backend.TILELANG)(sparse_mla_attention_tilelang)

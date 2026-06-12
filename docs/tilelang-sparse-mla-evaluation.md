@@ -62,26 +62,39 @@ Build essentials:
   from-source TileLang build is absent — i.e. everywhere except a gfx942 serving
   image). Full local test suite stays green.
 
-**In progress (`ops/attention/tilelang/sparse_mla_kernel.py`):**
-- A split-KV flash-MLA backend adapted from the AMD reference, matching the
-  `sparse_mla_attention` signature (pre-gather via indices, nope/rope split,
-  attention sink folded into the combine, lse output).
-- **Open issue:** the customized kernel currently fails TileLang's
-  `LayoutInference` (`no available layout found`). The *unmodified* reference
-  kernel compiles + runs (that's the benchmark above); the failure is triggered
-  by the combine-side customizations (sink fold + scalar `Lse`/`Maxl` stores +
-  fp32 partials). Resolving it needs a few on-device iterations (match the
-  reference's fragment dtypes/layout for the partials; anchor the scalar stores),
-  which the current cluster outage (117/128 mi300 nodes down) is blocking.
+**Done + validated on-device (`ops/attention/tilelang/sparse_mla_kernel.py`):**
+- A split-KV flash-MLA backend matching the `sparse_mla_attention` signature
+  (pre-gather via indices, nope/rope split, attention sink, lse). The kernel is
+  the *unmodified* proven AMD split+combine; the sink is applied wrapper-side as
+  an exact per-`(token,head)` rescale (`out *= sigmoid(lnZ_real - sink)`), and lse
+  is derived from the per-split `glse` — keeping the kernel un-customized avoids
+  the LayoutInference failure the in-kernel sink fold caused.
+- **gfx942 validation (MI300A, job 383135):** `backends=[…,'TILELANG']`; out
+  rel **1.3e-2** (no-sink and with-sink), lse |err| **1.8e-2**; the length-mask
+  path correctly raises `NotImplementedError`. Numerically correct.
+- **Two gotchas resolved:** (a) the value dim must be padded to a multiple of 128
+  (V4's 448 → 512) — TileLang's FullRow-gemm fragment layout is invalid at 448
+  but fine at 512 (zeros add nothing, sliced off); (b) `import tilelang` at module
+  load hangs under `tokenspeed_triton`, so tilelang is imported lazily (inside
+  `_build`) and registration is gated by `find_spec` — off the `import xkernels`
+  critical path.
 
-## Next steps
+**Known limitation — end-to-end perf (the next thing to fix):** dispatched
+head-to-head on MI300A, the backend is currently *slower* than Triton
+(0.27× / 0.48× / 0.93× at top-k 512 / 1024 / 2048) **despite the kernel being
+1.76–6.22× faster** (table above). The wrapper does the gather + the 448→512
+padding `cat` + casts in torch on every call (~constant ~0.4 ms), which dominates
+and negates the kernel win. The Triton kernel gathers *inside* the kernel, so it
+has no such overhead.
 
-1. Fix the `LayoutInference` failure (align combine fragment layout with the
-   reference; likely fp16 partials + layout-anchored scalar stores), validate the
-   sink + lse path vs the oracle on gfx942.
-2. Add the **per-token length mask** for padded/variable top-k (TileLang varlen
-   pattern) → then promote `TILELANG` into the AMD "auto" order.
-3. fp8_ds_mla fused gather + the full `flash_mla_with_kvcache` decode path in
-   TileLang.
+## Next steps (to realize the win)
+
+1. **Fuse the gather into the TileLang kernel** (index-load KV like the Triton
+   kernel does) and drop the torch pre-gather + padding `cat` — this is what
+   makes the kernel speedup show up end-to-end. (Alternatively, handle dim=448
+   natively so no padding `cat` is needed.)
+2. Add the **per-token length mask** for padded/variable top-k → then promote
+   `TILELANG` into the AMD "auto" order.
+3. fp8_ds_mla fused gather + the full `flash_mla_with_kvcache` decode path.
 4. Bake the from-source TileLang ROCm build into the tokenspeed serving image
    (enroot overlay) so the backend is present at serve time.
