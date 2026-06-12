@@ -55,6 +55,12 @@ def get_autotune_configs():
         # large M / prefill: 32x32 MFMA, fewer stages to fit LDS
         _cfg(128, 256, 128, 8, num_warps=8, num_stages=1, waves_per_eu=0, nonkdim=32),
         _cfg(256, 128, 128, 8, num_warps=8, num_stages=1, waves_per_eu=0, nonkdim=32),
+        # large M, SMALL N (e.g. N=512): smaller tiles -> more workgroups so a
+        # 304-CU MI300A is not left idle (the N=512 V4 projections underutilize a
+        # 128x256 tile). 16x16 MFMA keeps the small-N tiles busy.
+        _cfg(128, 128, 128, 8, num_warps=8, num_stages=2, waves_per_eu=1, nonkdim=16),
+        _cfg(64, 128, 128, 8, num_warps=4, num_stages=2, waves_per_eu=2, nonkdim=16),
+        _cfg(64, 64, 128, 8, num_warps=4, num_stages=2, waves_per_eu=2, nonkdim=16),
         # BLOCK_K=64 variant (two sub-dots/block) for LDS-tight large tiles
         _cfg(128, 256, 64, 8, num_warps=8, num_stages=2, waves_per_eu=1, nonkdim=32),
     ]
@@ -81,16 +87,26 @@ def fp8_gemm_prune_configs(configs, named_args, **kwargs):
 def get_fp8_gemm_config(M: int, N: int, K: int) -> dict:
     """Baked direct-launch config (no runtime autotune).
 
-    Refined by the beverin sweep
-    (``slurm/test_mm_fp8_blockscale_mfma_beverin.sbatch``); these are the
-    CDNA3-reasoned starting points keyed on the M regime.
+    Tuned on beverin (gfx942 / MI300A) across the V4 MLA shapes via
+    ``benchmarks/tune_fp8_blockscale_gemm.py``. The dominant axis is **N**, not M:
+    the small-N projections (N=512) starve a 304-CU GPU with big tiles, so they
+    want tiny tiles (more workgroups); the large-N projection (N=7168) wants big
+    32x32-MFMA tiles to approach the ~400 TFLOP/s ceiling.
+
+    Measured (fnuz operands, vs the torch dequant reference):
+      * N<=1024 + BM64/BN64/16x16: M=1 0.042ms, M=8 0.045ms, M=2048 0.060ms (251 TF, 9.1x ref)
+      * N>1024  + BM128/BN128/32x32: M=4096 N=7168 0.332ms (362 TF, 5.8x ref)
     """
-    if M <= 16:        # decode
+    if N <= 1024:
+        # small N (e.g. the N=512 MLA projections): tiny tiles -> many workgroups.
+        # Best across decode *and* prefill M at N=512 (M=2048: 78 -> 251 TFLOP/s).
+        bm, bn, bk, gm, nw, ns, we, nk = 64, 64, 128, 8, 4, 2, 2, 16
+    elif M <= 16:
+        # decode at large N: small M tile (latency-bound), 16x16 MFMA.
         bm, bn, bk, gm, nw, ns, we, nk = 16, 128, 128, 1, 4, 2, 2, 16
-    elif M <= 128:     # mid
-        bm, bn, bk, gm, nw, ns, we, nk = 64, 128, 128, 4, 8, 2, 2, 16
-    else:              # prefill
-        bm, bn, bk, gm, nw, ns, we, nk = 128, 256, 128, 8, 8, 1, 0, 32
+    else:
+        # prefill at large N: big tiles, 32x32 fp8 MFMA -> near the gfx942 ceiling.
+        bm, bn, bk, gm, nw, ns, we, nk = 128, 128, 128, 8, 8, 2, 1, 32
     return {
         "BLOCK_M": bm, "BLOCK_N": bn, "BLOCK_K": bk, "GROUP_M": gm,
         "waves_per_eu": we, "matrix_instr_nonkdim": nk, "kpack": 2,
