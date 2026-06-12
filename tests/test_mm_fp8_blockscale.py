@@ -56,6 +56,26 @@ def test_quant_roundtrip_shapes():
     assert b_scales.shape == ((N + block - 1) // block, (K + block - 1) // block)
 
 
+def test_quant_helpers_accept_fnuz_dtype():
+    if not hasattr(torch, "float8_e4m3fnuz"):
+        pytest.skip("torch lacks float8_e4m3fnuz")
+    dev = _dev()
+    M, N, K, block = 6, 130, 384, 128
+    a = torch.randn(M, K, device=dev)
+    b = torch.randn(N, K, device=dev)
+    a_fp8, a_s = per_token_group_quant_fp8(a, block=block, fp8_dtype=torch.float8_e4m3fnuz)
+    b_fp8, b_s = per_block_quant_fp8(b, block=block, fp8_dtype=torch.float8_e4m3fnuz)
+    assert a_fp8.dtype == torch.float8_e4m3fnuz and b_fp8.dtype == torch.float8_e4m3fnuz
+    # Dequant round-trips to the same fp32 the reference would consume.
+    a_deq = a_fp8.to(torch.float32) * a_s.repeat_interleave(block, 1)[:, :K]
+    b_deq = b_fp8.to(torch.float32) * (
+        b_s.repeat_interleave(block, 0)[:N].repeat_interleave(block, 1)[:, :K]
+    )
+    # fnuz max 240 -> coarser than fn, but still a faithful per-group dequant.
+    assert (a_deq - a).abs().max() < 0.2 * a.abs().max()
+    assert (b_deq - b).abs().max() < 0.2 * b.abs().max()
+
+
 def test_reference_matches_explicit_dequant():
     dev = _dev()
     block = 128

@@ -47,6 +47,19 @@ FP8_BLOCK = 128
 #: e4m3 finite max (``torch.float8_e4m3fn``), used to scale into representable range.
 _FP8_MAX = 448.0
 
+#: Per-dtype finite max. fnuz (AMD-native CDNA3 fp8 MFMA encoding) tops out at
+#: 240; the default fn (OCP / NVIDIA-style) at 448.
+_FP8_MAX_BY_DTYPE = {torch.float8_e4m3fn: 448.0}
+if hasattr(torch, "float8_e4m3fnuz"):
+    _FP8_MAX_BY_DTYPE[torch.float8_e4m3fnuz] = 240.0
+
+
+def _fp8_max(fp8_dtype: torch.dtype) -> float:
+    try:
+        return _FP8_MAX_BY_DTYPE[fp8_dtype]
+    except KeyError:
+        raise ValueError(f"unsupported fp8 dtype {fp8_dtype}") from None
+
 
 def _dequant_a(a_fp8: torch.Tensor, a_scales: torch.Tensor, block: int) -> torch.Tensor:
     """Dequantize per-token-group fp8 ``A [M, K]`` to fp32 using ``A_scales [M, kt]``."""
@@ -121,44 +134,49 @@ def mm_fp8_blockscale_ref(
 
 
 def per_token_group_quant_fp8(
-    x: torch.Tensor, *, block: int = FP8_BLOCK
+    x: torch.Tensor, *, block: int = FP8_BLOCK, fp8_dtype: torch.dtype = torch.float8_e4m3fn
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Quantize ``x [M, K]`` (fp32/bf16) to per-token-group fp8 e4m3.
 
     Each contiguous ``block``-length group along K shares one scale. Returns
-    ``(x_fp8 [M, K] float8_e4m3fn, x_scales [M, ceil(K/block)] fp32)`` such that
+    ``(x_fp8 [M, K] fp8, x_scales [M, ceil(K/block)] fp32)`` such that
     ``mm_fp8_blockscale_ref`` consumes them directly. The scale is the OCP-style
     ``amax/FP8_MAX`` per group — keeping the reference an exact dequant oracle.
+    ``fp8_dtype`` selects the encoding: ``float8_e4m3fn`` (default, max 448) or
+    ``float8_e4m3fnuz`` (max 240, the AMD-native CDNA3 fp8 MFMA encoding).
     """
+    fp8_max = _fp8_max(fp8_dtype)
     M, K = x.shape
     kt = (K + block - 1) // block
     xf = x.to(torch.float32)
-    x_fp8 = torch.empty(M, K, device=x.device, dtype=torch.float8_e4m3fn)
+    x_fp8 = torch.empty(M, K, device=x.device, dtype=fp8_dtype)
     x_scales = torch.empty(M, kt, device=x.device, dtype=torch.float32)
     for j in range(kt):
         c0, c1 = j * block, min((j + 1) * block, K)
         g = xf[:, c0:c1]
         amax = g.abs().amax(dim=1).clamp_min(1e-12)
-        scale = amax / _FP8_MAX
-        q = (g / scale.unsqueeze(1)).clamp(-_FP8_MAX, _FP8_MAX).to(torch.float8_e4m3fn)
+        scale = amax / fp8_max
+        q = (g / scale.unsqueeze(1)).clamp(-fp8_max, fp8_max).to(fp8_dtype)
         x_fp8[:, c0:c1] = q
         x_scales[:, j] = scale
     return x_fp8, x_scales
 
 
 def per_block_quant_fp8(
-    w: torch.Tensor, *, block: int = FP8_BLOCK
+    w: torch.Tensor, *, block: int = FP8_BLOCK, fp8_dtype: torch.dtype = torch.float8_e4m3fn
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Quantize a weight ``w [N, K]`` (fp32/bf16) to per-``block``×``block`` fp8 e4m3.
 
-    Returns ``(w_fp8 [N, K] float8_e4m3fn,
-    w_scales [ceil(N/block), ceil(K/block)] fp32)``.
+    Returns ``(w_fp8 [N, K] fp8, w_scales [ceil(N/block), ceil(K/block)] fp32)``.
+    ``fp8_dtype`` selects the encoding (``float8_e4m3fn`` default, max 448;
+    ``float8_e4m3fnuz`` max 240 for the AMD-native CDNA3 fp8 MFMA path).
     """
+    fp8_max = _fp8_max(fp8_dtype)
     N, K = w.shape
     nt = (N + block - 1) // block
     kt = (K + block - 1) // block
     wf = w.to(torch.float32)
-    w_fp8 = torch.empty(N, K, device=w.device, dtype=torch.float8_e4m3fn)
+    w_fp8 = torch.empty(N, K, device=w.device, dtype=fp8_dtype)
     w_scales = torch.empty(nt, kt, device=w.device, dtype=torch.float32)
     for i in range(nt):
         r0, r1 = i * block, min((i + 1) * block, N)
@@ -166,8 +184,8 @@ def per_block_quant_fp8(
             c0, c1 = j * block, min((j + 1) * block, K)
             g = wf[r0:r1, c0:c1]
             amax = g.abs().amax().clamp_min(1e-12)
-            scale = amax / _FP8_MAX
-            q = (g / scale).clamp(-_FP8_MAX, _FP8_MAX).to(torch.float8_e4m3fn)
+            scale = amax / fp8_max
+            q = (g / scale).clamp(-fp8_max, fp8_max).to(fp8_dtype)
             w_fp8[r0:r1, c0:c1] = q
             w_scales[i, j] = scale
     return w_fp8, w_scales
