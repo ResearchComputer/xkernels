@@ -39,8 +39,9 @@ def probe(dt, name):
     c = torch.empty(M, N, device="cuda", dtype=torch.float32)
     comp = _dot[(M // BM, N // BN)](a, b, c, M, N, K, BM=BM, BN=BN, BK=BK)
     asm = comp.asm.get("amdgcn", "") if hasattr(comp, "asm") else ""
-    fp8_mfma = sorted({l.strip().split()[0] for l in asm.splitlines() if "v_mfma" in l and "fp8" in l})
-    any_mfma = sorted({l.strip().split()[0] for l in asm.splitlines() if "v_mfma" in l})
+    mfma_lines = [ln for ln in asm.splitlines() if "v_mfma" in ln]
+    fp8_mfma = sorted({ln.strip().split()[0] for ln in mfma_lines if "fp8" in ln})
+    any_mfma = sorted({ln.strip().split()[0] for ln in mfma_lines})
     ref = a.float() @ b.float().t()
     rel = (c - ref).abs().max().item() / ref.abs().max().clamp_min(1e-6).item()
     # Best-fit scalar s minimizing |c - s*ref|: exposes a pure decode/bias-scale

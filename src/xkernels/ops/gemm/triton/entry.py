@@ -14,6 +14,16 @@ from .mm_fp8_blockscale_mfma_kernel import mm_fp8_blockscale_mfma_triton as _mfm
 
 __all__ = ["mm_fp8_blockscale_triton"]
 
+# fp8 encodings the gfx942 CDNA3 MFMA decodes natively (``v_mfma_*_fp8_fp8``).
+# Operands in these dtypes hit the fast path; the OCP ``fn`` family instead
+# upcasts to an f16 MFMA (measured slower than the portable kernel), so ``auto``
+# only routes to the mfma path for fnuz operands.
+_FNUZ_FP8 = {
+    getattr(torch, n)
+    for n in ("float8_e4m3fnuz", "float8_e5m2fnuz")
+    if hasattr(torch, n)
+}
+
 
 def mm_fp8_blockscale_triton(
     a_fp8: torch.Tensor,
@@ -30,18 +40,25 @@ def mm_fp8_blockscale_triton(
 
     ``path``: ``"mfma"`` (native fp8 MFMA, #41), ``"portable"`` (dequant-then-dot,
     #40), or ``"auto"``. ``dot_bf16=True`` is a portable-only knob and forces the
-    portable path. ``"auto"`` selects the mfma fast path; the portable path is the
-    explicit / ``dot_bf16`` / non-128-block fallback.
+    portable path. ``"auto"`` routes to the mfma fast path only for fnuz operands
+    (the gfx942-native fp8 MFMA encoding, where it wins 3-9x); fn operands upcast
+    to an f16 MFMA that is slower than the portable kernel, so ``auto`` keeps them
+    on the portable path. The mfma path is 128-quant-block only.
     """
     if path not in ("auto", "mfma", "portable"):
         raise ValueError(f"path must be auto|mfma|portable, got {path!r}")
-    if dot_bf16 or path == "portable" or block != 128:
-        # The mfma path is 128-quant-block only; dot_bf16 is a portable-only knob.
-        return _portable(
-            a_fp8, a_scales, b_fp8, b_scales,
-            block=block, out_dtype=out_dtype, dot_bf16=dot_bf16,
-        )
-    return _mfma(a_fp8, a_scales, b_fp8, b_scales, block=block, out_dtype=out_dtype)
+    want_mfma = path == "mfma" or (
+        path == "auto"
+        and not dot_bf16
+        and block == 128
+        and a_fp8.dtype in _FNUZ_FP8
+    )
+    if want_mfma and block == 128:
+        return _mfma(a_fp8, a_scales, b_fp8, b_scales, block=block, out_dtype=out_dtype)
+    return _portable(
+        a_fp8, a_scales, b_fp8, b_scales,
+        block=block, out_dtype=out_dtype, dot_bf16=dot_bf16,
+    )
 
 
 register("mm_fp8_blockscale", Backend.TRITON)(mm_fp8_blockscale_triton)

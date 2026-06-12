@@ -42,14 +42,19 @@ def main():
         w = torch.randn(N, K, device=dev)
         a8, as_ = per_token_group_quant_fp8(a, block=BLOCK, fp8_dtype=FNUZ)
         w8, ws_ = per_block_quant_fp8(w, block=BLOCK, fp8_dtype=FNUZ)
-        t_mfma = benchmark(lambda: mm_fp8_blockscale(
-            a8, as_, w8, ws_, block=BLOCK, out_dtype=torch.bfloat16,
-            path="mfma", backend=Backend.TRITON))
-        t_port = benchmark(lambda: mm_fp8_blockscale(
-            a8, as_, w8, ws_, block=BLOCK, out_dtype=torch.bfloat16,
-            path="portable", backend=Backend.TRITON))
-        t_ref = benchmark(lambda: mm_fp8_blockscale_ref(
-            a8, as_, w8, ws_, block=BLOCK, out_dtype=torch.bfloat16))
+
+        def _gemm(path, *, a8=a8, as_=as_, w8=w8, ws_=ws_):
+            return mm_fp8_blockscale(
+                a8, as_, w8, ws_, block=BLOCK, out_dtype=torch.bfloat16,
+                path=path, backend=Backend.TRITON,
+            )
+
+        def _ref(*, a8=a8, as_=as_, w8=w8, ws_=ws_):
+            return mm_fp8_blockscale_ref(a8, as_, w8, ws_, block=BLOCK, out_dtype=torch.bfloat16)
+
+        t_mfma = benchmark(lambda: _gemm("mfma"))
+        t_port = benchmark(lambda: _gemm("portable"))
+        t_ref = benchmark(_ref)
         tf = 2 * M * N * K / t_mfma / 1e9
         print(
             f"{M:>5} {N:>5} {K:>5} | {t_mfma:>9.3f} {tf:>8.1f} "

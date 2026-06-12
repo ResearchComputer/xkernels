@@ -51,14 +51,17 @@ unless noted. Reproduce with `python benchmarks/bench_all.py` (single GPU) or
 | `dual_rmsnorm` | T=8192, d=(1536,512) | 0.24 ms (2× sequential RMSNorm) | 0.06 ms | **4.2×** | **6.3×** |
 | `mha_merge_state` | T=8192, H=128, D=128 | 2.45 ms (torch merge) | 0.79 ms | **3.1×** | **3.2×** |
 | `fused_ffn` | M=4096, 4096→11008 (fp16) | 5.42 ms (unfused torch, fp16) | 5.36 ms | **1.0×** | **1.0×** |
+| `mm_fp8_blockscale` | M=4096, N=7168, K=2048 (fp8, fnuz) | 1.91 ms (torch dequant+matmul) | 0.34 ms | **5.7×** | — |
 
 Naive baselines: `moe_int4_w4a16` (tuned grouped GEMM, block-align excluded —
 see its own row) vs per-expert dequant(int4→bf16)+matmul; `moe_sum_reduce` /
 `mha_merge_state` vs their torch oracles; `dual_rmsnorm` vs two sequential
 RMSNorm launches; `moe_align_block_size` vs the torch argsort + per-expert
 padding reference; `fused_ffn` vs the unfused `reference` backend;
-`sparse_mla` vs a torch gather+softmax reference; `fused_ffn` vs the unfused
-`reference` backend.
+`sparse_mla` vs a torch gather+softmax reference; `mhc_prenorm_gemm` vs
+`F.linear(a.float(), fn.float())` + a separate per-row sum-of-squares;
+`mm_fp8_blockscale` (native fp8 MFMA) vs the `torch_mm_fp8_blockscale`
+dequant-then-matmul reference.
 
 Notes:
 
@@ -113,6 +116,18 @@ Notes:
   see `benchmarks/probe_ffn.py` and `docs/issue-17-bf16-dense-gemm.md`). The
   production `F.linear` (NT layout) bf16 path is fast; the slowdown is specific
   to the NN benchmark shape.
+- **`mm_fp8_blockscale` 5.7×** — the DeepSeek-V4 fp8 block-scale dense GEMM (MLA /
+  gate / shared-expert projections). The native fp8 MFMA fast path (issue #41) runs
+  `tl.dot` directly on fp8 operands with the block scales applied as a
+  post-128-K-block correction, autotuned for gfx942. Across the V4 shapes it is
+  **3.4–9.1×** over the `torch_mm_fp8_blockscale` reference (1×512×7168 → 3.5×,
+  2048×512×7168 → 9.1×, the row's 4096×7168×2048 → 5.7× at **359 TFLOP/s**), vs
+  #38/#40's portable dequant-then-dot kernel which *lost* to the reference. The
+  speedup needs **`float8_e4m3fnuz`** operands — the only fp8 encoding the CDNA3
+  MFMA decodes natively (`v_mfma_*_fp8_fp8`); `e4m3fn` upcasts to a slower f16 MFMA,
+  so `path="auto"` keeps fn operands on the portable fallback. On-device parity rel
+  2e-6; bench `benchmarks/bench_fp8_blockscale_gemm.py`; see
+  `docs/issue-41-fp8-mfma-blockscale-gemm.md`.
 - **`hierarchical_all_reduce`** (distributed) does *not* beat a flat all-reduce on
   the 2-node / 4-NIC-per-node MI300A stack — RCCL's flat collective is already
   topology-aware. Full analysis in `docs/issue-12-hierarchical-all-reduce.md`.

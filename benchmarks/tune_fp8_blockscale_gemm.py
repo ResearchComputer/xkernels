@@ -41,17 +41,19 @@ def main():
             d = _cfg_to_dict(c)
             try:
                 t = do_bench(
-                    lambda d=d: mm_fp8_blockscale_mfma_triton(
+                    lambda d=d, a8=a8, as_=as_, w8=w8, ws_=ws_: mm_fp8_blockscale_mfma_triton(
                         a8, as_, w8, ws_, block=block, out_dtype=torch.bfloat16, config=d
                     )
                 )
             except Exception as e:  # noqa: BLE001 - skip configs that OOM-LDS / fail
                 print(f"    skip {d['BLOCK_M']}x{d['BLOCK_N']}x{d['BLOCK_K']} "
-                      f"w{d['num_warps']}s{d['num_stages']}nk{d['matrix_instr_nonkdim']}: {repr(e)[:60]}")
+                      f"w{d['num_warps']}s{d['num_stages']}"
+                      f"nk{d['matrix_instr_nonkdim']}: {repr(e)[:60]}")
                 continue
             tf = 2 * M * N * K / t / 1e9
             tag = (f"BM{d['BLOCK_M']} BN{d['BLOCK_N']} BK{d['BLOCK_K']} G{d['GROUP_M']} "
-                   f"w{d['num_warps']} s{d['num_stages']} nk{d['matrix_instr_nonkdim']} we{d['waves_per_eu']}")
+                   f"w{d['num_warps']} s{d['num_stages']} "
+                   f"nk{d['matrix_instr_nonkdim']} we{d['waves_per_eu']}")
             print(f"[M={M} N={N} K={K}] {t:.4f}ms {tf:6.1f}TF  {tag}")
             if best is None or t < best[0]:
                 best = (t, tag, d)

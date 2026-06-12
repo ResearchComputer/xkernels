@@ -154,10 +154,27 @@ def test_mfma_fnuz_operands_gpu():
         mm_fp8_blockscale_mfma_triton,
     )
 
-    a_fp8, a_s, b_fp8, b_s, ref = _inputs(64, 256, 512, 128, "cuda", fp8_dtype=torch.float8_e4m3fnuz)
+    a_fp8, a_s, b_fp8, b_s, ref = _inputs(
+        64, 256, 512, 128, "cuda", fp8_dtype=torch.float8_e4m3fnuz
+    )
     got = mm_fp8_blockscale_mfma_triton(a_fp8, a_s, b_fp8, b_s, block=128, out_dtype=torch.float32)
     # fnuz (max 240) is coarser than fn -> a looser but still real parity bound.
     assert _rel(got, ref) < 3e-2
+
+
+@pytest.mark.skipif(not _GPU, reason="needs gfx942 GPU")
+@pytest.mark.skipif(not hasattr(torch, "float8_e4m3fnuz"), reason="no fnuz")
+def test_auto_routes_fnuz_to_mfma_gpu():
+    """auto + fnuz operands -> mfma fast path (the CPU interpreter cannot lower a
+    fnuz tl.dot, so this is GPU-only); still matches the fp32 oracle."""
+    a_fp8, a_s, b_fp8, b_s, ref = _inputs(
+        32, 128, 256, 128, "cuda", fp8_dtype=torch.float8_e4m3fnuz
+    )
+    got = mm_fp8_blockscale(
+        a_fp8, a_s, b_fp8, b_s, block=128, out_dtype=torch.float32,
+        path="auto", backend=Backend.TRITON,
+    )
+    assert _rel(got, ref) < 5e-3
 
 
 @pytest.mark.skipif(not _GPU, reason="needs gfx942 GPU")
