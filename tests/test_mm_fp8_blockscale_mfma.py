@@ -109,3 +109,61 @@ def test_dot_bf16_forces_portable_interpreter():
         dot_bf16=True, backend=Backend.TRITON,
     )
     assert _rel(got, ref) < 2e-2
+
+
+# --- GPU-gated (gfx942) cases: skipped locally, run on beverin in Task 7. ---
+
+_GPU = (not _INTERP) and torch.cuda.is_available()
+
+
+@pytest.mark.skipif(not _GPU, reason="needs gfx942 GPU")
+@pytest.mark.parametrize("M,N,K", [(64, 128, 256), (8, 512, 7168), (2048, 512, 7168)])
+def test_mfma_tight_parity_gpu(M, N, K):
+    """Native fp8 MFMA vs the fp32 dequant oracle: TIGHT (<5e-3). A loose result
+    means an fp8-format mismatch reached the matrix unit (the fn-vs-fnuz detector)."""
+    from xkernels.ops.gemm.triton.mm_fp8_blockscale_mfma_kernel import (
+        mm_fp8_blockscale_mfma_triton,
+    )
+
+    a_fp8, a_s, b_fp8, b_s, ref = _inputs(M, N, K, 128, "cuda", seed=4)
+    got = mm_fp8_blockscale_mfma_triton(a_fp8, a_s, b_fp8, b_s, block=128, out_dtype=torch.float32)
+    assert _rel(got, ref) < 5e-3, (M, N, K, _rel(got, ref))
+
+
+@pytest.mark.skipif(not _GPU, reason="needs gfx942 GPU")
+def test_mfma_cross_checks_portable_gpu():
+    """The two independent Triton implementations agree within fp8 tolerance."""
+    from xkernels.ops.gemm.triton.mm_fp8_blockscale_kernel import (
+        mm_fp8_blockscale_triton as portable,
+    )
+    from xkernels.ops.gemm.triton.mm_fp8_blockscale_mfma_kernel import (
+        mm_fp8_blockscale_mfma_triton as mfma,
+    )
+
+    a_fp8, a_s, b_fp8, b_s, _ = _inputs(48, 256, 512, 128, "cuda")
+    p = portable(a_fp8, a_s, b_fp8, b_s, block=128, out_dtype=torch.float32)
+    m = mfma(a_fp8, a_s, b_fp8, b_s, block=128, out_dtype=torch.float32)
+    assert _rel(m, p) < 5e-3
+
+
+@pytest.mark.skipif(not _GPU, reason="needs gfx942 GPU")
+@pytest.mark.skipif(not hasattr(torch, "float8_e4m3fnuz"), reason="no fnuz")
+def test_mfma_fnuz_operands_gpu():
+    """fnuz operands also produce a correct GEMM (the AMD-native fp8 encoding)."""
+    from xkernels.ops.gemm.triton.mm_fp8_blockscale_mfma_kernel import (
+        mm_fp8_blockscale_mfma_triton,
+    )
+
+    a_fp8, a_s, b_fp8, b_s, ref = _inputs(64, 256, 512, 128, "cuda", fp8_dtype=torch.float8_e4m3fnuz)
+    got = mm_fp8_blockscale_mfma_triton(a_fp8, a_s, b_fp8, b_s, block=128, out_dtype=torch.float32)
+    # fnuz (max 240) is coarser than fn -> a looser but still real parity bound.
+    assert _rel(got, ref) < 3e-2
+
+
+@pytest.mark.skipif(not _GPU, reason="needs gfx942 GPU")
+def test_mfma_bf16_out_gpu():
+    a_fp8, a_s, b_fp8, b_s, ref = _inputs(48, 64, 256, 128, "cuda")
+    got = mm_fp8_blockscale(
+        a_fp8, a_s, b_fp8, b_s, block=128, path="mfma", backend=Backend.TRITON
+    )
+    assert got.dtype == torch.bfloat16 and _rel(got, ref) < 5e-3
