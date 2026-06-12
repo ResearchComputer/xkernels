@@ -84,8 +84,9 @@ One Triton program per `(split_idx, row_tile)`:
    An empty slice (k_start ≥ K) stores zeros and exits.
 2. **Fused load and compute.** The inner loop tiles over the K range in `BLOCK_K`
    steps. Each iteration loads a tile of A `[BLOCK_M, BLOCK_K]` (bf16 → fp32) and a
-   tile of fn `[BLOCK_N, BLOCK_K]` (fp32). A single `tl.dot(A_tile, fn_tile.T)`
-   accumulates into the GEMM result; `(A_tile * A_tile).sum(-1)` accumulates into the
+   **transposed** tile of fn `[BLOCK_K, BLOCK_N]` (fp32, K on axis 0 — since `fn`
+   is stored `[N, K]`). A single `tl.dot(A_tile, fn_tile)` accumulates `A @ fnᵀ`
+   into the GEMM result; `(A_tile * A_tile).sum(-1)` accumulates into the
    squared-sum result — both from the **same** A load with no extra memory traffic.
 3. **Store.** The partial GEMM result is written to `gemm_out_mul[split_idx, row, :]`
    and the partial squared-sum to `gemm_out_sqrsum[split_idx, row]`.
