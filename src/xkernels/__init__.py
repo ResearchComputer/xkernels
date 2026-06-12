@@ -17,6 +17,7 @@ from .ops.comm import (
 )
 from .ops.ffn import fused_ffn
 from .ops.gather import mxfp4_paged_gather
+from .ops.mhc import hc_prenorm_gemm, tf32_hc_prenorm_gemm
 from .ops.moe import fused_moe_int4_w4a16, moe_align_block_size, moe_sum_reduce
 from .ops.norm import dual_rmsnorm
 
@@ -27,6 +28,8 @@ __all__ = [
     "moe_align_block_size",
     "moe_sum_reduce",
     "mxfp4_paged_gather",
+    "hc_prenorm_gemm",
+    "tf32_hc_prenorm_gemm",
     "mha_merge_state",
     "dsa_indexer_logits",
     "dsa_indexer_topk",

@@ -49,7 +49,7 @@ def test_reference_empty_tokens():
     assert mul.shape == (4, 0, 6) and sqr.shape == (4, 0)
 
 
-from xkernels.ops.mhc import hc_prenorm_gemm, tf32_hc_prenorm_gemm
+from xkernels.ops.mhc import hc_prenorm_gemm, tf32_hc_prenorm_gemm  # noqa: E402
 
 
 def test_native_op_dispatches_to_reference():
@@ -81,8 +81,8 @@ def test_faithful_wrapper_writes_in_place():
     torch.testing.assert_close(gemm_out_sqrsum.sum(0), fsqr, atol=1e-4, rtol=1e-4)
 
 
-from xkernels._backends import Backend
-from xkernels._dispatch import registered_backends
+from xkernels._backends import Backend  # noqa: E402
+from xkernels._dispatch import registered_backends  # noqa: E402
 
 _HAS_TRITON = Backend.TRITON in registered_backends("hc_prenorm_gemm")
 
@@ -123,3 +123,9 @@ def test_triton_v4_flash_shape():
     fmul, fsqr = _full(a, fn)
     torch.testing.assert_close(mul.sum(0), fmul, atol=2e-2, rtol=2e-2)
     torch.testing.assert_close(sqr.sum(0), fsqr, atol=2e-2, rtol=2e-2)
+
+
+def test_top_level_exports():
+    import xkernels
+    for name in ("hc_prenorm_gemm", "tf32_hc_prenorm_gemm"):
+        assert hasattr(xkernels, name), name
