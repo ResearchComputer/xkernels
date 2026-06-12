@@ -26,3 +26,59 @@ def test_config_space_is_valid():
     pre = get_fp8_gemm_config(4096, 7168, 2048)
     assert 128 % dec["BLOCK_K"] == 0 and 128 % pre["BLOCK_K"] == 0
     assert dec["BLOCK_M"] <= pre["BLOCK_M"]
+
+
+from xkernels.ops.gemm.reference import (  # noqa: E402
+    mm_fp8_blockscale_ref,
+    per_block_quant_fp8,
+    per_token_group_quant_fp8,
+)
+
+
+def _dev():
+    if _INTERP:
+        return "cpu"
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
+def _inputs(M, N, K, block, dev, seed=0, fp8_dtype=torch.float8_e4m3fn):
+    torch.manual_seed(seed)
+    a = torch.randn(M, K, device=dev, dtype=torch.float32)
+    b = torch.randn(N, K, device=dev, dtype=torch.float32)
+    a_fp8, a_s = per_token_group_quant_fp8(a, block=block, fp8_dtype=fp8_dtype)
+    b_fp8, b_s = per_block_quant_fp8(b, block=block, fp8_dtype=fp8_dtype)
+    ref = mm_fp8_blockscale_ref(a_fp8, a_s, b_fp8, b_s, block=block, out_dtype=torch.float32)
+    return a_fp8, a_s, b_fp8, b_s, ref
+
+
+def _rel(got, ref):
+    err = (got.float() - ref.float()).abs().max().item()
+    return err / ref.float().abs().max().clamp_min(1e-6).item()
+
+
+@pytest.mark.parametrize("M,N,K", [(64, 128, 256), (37, 130, 384), (7, 24, 320), (1, 256, 512)])
+def test_mfma_matches_reference_interpreter(M, N, K):
+    """Block-promotion math vs the fp32 dequant oracle (fp8 tl.dot is exact under
+    the interpreter -> tight)."""
+    from xkernels.ops.gemm.triton.mm_fp8_blockscale_mfma_kernel import (
+        mm_fp8_blockscale_mfma_triton,
+    )
+
+    a_fp8, a_s, b_fp8, b_s, ref = _inputs(M, N, K, 128, _dev())
+    got = mm_fp8_blockscale_mfma_triton(a_fp8, a_s, b_fp8, b_s, block=128, out_dtype=torch.float32)
+    assert got.shape == (M, N)
+    assert _rel(got, ref) < (1e-3 if _INTERP else 5e-3)
+
+
+def test_mfma_empty_m_interpreter():
+    from xkernels.ops.gemm.triton.mm_fp8_blockscale_mfma_kernel import (
+        mm_fp8_blockscale_mfma_triton,
+    )
+
+    dev = _dev()
+    a_fp8 = torch.zeros(0, 128, device=dev, dtype=torch.float8_e4m3fn)
+    a_s = torch.zeros(0, 1, device=dev, dtype=torch.float32)
+    b_fp8 = torch.zeros(8, 128, device=dev, dtype=torch.float8_e4m3fn)
+    b_s = torch.ones(1, 1, device=dev, dtype=torch.float32)
+    got = mm_fp8_blockscale_mfma_triton(a_fp8, a_s, b_fp8, b_s, block=128)
+    assert got.shape == (0, 8)
