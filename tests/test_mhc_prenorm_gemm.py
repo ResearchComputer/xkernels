@@ -79,3 +79,47 @@ def test_faithful_wrapper_writes_in_place():
     fmul, fsqr = _full(a, fn)
     torch.testing.assert_close(gemm_out_mul.sum(0), fmul, atol=1e-4, rtol=1e-4)
     torch.testing.assert_close(gemm_out_sqrsum.sum(0), fsqr, atol=1e-4, rtol=1e-4)
+
+
+from xkernels._backends import Backend
+from xkernels._dispatch import registered_backends
+
+_HAS_TRITON = Backend.TRITON in registered_backends("hc_prenorm_gemm")
+
+
+@pytest.mark.parametrize("hc_mult,hidden", [(4, 64), (2, 48), (4, 70)])  # 70 -> K not /64
+@pytest.mark.parametrize("n_splits", [1, 4, 16])
+def test_triton_matches_reference(hc_mult, hidden, n_splits):
+    if not _HAS_TRITON:
+        pytest.skip("triton backend not registered")
+    dev = _dev()
+    torch.manual_seed(3)
+    T = 7
+    K = hc_mult * hidden
+    N = 2 * hc_mult + hc_mult * hc_mult
+    dt = torch.float32 if _INTERP else torch.bfloat16
+    a = torch.randn(T, K, device=dev, dtype=dt)
+    fn = torch.randn(N, K, device=dev, dtype=torch.float32)
+    got_mul, got_sqr = hc_prenorm_gemm(a, fn, n_splits=n_splits, backend=Backend.TRITON)
+    fmul, fsqr = _full(a, fn)
+    atol = rtol = 1e-3 if _INTERP else 2e-2
+    # Only the SUM over splits is the invariant (Triton distributes K genuinely).
+    torch.testing.assert_close(got_mul.sum(0), fmul, atol=atol, rtol=rtol)
+    torch.testing.assert_close(got_sqr.sum(0), fsqr, atol=atol, rtol=rtol)
+
+
+def test_triton_v4_flash_shape():
+    if not _HAS_TRITON:
+        pytest.skip("triton backend not registered")
+    dev = _dev()
+    if _INTERP:
+        pytest.skip("V4 K=16384 too slow under the CPU interpreter")
+    torch.manual_seed(4)
+    T, hc_mult, hidden = 8, 4, 4096
+    K, N = hc_mult * hidden, 24
+    a = torch.randn(T, K, device=dev, dtype=torch.bfloat16)
+    fn = torch.randn(N, K, device=dev, dtype=torch.float32)
+    mul, sqr = hc_prenorm_gemm(a, fn, n_splits=16, backend=Backend.TRITON)
+    fmul, fsqr = _full(a, fn)
+    torch.testing.assert_close(mul.sum(0), fmul, atol=2e-2, rtol=2e-2)
+    torch.testing.assert_close(sqr.sum(0), fsqr, atol=2e-2, rtol=2e-2)
