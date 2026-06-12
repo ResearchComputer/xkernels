@@ -91,6 +91,7 @@ def mm_fp8_blockscale_ref(
     block: int = FP8_BLOCK,
     out_dtype: torch.dtype = torch.bfloat16,
     dot_bf16: bool = False,  # noqa: ARG001 - accepted for backend-signature parity
+    path: str = "auto",  # noqa: ARG001 - accepted for backend-signature parity
 ) -> torch.Tensor:
     """fp8 block-scale dense GEMM reference. See module docstring.
 

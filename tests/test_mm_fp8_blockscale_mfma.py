@@ -82,3 +82,30 @@ def test_mfma_empty_m_interpreter():
     b_s = torch.ones(1, 1, device=dev, dtype=torch.float32)
     got = mm_fp8_blockscale_mfma_triton(a_fp8, a_s, b_fp8, b_s, block=128)
     assert got.shape == (0, 8)
+
+
+from xkernels._backends import Backend  # noqa: E402
+from xkernels.ops.gemm import mm_fp8_blockscale  # noqa: E402
+
+
+@pytest.mark.parametrize("path", ["auto", "mfma", "portable"])
+def test_entry_path_routing_interpreter(path):
+    """All three Triton paths reproduce the fp32 oracle under the interpreter."""
+    a_fp8, a_s, b_fp8, b_s, ref = _inputs(32, 128, 256, 128, _dev())
+    got = mm_fp8_blockscale(
+        a_fp8, a_s, b_fp8, b_s, block=128, out_dtype=torch.float32,
+        path=path, backend=Backend.TRITON,
+    )
+    assert _rel(got, ref) < (1e-3 if _INTERP else 5e-3)
+
+
+def test_dot_bf16_forces_portable_interpreter():
+    """dot_bf16=True is a portable-only knob; auto must honor it (route portable)."""
+    if _INTERP:
+        pytest.skip("CPU interpreter mis-evaluates a bf16 tl.dot")
+    a_fp8, a_s, b_fp8, b_s, ref = _inputs(16, 128, 256, 128, _dev())
+    got = mm_fp8_blockscale(
+        a_fp8, a_s, b_fp8, b_s, block=128, out_dtype=torch.float32,
+        dot_bf16=True, backend=Backend.TRITON,
+    )
+    assert _rel(got, ref) < 2e-2
