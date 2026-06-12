@@ -33,12 +33,15 @@ _LOG2E = 1.44269504
 
 
 @functools.lru_cache(maxsize=64)
-def _build(Tn, H, topk, dim, pe_dim, d_v, block_N, block_H, num_split, threads, sm_scale):
-    # Lazy import: keep tilelang off the ``import xkernels`` critical path (it
-    # interacts badly with tokenspeed_triton when imported at module load).
+def _build(Tn, H, topk, Kv, dim, d_v, pe_dim, block_N, block_H, num_split, threads, sm_scale):
+    # ``dim`` = padded value/working dim (e.g. 512); ``d_v`` = actual nope width
+    # gathered from the pool (e.g. 448); ``pe_dim`` = rope (64); pool row is
+    # [nope(d_v) | rope(pe_dim)] of width ``pool_d``. Lazy import keeps tilelang
+    # off the ``import xkernels`` critical path (conflicts with tokenspeed_triton).
     import tilelang
     import tilelang.language as T
 
+    pool_d = d_v + pe_dim
     scale = float(sm_scale * _LOG2E)  # exp2 domain
     dtype = T.bfloat16
     acc = T.float32
@@ -49,11 +52,11 @@ def _build(Tn, H, topk, dim, pe_dim, d_v, block_N, block_H, num_split, threads, 
     def kernel(
         Q: T.Tensor([Tn, H, dim], dtype),
         Q_pe: T.Tensor([Tn, H, pe_dim], dtype),
-        KV: T.Tensor([Tn, topk, 1, dim], dtype),
-        K_pe: T.Tensor([Tn, topk, 1, pe_dim], dtype),
+        KVp: T.Tensor([Kv, pool_d], dtype),
+        Idx: T.Tensor([Tn, topk], T.int32),
         glse: T.Tensor([Tn, H, num_split], dtype),
         Op: T.Tensor([Tn, H, num_split, dim], dtype),
-        Output: T.Tensor([Tn, H, d_v], dtype),
+        Output: T.Tensor([Tn, H, dim], dtype),
     ):
         # ---- split: per (token, head-tile, split) flash partial ----
         with T.Kernel(Tn, H // VBH, num_split, threads=threads) as (bx, by, bz):
@@ -61,6 +64,7 @@ def _build(Tn, H, topk, dim, pe_dim, d_v, block_N, block_H, num_split, threads, 
             Qpe_l = T.alloc_fragment([block_H, pe_dim], dtype)
             KV_s = T.alloc_shared([block_N, dim], dtype)
             Kpe_s = T.alloc_shared([block_N, pe_dim], dtype)
+            idx_s = T.alloc_shared([block_N], T.int32)
             acc_s = T.alloc_fragment([block_H, block_N], acc)
             acc_s_c = T.alloc_fragment([block_H, block_N], dtype)
             acc_o = T.alloc_fragment([block_H, dim], acc)
@@ -79,8 +83,15 @@ def _build(Tn, H, topk, dim, pe_dim, d_v, block_N, block_H, num_split, threads, 
 
             for k in T.Pipelined(T.ceildiv(split_len, block_N), num_stages=0):
                 kv0 = split_len * bz + k * block_N
-                T.copy(KV[bx, kv0:kv0 + block_N, 0, :], KV_s)
-                T.copy(K_pe[bx, kv0:kv0 + block_N, 0, :], Kpe_s)
+                # In-kernel gather: pull each selected pool row by its top-k index
+                # (zero-padding nope d_v->dim), avoiding a torch gather + pad cat.
+                for j in T.Parallel(block_N):
+                    idx_s[j] = Idx[bx, kv0 + j]
+                T.clear(KV_s)
+                for j, c in T.Parallel(block_N, d_v):
+                    KV_s[j, c] = KVp[idx_s[j], c]
+                for j, c in T.Parallel(block_N, pe_dim):
+                    Kpe_s[j, c] = KVp[idx_s[j], d_v + c]
                 T.clear(acc_s)
                 T.gemm(Q_l, KV_s, acc_s, transpose_B=True, policy=T.GemmWarpPolicy.FullRow)
                 T.gemm(Qpe_l, Kpe_s, acc_s, transpose_B=True, policy=T.GemmWarpPolicy.FullRow)
@@ -182,25 +193,23 @@ def sparse_mla_attention_tilelang(
 
     # Pad the value/nope dim up to a multiple of 128 (e.g. V4's 448 -> 512): the
     # FullRow gemm fragment layout TileLang infers is valid at 512 but not 448.
-    # Zeros add nothing to the q.k score or the value, and are sliced off below.
+    # The KV gather + zero-pad happens IN-KERNEL from the raw pool (no torch
+    # gather / pad cat); only q's small nope is padded here.
     dim_p = ((d_v + 127) // 128) * 128
-    gathered = kv[indices.to(torch.int64)]               # [Tn, topk, D]
-    nope = gathered[:, :, :d_v]
-    rope = gathered[:, :, d_v:].contiguous()
-    qn = q[:, :, :d_v]
-    if dim_p != d_v:
-        nope = torch.cat([nope, nope.new_zeros(Tn, topk, dim_p - d_v)], dim=2)
-        qn = torch.cat([qn, qn.new_zeros(Tn, H, dim_p - d_v)], dim=2)
-    KV = nope.contiguous().view(Tn, topk, 1, dim_p)
-    K_pe = rope.view(Tn, topk, 1, pe_dim)
-    q_nope = qn.contiguous()
+    kv_pool = kv.contiguous()                            # [Kv, D] = [nope(d_v) | rope]
+    Kv = kv_pool.shape[0]
+    idx = indices.to(torch.int32).contiguous()
     q_rope = q[:, :, d_v:].contiguous()
+    q_nope = q[:, :, :d_v]
+    if dim_p != d_v:
+        q_nope = torch.cat([q_nope, q_nope.new_zeros(Tn, H, dim_p - d_v)], dim=2)
+    q_nope = q_nope.contiguous()
 
-    kern = _build(Tn, H, topk, dim_p, pe_dim, dim_p, _BLOCK_N, _BLOCK_H, num_split,
+    kern = _build(Tn, H, topk, Kv, dim_p, d_v, pe_dim, _BLOCK_N, _BLOCK_H, num_split,
                   _THREADS, float(sm_scale))
     glse = torch.empty(Tn, H, num_split, device=dev, dtype=torch.bfloat16)
     op = torch.empty(Tn, H, num_split, dim_p, device=dev, dtype=torch.bfloat16)
-    out = kern(q_nope, q_rope, KV, K_pe, glse, op)[:, :, :d_v].float()  # slice padding
+    out = kern(q_nope, q_rope, kv_pool, idx, glse, op)[:, :, :d_v].float()  # slice padding
 
     # glse[t,h,k] = log2(Z_k), Z_k = sum_j exp(sm_scale * q.k) over split k. The
     # kernel output divides by Z_real = sum_k Z_k (no sink). Apply the attention

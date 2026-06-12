@@ -21,21 +21,36 @@ gather+softmax):
 Triton time grows ~linearly with top-k and falls **below** naive torch at the
 V4-Pro top-k=1024 — the serial reduction loses to torch's batched rocBLAS GEMM.
 
-## Result: TileLang split-KV is categorically better
+## Result (CORRECTED): TileLang is *not* faster at V4's top-k
 
-Head-to-head on MI300A (same shape; TileLang's AMD-tuned `deepseek_mla` reference
-flash-MLA with split-KV, both validated against the same torch reference,
-rel err ~1-2e-3):
+An early head-to-head suggested TileLang was 1.76–6.22× faster. **That was a
+measurement artifact** — it timed Triton on an unfavorable flattened per-token
+`kv_flat[T·topk, D]` workspace, not the real shared-pool `sparse_mla_attention`
+path. Measured consistently (same `sparse_mla_attention` op, shared pool
+`kv[Kv,D]` + indices; T=8, H=128, D=512, d_v=448, Kv=8192; all validated vs the
+torch oracle, out rel ~1.3e-2):
 
-| top-k | n_split | TileLang | Triton | **TileLang speedup** |
+| top-k | naive torch | **Triton** | TileLang (full) | TileLang (kernel-only) |
 |---:|---:|---:|---:|---:|
-| 512 | 2 | 0.187 ms | 0.329 ms | **1.76×** |
-| 1024 | 4 | 0.198 ms | 0.644 ms | **3.26×** |
-| 2048 | 8 | 0.205 ms | 1.276 ms | **6.22×** |
+| 512 | 0.155 ms | **0.108 ms** | 0.389 ms | 0.270 ms |
+| 1024 | 0.154 ms | **0.207 ms** | 0.398 ms | 0.273 ms |
+| 2048 | 0.251 ms | 0.410 ms | **0.405 ms** | 0.272 ms |
 
-TileLang stays ~flat as top-k grows (split-KV + MFMA tiling parallelize the
-reduction across the GPU); the win grows with top-k. This is a structurally
-better kernel for the problem — worth productionizing as an optional backend.
+(Triton here matches `bench_sparse_mla.py` exactly.) The TileLang kernel *is*
+flat with top-k (~0.27 ms, split-KV working as intended), but:
+
+- At V4's top-k (512 Flash, 1024 Pro) **Triton is faster** end-to-end, and even
+  **naive torch** (batched gather + rocBLAS) beats TileLang. TileLang only reaches
+  parity at top-k≈2048 and would win beyond that.
+- TileLang's ~0.27 ms kernel floor (2 launches: split + combine) + ~0.12 ms
+  wrapper overhead (sink rescale, lse, q-pad) is higher than Triton's single
+  fused gather+attention kernel at these sizes.
+
+**Conclusion:** the TileLang backend is correct and a good structure for
+*very large* top-k, but it does **not** improve DeepSeek-V4 serving at the actual
+top-k (512/1024). Keep Triton as the default; ship TileLang as an opt-in backend
+only, and do not promote it into "auto". The honest win here is the rigorous
+measurement, not a speedup.
 
 ## Building TileLang on ROCm (the gating prerequisite)
 
@@ -79,22 +94,26 @@ Build essentials:
   `_build`) and registration is gated by `find_spec` — off the `import xkernels`
   critical path.
 
-**Known limitation — end-to-end perf (the next thing to fix):** dispatched
-head-to-head on MI300A, the backend is currently *slower* than Triton
-(0.27× / 0.48× / 0.93× at top-k 512 / 1024 / 2048) **despite the kernel being
-1.76–6.22× faster** (table above). The wrapper does the gather + the 448→512
-padding `cat` + casts in torch on every call (~constant ~0.4 ms), which dominates
-and negates the kernel win. The Triton kernel gathers *inside* the kernel, so it
-has no such overhead.
+- The KV gather is **fused into the kernel** (per-row index-load from the pool,
+  zero-padding nope 448→512 on load) — no torch pre-gather or pad `cat`. This was
+  done to try to realize the win; it kept the kernel flat (~0.27 ms) but did *not*
+  beat Triton at V4 top-k (see the corrected table — the ~0.27 ms 2-launch kernel
+  floor is simply higher than Triton's single fused kernel there).
 
-## Next steps (to realize the win)
+**Bottom line:** a working, numerically-correct TileLang sparse-MLA backend
+exists and is opt-in, but it is **not** a perf win for DeepSeek-V4 at top-k
+512/1024. It is kept as an optional backend (large-top-k regime) — not promoted
+to "auto", not a blocker for V4 serving, and Triton remains the recommendation.
 
-1. **Fuse the gather into the TileLang kernel** (index-load KV like the Triton
-   kernel does) and drop the torch pre-gather + padding `cat` — this is what
-   makes the kernel speedup show up end-to-end. (Alternatively, handle dim=448
-   natively so no padding `cat` is needed.)
-2. Add the **per-token length mask** for padded/variable top-k → then promote
-   `TILELANG` into the AMD "auto" order.
+## If revisited (would-be next steps)
+
+Only worth pursuing if V4's selected top-k grows well past ~2048, or under
+HIP-graph capture where per-call Python/launch overhead disappears (which could
+shift the crossover — untested):
+
+1. Reduce the kernel floor: a single-pass (non-split) variant for small top-k, or
+   fusing split+combine to one launch; tune block sizes for dim=448 natively
+   (avoid the 512 pad).
+2. Add the per-token length mask (TileLang varlen) for padded/variable top-k.
 3. fp8_ds_mla fused gather + the full `flash_mla_with_kvcache` decode path.
-4. Bake the from-source TileLang ROCm build into the tokenspeed serving image
-   (enroot overlay) so the backend is present at serve time.
+4. Bake the from-source TileLang build into the serving image (enroot overlay).
