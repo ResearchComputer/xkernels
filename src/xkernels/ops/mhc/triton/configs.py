@@ -48,8 +48,6 @@ from __future__ import annotations
 import json
 import os
 
-import triton
-
 __all__ = [
     "BASELINE_MHC_GEMM_CONFIG",
     "DEFAULT_MHC_GEMM_CONFIG",
@@ -95,6 +93,8 @@ def _cfg(bm, bk, *, num_warps, num_stages, waves_per_eu, kpack=2, nonkdim=16):
     ``BLOCK_N`` is intentionally *not* in the autotune space: ``N`` is tiny (24)
     so ``BLOCK_N = next_pow2(N)`` is fixed by the wrapper; tuning it buys nothing.
     """
+    import triton
+
     return triton.Config(
         {
             "BLOCK_M": bm,

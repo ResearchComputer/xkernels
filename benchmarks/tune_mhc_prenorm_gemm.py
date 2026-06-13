@@ -35,7 +35,7 @@ def main() -> None:
     from xkernels import hc_prenorm_gemm
     from xkernels._backends import Backend
     from xkernels.ops.mhc.triton.configs import (
-        DEFAULT_MHC_GEMM_CONFIG,
+        BASELINE_MHC_GEMM_CONFIG,
         get_autotune_configs,
     )
 
@@ -65,7 +65,9 @@ def main() -> None:
 
         t_naive = triton.testing.do_bench(naive)
 
-        _set_cfg(DEFAULT_MHC_GEMM_CONFIG)
+        # Baseline = the original #36 launch, so "vs_base" stays a true #36
+        # comparison even after the winner was promoted to the default.
+        _set_cfg(BASELINE_MHC_GEMM_CONFIG)
         base = triton.testing.do_bench(
             lambda a=a, fn=fn, n_splits=n_splits: hc_prenorm_gemm(
                 a, fn, n_splits=n_splits, backend=Backend.TRITON
