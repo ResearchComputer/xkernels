@@ -18,6 +18,7 @@ import triton.language as tl
 
 from ...._backends import Backend
 from ...._dispatch import register
+from .sparse_mla_config import resolve_sparse_mla_config
 
 __all__ = ["sparse_mla_attention_triton", "sparse_mla_kernel"]
 
@@ -144,6 +145,18 @@ def sparse_mla_attention_triton(
     length = topk_length.contiguous().to(torch.int32) if has_len else dummy.to(torch.int32)
 
     BLOCK_D = triton.next_power_of_2(D)
+    # Perf pass (#39): BLOCK_N + CDNA3 lowering knobs are resolved from a config
+    # (env-overridable for the on-device sweep). The default reproduces the #33
+    # launch (BLOCK_N=64). BLOCK_N is a pure perf knob — the flash reduction is
+    # exact for any chunk size (see sparse_mla_config.py).
+    cfg = resolve_sparse_mla_config()
+    # AMD-only lowering kwargs: read by the Triton AMD backend, ignored elsewhere
+    # (and under TRITON_INTERPRET=1), so the same call stays portable.
+    amd_knobs = {
+        "waves_per_eu": int(cfg.get("waves_per_eu", 0)),
+        "matrix_instr_nonkdim": int(cfg.get("matrix_instr_nonkdim", 16)),
+        "kpack": int(cfg.get("kpack", 2)),
+    }
     sparse_mla_kernel[(T, H)](
         q,
         kv,
@@ -172,7 +185,10 @@ def sparse_mla_attention_triton(
         D=D,
         D_V=d_v,
         BLOCK_D=BLOCK_D,
-        BLOCK_N=64,
+        BLOCK_N=int(cfg["BLOCK_N"]),
+        num_warps=int(cfg.get("num_warps", 4)),
+        num_stages=int(cfg.get("num_stages", 1)),
+        **amd_knobs,
     )
     return out, lse, maxl
 

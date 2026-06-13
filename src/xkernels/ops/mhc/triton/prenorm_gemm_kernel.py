@@ -21,6 +21,7 @@ import triton.language as tl
 
 from ...._backends import Backend
 from ...._dispatch import register
+from .configs import resolve_mhc_gemm_config
 
 __all__ = ["hc_prenorm_gemm_triton", "hc_prenorm_gemm_kernel"]
 
@@ -87,11 +88,24 @@ def hc_prenorm_gemm_triton(a, fn, *, n_splits):
     if T == 0:
         return mul, sqr  # no rows; nothing to write
 
-    BLOCK_M = 64
-    BLOCK_K = 64
+    # Perf pass (#39): block sizes + CDNA3 lowering knobs are resolved from a
+    # config (env-overridable for the on-device sweep). The default reproduces
+    # the #36 launch (BLOCK_M=BLOCK_K=64), so behavior is unchanged by default.
+    # The split-K partition is by k-block range, so any BLOCK_K is correct (the
+    # downstream only sums over splits — see configs.py / docs/issue-36).
+    cfg = resolve_mhc_gemm_config()
+    BLOCK_M = int(cfg["BLOCK_M"])
+    BLOCK_K = int(cfg["BLOCK_K"])
     BLOCK_N = max(16, triton.next_power_of_2(N))
     num_kblocks = triton.cdiv(K, BLOCK_K)
     grid = (n_splits, triton.cdiv(T, BLOCK_M))
+    # AMD-only lowering kwargs: read by the Triton AMD backend, ignored elsewhere
+    # (and under TRITON_INTERPRET=1), so the same call stays portable.
+    amd_knobs = {
+        "waves_per_eu": int(cfg.get("waves_per_eu", 0)),
+        "matrix_instr_nonkdim": int(cfg.get("matrix_instr_nonkdim", 16)),
+        "kpack": int(cfg.get("kpack", 2)),
+    }
     hc_prenorm_gemm_kernel[grid](
         a, fn, mul, sqr,
         T, K, N, n_splits, num_kblocks,
@@ -100,6 +114,9 @@ def hc_prenorm_gemm_triton(a, fn, *, n_splits):
         mul.stride(0), mul.stride(1), mul.stride(2),
         sqr.stride(0), sqr.stride(1),
         BLOCK_M=BLOCK_M, BLOCK_K=BLOCK_K, BLOCK_N=BLOCK_N,
+        num_warps=int(cfg.get("num_warps", 4)),
+        num_stages=int(cfg.get("num_stages", 2)),
+        **amd_knobs,
     )
     return mul, sqr
 
