@@ -1,12 +1,15 @@
 """Mixture-of-Experts kernels.
 
-Ships the INT4 W4A16 grouped fused-MoE GEMM (issue #1), the weighted top-k
+Ships the INT4 W4A16 grouped fused-MoE GEMM (issue #1), the MXFP4 grouped
+fused-MoE GEMM for DeepSeek-V4 routed experts (issue #43), the weighted top-k
 reduction (issue #5), and the block-align dispatch builder (issue #4). Each
 public op dispatches across a pure-torch reference (default on CPU / no Triton)
 and, where available, an autotuned Triton backend.
 """
 from .align import moe_align_block_size
 from .interface import fused_moe_int4_w4a16
+from .mxfp4 import dequant_mxfp4_weight, make_mxfp4_moe_weights
+from .mxfp4_interface import fused_moe_mxfp4
 from .sum_reduce import moe_sum_reduce
 from .w4a16 import (
     dequant_w4a16,
@@ -33,6 +36,14 @@ try:  # pragma: no cover - requires triton
     from ..._triton_compat import triton_import_ctx
 
     with triton_import_ctx():
+        from .triton import moe_mxfp4_kernel  # noqa: F401
+except Exception:
+    pass
+
+try:  # pragma: no cover - requires triton
+    from ..._triton_compat import triton_import_ctx
+
+    with triton_import_ctx():
         from .triton import sum_reduce_kernel  # noqa: F401
 except Exception:
     pass
@@ -47,10 +58,13 @@ except Exception:
 
 __all__ = [
     "fused_moe_int4_w4a16",
+    "fused_moe_mxfp4",
     "moe_align_block_size",
     "moe_sum_reduce",
     "dequant_w4a16",
     "make_w4a16_weights",
+    "dequant_mxfp4_weight",
+    "make_mxfp4_moe_weights",
     "moe_align_block_size_ref",
     "moe_align_block_size_ep",
 ]
