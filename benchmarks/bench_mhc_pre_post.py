@@ -46,7 +46,10 @@ def bench_pre(
 
     start = time.perf_counter()
     for _ in range(n_iter):
-        ref2 = mhc_pre_ref(residual, fn, hc_scale, hc_base, rms_eps=1e-6, hc_eps=1e-6, sinkhorn_iters=3)
+        _ = mhc_pre_ref(
+            residual, fn, hc_scale, hc_base,
+            rms_eps=1e-6, hc_eps=1e-6, sinkhorn_iters=3,
+        )
     if device == "cuda":
         torch.cuda.synchronize()
     torch_ms = (time.perf_counter() - start) / n_iter * 1e3
@@ -94,7 +97,7 @@ def bench_post(
 
     start = time.perf_counter()
     for _ in range(n_iter):
-        ref2 = mhc_post_ref(hidden_states, residual, post, comb)
+        _ = mhc_post_ref(hidden_states, residual, post, comb)
     if device == "cuda":
         torch.cuda.synchronize()
     torch_ms = (time.perf_counter() - start) / n_iter * 1e3
@@ -126,7 +129,11 @@ def main():
 
     print("Benchmarking mhc_pre (Triton vs torch reference)")
     print("-" * 100)
-    print(f"{'T':>6} {'hc':>4} {'hidden':>6} {'triton_ms':>12} {'torch_ms':>12} {'speedup':>8} {'li_err':>10} {'post_err':>10} {'comb_err':>10}")
+    header = (
+        f"{'T':>6} {'hc':>4} {'hidden':>6} {'triton_ms':>12} {'torch_ms':>12} "
+        f"{'speedup':>8} {'li_err':>10} {'post_err':>10} {'comb_err':>10}"
+    )
+    print(header)
     print("-" * 100)
     for T, hc_mult, hidden in shapes:
         try:
@@ -134,7 +141,8 @@ def main():
             print(
                 f"{T:>6} {hc_mult:>4} {hidden:>6} "
                 f"{r['triton_ms']:>12.4f} {r['torch_ms']:>12.4f} "
-                f"{r['speedup']:>8.2f}x {r['li_err']:>10.2e} {r['post_err']:>10.2e} {r['comb_err']:>10.2e}"
+                f"{r['speedup']:>8.2f}x {r['li_err']:>10.2e} "
+                f"{r['post_err']:>10.2e} {r['comb_err']:>10.2e}"
             )
         except Exception as e:
             print(f"{T:>6} {hc_mult:>4} {hidden:>6} FAILED: {e}")
@@ -142,7 +150,10 @@ def main():
     print()
     print("Benchmarking mhc_post (Triton vs torch reference)")
     print("-" * 90)
-    print(f"{'T':>6} {'hc':>4} {'hidden':>6} {'triton_ms':>12} {'torch_ms':>12} {'speedup':>8} {'max_err':>10}")
+    print(
+        f"{'T':>6} {'hc':>4} {'hidden':>6} "
+        f"{'triton_ms':>12} {'torch_ms':>12} {'speedup':>8} {'max_err':>10}"
+    )
     print("-" * 90)
     for T, hc_mult, hidden in shapes:
         try:
