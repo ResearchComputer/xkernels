@@ -7,7 +7,15 @@ import pytest
 import torch
 
 _HAS_FP8 = hasattr(torch, "float8_e4m3fn")
-pytestmark = pytest.mark.skipif(not _HAS_FP8, reason="torch lacks float8_e4m3fn")
+try:
+    import triton  # noqa: F401
+    _HAS_TRITON = True
+except ImportError:
+    _HAS_TRITON = False
+pytestmark = [
+    pytest.mark.skipif(not _HAS_FP8, reason="torch lacks float8_e4m3fn"),
+    pytest.mark.skipif(not _HAS_TRITON, reason="triton not installed"),
+]
 _INTERP = os.environ.get("TRITON_INTERPRET", "0") == "1"
 
 
