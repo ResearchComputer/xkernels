@@ -47,7 +47,7 @@ def bench(
     # Time torch reference
     start = time.perf_counter()
     for _ in range(n_iter):
-        ref2 = moe_sum_reduce_ref(y, w, scaling)
+        _ = moe_sum_reduce_ref(y, w, scaling)
     if device == "cuda":
         torch.cuda.synchronize()
     torch_ms = (time.perf_counter() - start) / n_iter * 1e3
@@ -74,7 +74,11 @@ def main():
 
     print("Benchmarking moe_sum_reduce (Triton vs torch reference)")
     print("-" * 90)
-    print(f"{'M':>6} {'top_k':>6} {'H':>6} {'triton_ms':>12} {'torch_ms':>12} {'speedup':>8} {'max_err':>10} {'mean_err':>10}")
+    print(
+        f"{'M':>6} {'top_k':>6} {'H':>6} "
+        f"{'triton_ms':>12} {'torch_ms':>12} {'speedup':>8} "
+        f"{'max_err':>10} {'mean_err':>10}"
+    )
     print("-" * 90)
 
     shapes = [

@@ -20,11 +20,9 @@ import ast
 import keyword
 import re
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
-
 
 # Python keywords and builtins that are not project APIs.
-_PY_RESERVED: Set[str] = set(keyword.kwlist) | set(dir(__builtins__)) | {
+_PY_RESERVED: set[str] = set(keyword.kwlist) | set(dir(__builtins__)) | {
     "self",
     "cls",
     "args",
@@ -92,8 +90,8 @@ class DocumentDriftChecker:
         return True
 
     def find_documented_apis(
-        self, top_level_exports: Dict[str, List[str]] | None = None
-    ) -> Dict[str, List[str]]:
+        self, top_level_exports: dict[str, list[str]] | None = None
+    ) -> dict[str, list[str]]:
         """Find API names mentioned in docs (including README.md at repo root).
 
         Only explicit function calls (``func_name(...)``) are counted from issue
@@ -101,7 +99,7 @@ class DocumentDriftChecker:
         known top-level export (this catches README performance-table entries
         without flooding the list with parameter names).
         """
-        apis: Dict[str, List[str]] = {}
+        apis: dict[str, list[str]] = {}
         md_files = list(self.docs_dir.rglob("*.md"))
         root_readme = Path("README.md")
         if root_readme.exists():
@@ -126,7 +124,7 @@ class DocumentDriftChecker:
                     apis.setdefault(name, []).append(str(md_file))
         return apis
 
-    def find_exported_apis(self) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
+    def find_exported_apis(self) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
         """Find APIs exported via ``__all__``.
 
         Returns two mappings:
@@ -135,8 +133,8 @@ class DocumentDriftChecker:
         - ``all``: names exported from any ``__all__`` in src/xkernels (includes
           submodule helpers that tests/benchmarks import directly).
         """
-        top_level: Dict[str, List[str]] = {}
-        all_exports: Dict[str, List[str]] = {}
+        top_level: dict[str, list[str]] = {}
+        all_exports: dict[str, list[str]] = {}
         top_init = self.src_dir / "xkernels" / "__init__.py"
 
         for py_file in self.src_dir.rglob("*.py"):
@@ -170,9 +168,9 @@ class DocumentDriftChecker:
                                         )
         return top_level, all_exports
 
-    def find_documented_issues(self) -> Dict[str, List[str]]:
+    def find_documented_issues(self) -> dict[str, list[str]]:
         """Find issue numbers mentioned in documentation filenames and bodies."""
-        issues: Dict[str, List[str]] = {}
+        issues: dict[str, list[str]] = {}
         issue_pattern = re.compile(r"#(\d+)")
 
         for md_file in self.docs_dir.rglob("*.md"):
@@ -183,10 +181,10 @@ class DocumentDriftChecker:
         return issues
 
     def _find_files_mentioning(
-        self, directory: Path, pattern: str, apis: Set[str]
-    ) -> Dict[str, List[str]]:
+        self, directory: Path, pattern: str, apis: set[str]
+    ) -> dict[str, list[str]]:
         """Return, for each API, files under ``directory`` whose content mentions it."""
-        result: Dict[str, List[str]] = {}
+        result: dict[str, list[str]] = {}
         if not directory.exists():
             return result
         regex = re.compile(r"\b(" + "|".join(re.escape(a) for a in apis) + r")\b")
@@ -196,17 +194,17 @@ class DocumentDriftChecker:
                 result.setdefault(match.group(1), []).append(str(file))
         return result
 
-    def find_test_coverage(self, apis: Set[str]) -> Dict[str, List[str]]:
+    def find_test_coverage(self, apis: set[str]) -> dict[str, list[str]]:
         """Find test files that mention each public API."""
         return self._find_files_mentioning(Path("tests"), "test_*.py", apis)
 
-    def find_benchmark_coverage(self, apis: Set[str]) -> Dict[str, List[str]]:
+    def find_benchmark_coverage(self, apis: set[str]) -> dict[str, list[str]]:
         """Find benchmark files that mention each public API."""
         return self._find_files_mentioning(Path("benchmarks"), "bench_*.py", apis)
 
-    def find_slurm_jobs(self) -> Dict[str, List[str]]:
+    def find_slurm_jobs(self) -> dict[str, list[str]]:
         """Find SLURM job files and index by filename and by issue number."""
-        slurm_jobs: Dict[str, List[str]] = {}
+        slurm_jobs: dict[str, list[str]] = {}
         slurm_dir = Path("slurm")
         if not slurm_dir.exists():
             return slurm_jobs
@@ -222,7 +220,7 @@ class DocumentDriftChecker:
                 slurm_jobs.setdefault(issue_num, []).append(str(sbatch_file))
         return slurm_jobs
 
-    def check_consistency(self) -> Dict:
+    def check_consistency(self) -> dict:
         """Run all checks and return consistency report."""
         # Need exports first so documented-API detection can use top-level names.
         top_level_exports, all_exports = self.find_exported_apis()
@@ -245,10 +243,10 @@ class DocumentDriftChecker:
         }
 
     @staticmethod
-    def _dedupe(paths: List[str]) -> List[str]:
+    def _dedupe(paths: list[str]) -> list[str]:
         return sorted(set(paths))
 
-    def generate_summary(self, report: Dict) -> str:
+    def generate_summary(self, report: dict) -> str:
         """Generate a human-readable summary of the drift check."""
         documented_apis = report["documented_apis"]
         top_level_exports = report["top_level_exports"]
