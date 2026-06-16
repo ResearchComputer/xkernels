@@ -35,9 +35,6 @@ import torch
 import triton
 import triton.language as tl
 
-from ...._backends import Backend
-from ...._dispatch import register
-
 __all__ = ["mm_fp8_blockscale_triton", "mm_fp8_blockscale_kernel"]
 
 
@@ -178,6 +175,3 @@ def mm_fp8_blockscale_triton(
         num_warps=4,
     )
     return c
-
-
-register("mm_fp8_blockscale", Backend.TRITON)(mm_fp8_blockscale_triton)

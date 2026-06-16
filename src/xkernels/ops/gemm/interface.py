@@ -22,6 +22,7 @@ def mm_fp8_blockscale(
     block: int = FP8_BLOCK,
     out_dtype: torch.dtype = torch.bfloat16,
     dot_bf16: bool = False,
+    path: str = "auto",
     backend: Backend | str = "auto",
 ) -> torch.Tensor:
     """DeepSeek-V4 fp8 block-scale dense GEMM (issue #38): a portable gfx942
@@ -47,6 +48,10 @@ def mm_fp8_blockscale(
             accurate, so it can exceed a tight per-element tolerance on
             small-/near-zero outputs. Default False keeps the exact-fp32 dot.
             Ignored by the reference backend.
+        path: Triton-backend only. ``"mfma"`` (native fp8 MFMA fast path, #41),
+            ``"portable"`` (dequant-then-dot, #40), or ``"auto"`` (default ->
+            mfma). ``dot_bf16=True`` forces the portable path. Ignored by the
+            reference backend.
         backend: ``"auto"`` or a ``Backend`` / its string value.
 
     Returns:
@@ -61,5 +66,6 @@ def mm_fp8_blockscale(
         block=block,
         out_dtype=out_dtype,
         dot_bf16=dot_bf16,
+        path=path,
         backend=backend,
     )

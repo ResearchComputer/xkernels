@@ -25,7 +25,7 @@ try:  # pragma: no cover - requires triton
     from ..._triton_compat import triton_import_ctx
 
     with triton_import_ctx():
-        from .triton import mm_fp8_blockscale_kernel  # noqa: F401
+        from .triton import entry  # noqa: F401  (registers TRITON: mfma + portable)
 except Exception:
     pass
 
