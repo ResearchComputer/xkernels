@@ -34,8 +34,8 @@ export const meta = {
   ],
 }
 
-const REPO = (args && args.repo) || 'ResearchComputer/kernels'
-const MAIN_REPO = (args && args.mainRepo) || '/home/xiayao/Documents/research/kernels'
+const REPO = (args && args.repo) || 'ResearchComputer/xkernels'
+const MAIN_REPO = (args && args.mainRepo) || '/home/xiayao/Documents/research/xkernels'
 const VENV = MAIN_REPO + '/.venv'
 const SCRATCH_BASE = (args && args.scratchBase) || '/capstor/scratch/cscs/xyao'
 const SKILLS_CSCS = (args && args.skillsCscs) || '/home/xiayao/Documents/xzyao/skills/clusters/cscs/README.md'
