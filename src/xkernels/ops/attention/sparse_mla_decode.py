@@ -27,8 +27,13 @@ def _gather_dequant(value_cache, scale_cache, block_table, indices, lengths, blo
     """Gather + dequant selected positions to ``([T, topk, D] fp32, valid [T, topk])``.
 
     ``value_cache``/``scale_cache``: ``[num_blocks, block_size, *bytes]`` uint8.
-    ``indices`` ``[T, topk]`` are per-seq logical positions resolved through
-    ``block_table`` ``[T, max_blocks]``; ``<0`` or ``>= lengths`` mark padding.
+    ``indices`` ``[T, topk]`` are positions into the cache; ``<0`` or
+    ``>= lengths`` mark padding. When ``block_table`` is given, the indices are
+    per-seq **logical** positions resolved through ``block_table``
+    ``[T, max_blocks]``. When ``block_table is None`` the indices are **physical**
+    token positions into the flattened ``[num_blocks * block_size]`` token space
+    (the tokenspeed DeepSeek-V4 caller resolves logical->physical itself and
+    passes ``block_table=None``).
     """
     if scale_cache is None:
         raise ValueError("fp8_ds_mla decode requires a scale_cache")
@@ -39,13 +44,19 @@ def _gather_dequant(value_cache, scale_cache, block_table, indices, lengths, blo
     if lengths is not None:
         valid = valid & (pos.unsqueeze(0) < lengths.unsqueeze(1))
     safe = indices.clamp_min(0).long()
-    logical_blk = safe // block_size
     within = safe % block_size
-    phys = torch.gather(block_table.long(), 1, logical_blk)  # [T, topk]
-    flat_phys = phys.reshape(-1)
+    if block_table is None:
+        # Physical token positions: block = pos // block_size (no block_table gather).
+        blk = safe // block_size
+    else:
+        logical_blk = safe // block_size
+        blk = torch.gather(block_table.long(), 1, logical_blk)  # [T, topk]
+    flat_blk = blk.reshape(-1)
     flat_within = within.reshape(-1)
-    vsel = value_cache[flat_phys, flat_within]  # [T*topk, value_bytes]
-    ssel = scale_cache[flat_phys, flat_within]  # [T*topk, scale_bytes]
+    # Direct 2-axis gather of T*topk rows — works on non-contiguous as_strided
+    # cache views without materializing the whole cache.
+    vsel = value_cache[flat_blk, flat_within]  # [T*topk, value_bytes]
+    ssel = scale_cache[flat_blk, flat_within]  # [T*topk, scale_bytes]
     deq = dequant_fp8_ds_mla(vsel, ssel)  # [T*topk, D]
     return deq.reshape(T, topk, deq.shape[-1]), valid
 
@@ -97,9 +108,7 @@ def flash_mla_with_kvcache(
         block_size = k_cache.shape[1]
 
     kvs, valids = [], []
-    kv1, valid1 = _gather_dequant(
-        k_cache, scale_cache, block_table, idx, topk_length, block_size
-    )
+    kv1, valid1 = _gather_dequant(k_cache, scale_cache, block_table, idx, topk_length, block_size)
     kvs.append(kv1)
     valids.append(valid1)
 
@@ -110,8 +119,12 @@ def flash_mla_with_kvcache(
             else extra_indices_in_kvcache
         )
         kv2, valid2 = _gather_dequant(
-            extra_k_cache, extra_scale_cache, block_table, eidx,
-            extra_topk_length, block_size,
+            extra_k_cache,
+            extra_scale_cache,
+            block_table,
+            eidx,
+            extra_topk_length,
+            block_size,
         )
         kvs.append(kv2)
         valids.append(valid2)
@@ -127,7 +140,12 @@ def flash_mla_with_kvcache(
     idx_flat = torch.where(valid, base + slot, torch.full_like(slot, -1)).to(torch.int32)
 
     out, lse, _ = sparse_mla_attention(
-        q2, kv_flat, idx_flat, sm_scale=softmax_scale,
-        attn_sink=attn_sink, d_v=head_dim_v, backend=backend,
+        q2,
+        kv_flat,
+        idx_flat,
+        sm_scale=softmax_scale,
+        attn_sink=attn_sink,
+        d_v=head_dim_v,
+        backend=backend,
     )
     return out.unsqueeze(1), lse

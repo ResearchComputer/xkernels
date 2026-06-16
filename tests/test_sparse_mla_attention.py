@@ -300,3 +300,44 @@ def test_flash_mla_with_kvcache_single_cache():
     )
     atol = 1e-3 if _INTERP else 3e-2
     torch.testing.assert_close(out.float(), eo.float(), atol=atol, rtol=atol)
+
+
+@pytest.mark.skipif(not _HAS_FP8, reason="torch lacks float8_e4m3fn")
+def test_flash_mla_with_kvcache_physical_indices():
+    """Decode with block_table=None uses physical token positions directly.
+
+    With an identity block_table the logical and physical paths should agree.
+    """
+    from xkernels.ops.attention.interface import flash_mla_with_kvcache
+
+    dev = _dev()
+    torch.manual_seed(9)
+    nb, bs, H, D = 3, 8, 4, 512
+    backend = Backend.TRITON if _HAS_TRITON else Backend.REFERENCE
+    val, sca, ref = _paged_cache(nb, bs, seed=9)
+    rows = nb * bs
+    T, topk = 2, 6
+    dt = torch.float32 if _INTERP else torch.bfloat16
+    q = torch.randn(T, H, D, device=dev, dtype=dt)
+    idx = torch.randint(0, rows, (T, topk), device=dev, dtype=torch.int32)
+    idx[0, -2:] = -1  # padding sentinels
+
+    out_logical, _ = flash_mla_with_kvcache(
+        q=q.unsqueeze(1), k_cache=val,
+        block_table=torch.arange(nb, device=dev, dtype=torch.int32)
+        .view(1, nb)
+        .expand(T, nb)
+        .contiguous(),
+        cache_seqlens=None, head_dim_v=D, tile_scheduler_metadata=None,
+        softmax_scale=0.1, is_fp8_kvcache=True, indices=idx.unsqueeze(1),
+        scale_cache=sca, block_size=bs, backend=backend,
+    )
+    out_physical, _ = flash_mla_with_kvcache(
+        q=q.unsqueeze(1), k_cache=val, block_table=None, cache_seqlens=None,
+        head_dim_v=D, tile_scheduler_metadata=None, softmax_scale=0.1,
+        is_fp8_kvcache=True, indices=idx.unsqueeze(1),
+        scale_cache=sca, block_size=bs, backend=backend,
+    )
+    torch.testing.assert_close(
+        out_logical.float(), out_physical.float(), atol=1e-5, rtol=1e-5
+    )
