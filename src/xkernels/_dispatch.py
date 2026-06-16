@@ -35,6 +35,11 @@ def registered_backends(kernel_name: str) -> list[Backend]:
     return list(_REGISTRY.get(kernel_name, {}).keys())
 
 
+def registered_kernels() -> list[str]:
+    """Return all kernel names that have at least one registered backend."""
+    return list(_REGISTRY.keys())
+
+
 def _coerce(backend: Backend | str) -> Backend:
     return backend if isinstance(backend, Backend) else Backend(backend)
 
@@ -67,5 +72,6 @@ def select_backend(kernel_name: str, backend: Backend | str = "auto") -> Backend
 
 
 def dispatch(kernel_name: str, *args, backend: Backend | str = "auto", **kwargs):
+    """Dispatch ``kernel_name`` to the selected backend and invoke it."""
     chosen = select_backend(kernel_name, backend)
     return _REGISTRY[kernel_name][chosen](*args, **kwargs)

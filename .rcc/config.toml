@@ -1,0 +1,7 @@
+default = "beverin"
+
+[profiles.beverin]
+host = "beverin"                 # ssh alias from ~/.ssh/config
+remote_dir = "/capstor/scratch/cscs/xyao/xkernels"  # scratch working copy
+# ssh_control_persist = "30m"
+# ssh_control_dir = "~/.ssh/controlmasters"

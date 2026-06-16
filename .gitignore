@@ -13,3 +13,4 @@ uv.lock
 *.csv
 *.pdf
 .DS_Store
+.rcc/

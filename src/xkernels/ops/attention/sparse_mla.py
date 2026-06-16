@@ -53,15 +53,19 @@ def dequant_fp8_ds_mla(
         rope_dim: bf16 (score-only) rope dim.
         quant_block: shared-scale group length along nope.
     """
-    nope_fp8 = value_bytes[..., :nope_dim].contiguous()
-    rope_raw = value_bytes[..., nope_dim : nope_dim + rope_dim * 2].contiguous()
-    nope = nope_fp8.view(torch.float8_e4m3fn).to(torch.float32)
+    nope_fp8 = value_bytes[..., :nope_dim]
+    rope_raw = value_bytes[..., nope_dim : nope_dim + rope_dim * 2]
+    nope = nope_fp8.reshape(-1, nope_dim).view(torch.float8_e4m3fn).to(torch.float32)
     ng = nope_dim // quant_block
-    enc = scale_bytes[..., :ng].to(torch.int32) - 127
-    mult = torch.exp2(enc.float()).repeat_interleave(quant_block, dim=-1)
+    enc = scale_bytes.reshape(-1, scale_bytes.shape[-1])[..., :ng].to(torch.int32) - 127
+    # Broadcast multiply over quant groups instead of materializing a repeated
+    # multiplier tensor (avoids a topk-sized intermediate on the decode path).
+    mult = torch.exp2(enc.float()).unsqueeze(-1)  # [B, ng, 1]
+    nope = nope.reshape(-1, ng, quant_block)
     nope = nope * mult
-    rope = rope_raw.view(torch.bfloat16).to(torch.float32)
-    return torch.cat([nope, rope], dim=-1)
+    nope = nope.reshape(-1, nope_dim)
+    rope = rope_raw.reshape(-1, rope_dim * 2).view(torch.bfloat16).to(torch.float32)
+    return torch.cat([nope, rope], dim=-1).reshape(value_bytes.shape[:-1] + (-1,))
 
 
 def make_fp8_ds_mla_kv(

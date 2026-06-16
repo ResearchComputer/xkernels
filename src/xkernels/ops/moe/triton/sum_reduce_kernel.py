@@ -37,13 +37,17 @@ def moe_sum_reduce_kernel(
     TOP_K: tl.constexpr,
     HAS_W: tl.constexpr,
     BLOCK_H: tl.constexpr,
+    VEC: tl.constexpr,
 ):
     m = tl.program_id(axis=0)
     hb = tl.program_id(axis=1)
-    cols = hb * BLOCK_H + tl.arange(0, BLOCK_H)
+    # Vectorized memory access: each thread handles VEC consecutive elements.
+    # BLOCK_H is a power of two (see launcher), so BLOCK_H // VEC is exact.
+    thread_idx = tl.arange(0, BLOCK_H // VEC)
+    cols = hb * BLOCK_H + thread_idx[:, None] * VEC + tl.arange(0, VEC)[None, :]
     mask = cols < H
 
-    acc = tl.zeros((BLOCK_H,), dtype=tl.float32)
+    acc = tl.zeros((BLOCK_H // VEC, VEC), dtype=tl.float32)
     for k in range(TOP_K):
         yk = tl.load(
             y_ptr + m * stride_ym + k * stride_yk + cols * stride_yh,
@@ -72,6 +76,8 @@ def moe_sum_reduce_triton(y, w=None, routed_scaling_factor: float = 1.0):
         sw_m, sw_k, w_ptr = 0, 0, y  # dummy ptr; not read when HAS_W is False
 
     block_h = min(triton.next_power_of_2(H), 1024)
+    # Vector width: 4 for normal hidden sizes, smaller only when H itself is tiny.
+    vec = 4 if block_h >= 4 else (2 if block_h == 2 else 1)
     grid = (M, triton.cdiv(H, block_h))
     moe_sum_reduce_kernel[grid](
         y,
@@ -89,6 +95,7 @@ def moe_sum_reduce_triton(y, w=None, routed_scaling_factor: float = 1.0):
         TOP_K=top_k,
         HAS_W=has_w,
         BLOCK_H=block_h,
+        VEC=vec,
     )
     return out
 

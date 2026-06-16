@@ -1,0 +1,15 @@
+.git/
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+.next/
+dist/
+build/
+# rcc local configuration stays on the laptop.
+.rcc/
+# Claude agent worktrees and local state are not needed on the cluster.
+.claude/

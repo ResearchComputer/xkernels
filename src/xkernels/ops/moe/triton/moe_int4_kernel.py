@@ -243,7 +243,8 @@ def _fused_moe_int4_kernel(
         moe_weight = tl.load(topk_weights_ptr + offs_token, mask=token_mask, other=0.0)
         accumulator = accumulator * moe_weight[:, None]
 
-    accumulator = accumulator.to(compute_type)
+    if compute_type == tl.bfloat16:
+        accumulator = accumulator.to(tl.bfloat16)
     offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     c_mask = token_mask[:, None] & (offs_cn[None, :] < N)
     if COMBINE:

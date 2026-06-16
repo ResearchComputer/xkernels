@@ -114,6 +114,42 @@ def bench_mhc_prenorm(dev):
     )
 
 
+def bench_mhc_pre_post(dev):
+    from xkernels import mhc_post, mhc_pre
+    from xkernels.ops.mhc.pre_post_reference import mhc_post_ref, mhc_pre_ref
+
+    T, hc_mult, hidden = 8, 4, 4096
+    K = hc_mult * hidden
+    hc_mult3 = 2 * hc_mult + hc_mult * hc_mult
+    residual = torch.randn(T, hc_mult, hidden, device=dev, dtype=DT)
+    fn = torch.randn(hc_mult3, K, device=dev, dtype=torch.float32)
+    hc_scale = torch.tensor([1.0, 1.0, 1.0], device=dev, dtype=torch.float32)
+    hc_base = torch.zeros(hc_mult3, device=dev, dtype=torch.float32)
+
+    li_ref, post_ref, comb_ref = mhc_pre_ref(
+        residual, fn, hc_scale, hc_base, rms_eps=1e-6, hc_eps=1e-6, sinkhorn_iters=3
+    )
+
+    def naive():
+        li, post, comb = mhc_pre_ref(
+            residual, fn, hc_scale, hc_base, rms_eps=1e-6, hc_eps=1e-6, sinkhorn_iters=3
+        )
+        return mhc_post_ref(li, residual, post, comb)
+
+    def opt():
+        li, post, comb = mhc_pre(
+            residual, fn, hc_scale, hc_base, rms_eps=1e-6, hc_eps=1e-6, sinkhorn_iters=3
+        )
+        return mhc_post(li, residual, post, comb)
+
+    _record(
+        "mhc_pre_post", f"T={T}, hc_mult={hc_mult}, hidden={hidden}",
+        "torch pre+post",
+        naive,
+        opt,
+    )
+
+
 def bench_dual_rmsnorm(dev):
     T, D1, D2 = 8192, 1536, 512
     x1 = torch.randn(T, D1, device=dev, dtype=DT)
@@ -246,6 +282,7 @@ def main():
         bench_merge_state,
         bench_sparse_mla,
         bench_mhc_prenorm,
+        bench_mhc_pre_post,
         bench_dual_rmsnorm,
         bench_moe_sum_reduce,
         bench_moe_align,

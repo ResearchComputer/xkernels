@@ -87,7 +87,7 @@ graduates into a proper registered backend; it is not registered here.)
    - `_apply_blas_mode(mode)` — set runtime backend knobs, read env, print state;
    - `_bench_gemm(M, K, N, dtype)` → (ms, TFLOP/s) via CUDA events;
    - `_triton_bf16_gemm(...)` + its launcher (single fixed tile, fp32 acc);
-   - `sweep_dense(mode)` — loop the shape table × M × {fp16, bf16, triton-bf16},
+   - `sweep(mode, Ms)` — loop the shape table × M × {fp16, bf16, triton-bf16},
      print one markdown table with the bf16/fp16 ratio and a MISS flag;
    - `--mode` / `--shapes` CLI; default runs the dense sweep.
 2. **`slurm/probe_dense_bf16_beverin.sbatch`** — runs the probe for each mode in

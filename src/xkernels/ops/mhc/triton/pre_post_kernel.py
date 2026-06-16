@@ -191,24 +191,27 @@ def mhc_post_kernel(
     stride_oh,
     HC_MULT: tl.constexpr,
     BLOCK_H: tl.constexpr,
+    VEC: tl.constexpr,
 ):
     t = tl.program_id(0)
     hb = tl.program_id(1)
-    hs = hb * BLOCK_H + tl.arange(0, BLOCK_H)
+    # Vectorized memory access: each thread handles VEC consecutive elements.
+    thread_idx = tl.arange(0, BLOCK_H // VEC)
+    hs = hb * BLOCK_H + thread_idx[:, None] * VEC + tl.arange(0, VEC)[None, :]
     h_mask = hs < hidden
 
     arn = tl.arange(0, HC_MULT)
-    # load hidden[t, h] tile
+    # load hidden[t, h] tile [BLOCK_H//VEC, VEC]
     hid = tl.load(
         hidden_ptr + t * stride_ht + hs * stride_hh, mask=h_mask, other=0.0
-    ).to(tl.float32)  # [BLOCK_H]
-    # residual tile [hc_mult, BLOCK_H]
+    ).to(tl.float32)
+    # residual tile [hc_mult, BLOCK_H//VEC, VEC]
     res = tl.load(
         residual_ptr
         + t * stride_rt
-        + arn[:, None] * stride_rn
-        + hs[None, :] * stride_rh,
-        mask=h_mask[None, :],
+        + arn[:, None, None] * stride_rn
+        + hs[None, :, :] * stride_rh,
+        mask=h_mask[None, :, :],
         other=0.0,
     ).to(tl.float32)
     # comb[t, n, m] and post[t, m]
@@ -222,12 +225,12 @@ def mhc_post_kernel(
 
     # out[m, h] = sum_n comb[n, m] * res[n, h] + post[m] * hid[h]
     # mixed[m, h] = sum_n comb[n, m] * res[n, h]
-    mixed = tl.sum(comb[:, :, None] * res[:, None, :], axis=0)  # [m, h]
-    out = mixed + post[:, None] * hid[None, :]  # [hc_mult, BLOCK_H]
+    mixed = tl.sum(comb[:, :, None, None] * res[:, None, :, :], axis=0)  # [m, BLOCK_H//VEC, VEC]
+    out = mixed + post[:, None, None] * hid[None, :, :]  # [hc_mult, BLOCK_H//VEC, VEC]
     tl.store(
-        out_ptr + t * stride_ot + arn[:, None] * stride_om + hs[None, :] * stride_oh,
+        out_ptr + t * stride_ot + arn[:, None, None] * stride_om + hs[None, :, :] * stride_oh,
         out,
-        mask=h_mask[None, :],
+        mask=h_mask[None, :, :],
     )
 
 
@@ -310,6 +313,7 @@ def mhc_post_triton(hidden_states, residual, post, comb):
     comb = comb.reshape(num_tokens, hc_mult, hc_mult).contiguous().float()
 
     block_h = min(triton.next_power_of_2(hidden), 1024)
+    vec = 4 if block_h >= 4 else (2 if block_h == 2 else 1)
     grid = (num_tokens, triton.cdiv(hidden, block_h))
     mhc_post_kernel[grid](
         hidden_states,
@@ -333,6 +337,7 @@ def mhc_post_triton(hidden_states, residual, post, comb):
         out.stride(2),
         HC_MULT=hc_mult,
         BLOCK_H=block_h,
+        VEC=vec,
     )
     return out
 
