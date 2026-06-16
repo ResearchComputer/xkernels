@@ -17,6 +17,11 @@ from .ops.comm import (
 )
 from .ops.ffn import fused_ffn
 from .ops.gather import mxfp4_paged_gather
+from .ops.gemm import (
+    mm_fp8_blockscale,
+    per_block_quant_fp8,
+    per_token_group_quant_fp8,
+)
 from .ops.mhc import hc_prenorm_gemm, mhc_post, mhc_pre, tf32_hc_prenorm_gemm
 from .ops.moe import (
     fused_moe_int4_w4a16,
@@ -34,6 +39,9 @@ __all__ = [
     "moe_align_block_size",
     "moe_sum_reduce",
     "mxfp4_paged_gather",
+    "mm_fp8_blockscale",
+    "per_token_group_quant_fp8",
+    "per_block_quant_fp8",
     "hc_prenorm_gemm",
     "tf32_hc_prenorm_gemm",
     "mhc_pre",
