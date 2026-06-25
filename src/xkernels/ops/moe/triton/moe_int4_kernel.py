@@ -404,8 +404,22 @@ def int4_w4a16_moe_gemm(
 
 # --- xkernels backend registration -----------------------------------------
 # Thin adapter exposing the same backend-agnostic [M, N] signature as the
-# reference (``moe_w4a16_ref``): build the per-expert dispatch, launch into a
-# token-indexed scratch buffer, then reduce ``view(M, top_k, N).sum(1)``.
+# reference (``moe_w4a16_ref``): build the per-expert dispatch, then either
+# launch directly into a fused [M, N] combine buffer or use the legacy
+# token-indexed scratch buffer and reduce ``view(M, top_k, N).sum(1)``.
+
+_AUTO_FUSED_COMBINE_MIN_M = 4
+_AUTO_FUSED_COMBINE_MAX_M = 16
+
+
+def _auto_fused_combine(M: int, top_k: int, expert_map: torch.Tensor | None) -> bool:
+    # Conservative default for decode buckets. Prefill-sized batches keep the
+    # established scratch+sum path unless callers force fused_combine=True.
+    return (
+        expert_map is None
+        and _AUTO_FUSED_COMBINE_MIN_M <= M <= _AUTO_FUSED_COMBINE_MAX_M
+        and top_k <= 8
+    )
 
 
 def _moe_int4_w4a16_triton(
@@ -416,7 +430,7 @@ def _moe_int4_w4a16_triton(
     topk_w: torch.Tensor,
     group_size: int = 32,
     mul_routed_weight: bool = True,
-    fused_combine: bool = False,
+    fused_combine: bool | None = None,
     expert_map: torch.Tensor | None = None,
 ) -> torch.Tensor:
     M, top_k = topk_ids.shape
@@ -438,6 +452,8 @@ def _moe_int4_w4a16_triton(
         )
     else:
         sorted_ids, expert_ids, num_post = moe_align_block_size_ref(topk_ids, block_m, E)
+    if fused_combine is None:
+        fused_combine = _auto_fused_combine(M, top_k, expert_map)
     if fused_combine:
         # Fused weighted top-k combine: the kernel atomic-accumulates into a single
         # [M, N] fp32 buffer, so there is no [M*top_k, N] scratch and no separate
@@ -461,7 +477,8 @@ def _moe_int4_w4a16_triton(
             combine=True,
         )
         return out.to(A.dtype)
-    c = torch.zeros((M * top_k, N), dtype=A.dtype, device=A.device)
+    scratch = torch.empty if expert_map is None else torch.zeros
+    c = scratch((M * top_k, N), dtype=A.dtype, device=A.device)
     compute_type = tl.bfloat16 if A.dtype == torch.bfloat16 else tl.float32
     int4_w4a16_moe_gemm(
         A,

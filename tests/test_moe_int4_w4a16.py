@@ -176,6 +176,41 @@ def test_fused_combine_matches_reference(mul_routed):
     torch.testing.assert_close(got.float(), ref.float(), atol=atol, rtol=rtol)
 
 
+def test_auto_fused_combine_decode_default_and_escape_hatch(monkeypatch):
+    """Decode-sized no-EP calls default to fused combine; False keeps scratch+sum."""
+    if not _HAS_TRITON:
+        pytest.skip("triton backend not registered (triton not installed)")
+    dev = _device()
+    group_size = 32
+    _pin_single_config()
+    M, E, N, K, top_k = 4, 8, 128, 256, 4
+    packed, scale, A, topk_ids, topk_w = _inputs(M, E, N, K, top_k, dev, group_size)
+
+    from xkernels.ops.moe.triton import moe_int4_kernel as kmod
+
+    calls = []
+    orig = kmod.int4_w4a16_moe_gemm
+
+    def _wrapped(*args, **kwargs):
+        calls.append(bool(kwargs.get("combine", False)))
+        return orig(*args, **kwargs)
+
+    monkeypatch.setattr(kmod, "int4_w4a16_moe_gemm", _wrapped)
+    got_auto = fused_moe_int4_w4a16(
+        A, packed, scale, topk_ids, topk_w,
+        group_size=group_size, mul_routed_weight=True, backend=Backend.TRITON,
+    )
+    assert calls[-1] is True
+    got_unfused = fused_moe_int4_w4a16(
+        A, packed, scale, topk_ids, topk_w,
+        group_size=group_size, mul_routed_weight=True,
+        backend=Backend.TRITON, fused_combine=False,
+    )
+    assert calls[-1] is False
+    atol = rtol = 3e-3 if _INTERP else 2e-2
+    torch.testing.assert_close(got_auto.float(), got_unfused.float(), atol=atol, rtol=rtol)
+
+
 if __name__ == "__main__":
     import sys
 
