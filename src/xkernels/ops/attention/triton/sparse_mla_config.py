@@ -22,7 +22,9 @@ Selection order:
 
 * ``XKERNELS_SPARSE_MLA_CONFIG`` (env, JSON dict) overrides everything — the knob
   the on-device sweep (``benchmarks/tune_sparse_mla.py``) drives.
-* Otherwise the behavior-preserving #33 default (``BLOCK_N=64``).
+* Otherwise, when the caller passes ``num_query_tokens=1``, use the measured
+  single-token decode winner.
+* Otherwise the behavior-preserving multi-token #33 default (``BLOCK_N=64``).
 
 CDNA3 reasoning
 ---------------
@@ -59,9 +61,8 @@ __all__ = [
 #     common multi-token case.
 #   Tq=1 (single-token decode): BLOCK_N=128 num_warps=8 waves_per_eu=1 is 1.13-1.24x
 #     faster than BLOCK_N=64 (the grid is only H=128 programs, so wider chunks +
-#     more warps raise utilization). This is shipped as the opt-in
-#     DECODE_SPARSE_MLA_CONFIG, off by default (mirrors the issue #20/#12
-#     precedent: a measured but conditional optimization is opt-in, not hidden).
+#     more warps raise utilization). The launcher knows Tq and auto-selects this
+#     config for Tq=1 unless the env override is set.
 DEFAULT_SPARSE_MLA_CONFIG: dict = {
     "BLOCK_N": 64,
     "num_warps": 4,
@@ -71,10 +72,9 @@ DEFAULT_SPARSE_MLA_CONFIG: dict = {
     "kpack": 2,
 }
 
-# Opt-in single-token (Tq=1) decode config — measured 1.13-1.24x vs the default at
-# Tq=1 on the V4 geometry. Select it by exporting it as XKERNELS_SPARSE_MLA_CONFIG
-# when the caller knows it is in the single-token decode regime. NOT the default,
-# because it regresses the multi-token case.
+# Single-token (Tq=1) decode config — measured 1.13-1.24x vs the multi-token
+# default at Tq=1 on the V4 geometry. Auto-selected only when the caller passes
+# num_query_tokens=1; the env override still has priority for A/B testing.
 DECODE_SPARSE_MLA_CONFIG: dict = {
     "BLOCK_N": 128,
     "num_warps": 8,
@@ -85,14 +85,20 @@ DECODE_SPARSE_MLA_CONFIG: dict = {
 }
 
 
-def resolve_sparse_mla_config() -> dict:
+def resolve_sparse_mla_config(num_query_tokens: int | None = None) -> dict:
     """Resolve the launch config for the sparse-MLA attention compute.
 
     Order: ``XKERNELS_SPARSE_MLA_CONFIG`` (JSON dict) env override, else the
-    behavior-preserving #33 default. Missing keys fall back to the default, so a
-    partial override (e.g. ``{"BLOCK_N": 128}``) is valid.
+    measured single-token decode config when ``num_query_tokens == 1``, else the
+    behavior-preserving multi-token #33 default. Missing env keys fall back to the
+    selected base config, so a partial override (e.g. ``{"BLOCK_N": 128}``) is
+    valid.
     """
-    cfg = dict(DEFAULT_SPARSE_MLA_CONFIG)
+    cfg = (
+        dict(DECODE_SPARSE_MLA_CONFIG)
+        if num_query_tokens == 1
+        else dict(DEFAULT_SPARSE_MLA_CONFIG)
+    )
     env = os.environ.get("XKERNELS_SPARSE_MLA_CONFIG")
     if env:
         try:

@@ -66,22 +66,32 @@ def test_mhc_config_env_override_and_partial(monkeypatch):
 def test_sparse_mla_config_default_and_override(monkeypatch):
     from xkernels.ops.attention.triton.sparse_mla_config import (
         DECODE_SPARSE_MLA_CONFIG,
+        DEFAULT_SPARSE_MLA_CONFIG,
         resolve_sparse_mla_config,
     )
 
     monkeypatch.delenv("XKERNELS_SPARSE_MLA_CONFIG", raising=False)
-    # Default stays #33 (BLOCK_N=64): the #39 sweep found no static winner — wider
-    # BLOCK_N regresses the multi-token case, so the decode win is opt-in.
-    assert resolve_sparse_mla_config()["BLOCK_N"] == 64
-    # The opt-in single-token decode config is the 1.13-1.24x Tq=1 winner.
+    # Unknown or multi-token shape keeps the #33 default (BLOCK_N=64): the #39
+    # sweep found no static winner, and wider BLOCK_N regresses multi-token.
+    assert resolve_sparse_mla_config() == DEFAULT_SPARSE_MLA_CONFIG
+    assert resolve_sparse_mla_config(num_query_tokens=8) == DEFAULT_SPARSE_MLA_CONFIG
+    # Single-token decode auto-selects the 1.13-1.24x Tq=1 winner.
+    assert resolve_sparse_mla_config(num_query_tokens=1) == DECODE_SPARSE_MLA_CONFIG
     assert DECODE_SPARSE_MLA_CONFIG["BLOCK_N"] == 128
     assert DECODE_SPARSE_MLA_CONFIG["num_warps"] == 8
+    # Env override still wins for both Tq=1 and multi-token, and partial
+    # overrides fill missing keys from the selected base config.
     monkeypatch.setenv("XKERNELS_SPARSE_MLA_CONFIG", '{"BLOCK_N": 128}')
     assert resolve_sparse_mla_config()["BLOCK_N"] == 128
+    assert resolve_sparse_mla_config(num_query_tokens=1)["BLOCK_N"] == 128
+    monkeypatch.setenv("XKERNELS_SPARSE_MLA_CONFIG", '{"BLOCK_N": 32}')
+    cfg = resolve_sparse_mla_config(num_query_tokens=1)
+    assert cfg["BLOCK_N"] == 32
+    assert cfg["num_warps"] == DECODE_SPARSE_MLA_CONFIG["num_warps"]
     # BLOCK_N must be a power of two (chunk-aligned).
     monkeypatch.setenv("XKERNELS_SPARSE_MLA_CONFIG", '{"BLOCK_N": 100}')
     with pytest.raises(ValueError):
-        resolve_sparse_mla_config()
+        resolve_sparse_mla_config(num_query_tokens=1)
 
 
 # --------------------------------------------------------------------------- #
