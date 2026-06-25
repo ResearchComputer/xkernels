@@ -1,0 +1,39 @@
+{
+  "id": "hc_prenorm_gemm@1.0.0",
+  "name": "MHC hidden-compression prenorm GEMM (fused GEMM + per-row squared-sum)",
+  "version": "1.0.0",
+  "kernel": "hc_prenorm_gemm",
+  "op": {
+    "signature": "(gemm_out_mul, gemm_out_sqrsum): sum(0) == a@fn.T and (a**2).sum(-1)  [split-K partials]",
+    "canonical_op": "gemm",
+    "fusions": ["rmsnorm_prologue", "squared_sum", "split_k"]
+  },
+  "inputs": {
+    "a":  { "dtype": ["bf16", "fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["T", "K"] },
+    "fn": { "dtype": ["fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["N", "K"] }
+  },
+  "outputs": {
+    "gemm_out_mul":   { "dtype": ["fp32"], "layout": "row_major", "rank": 3, "shape_symbols": ["n_splits", "T", "N"] },
+    "gemm_out_sqrsum": { "dtype": ["fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["n_splits", "T"] }
+  },
+  "constraints": [],
+  "preconditions": [
+    "n_splits >= 1 (runtime scalar; the downstream consumer only ever sums across the split axis)",
+    "the split-K layout is a perf device: gemm_out_mul.sum(0) == F.linear(a,fn) and gemm_out_sqrsum.sum(0) == (a**2).sum(-1); per-split tensors are NOT element-wise equal across backends, only their sum is",
+    "a, fn contiguous"
+  ],
+  "numerics": {
+    "reference": "xkernels.ops.mhc.reference:hc_prenorm_gemm_ref",
+    "rtol": 1e-2,
+    "atol": 1e-2,
+    "reduce_dtype": "fp32",
+    "by_dtype": {
+      "fp32": { "rtol": 1e-4, "atol": 1e-4 },
+      "bf16": { "rtol": 1e-2, "atol": 1e-2 }
+    },
+    "cross_backend_rtol": 1e-2,
+    "notes": "Outputs are fp32 (GEMM accumulation + squared-sum). Both backends upcast a (bf16->fp32) and accumulate in fp32, so divergence is fp32 accumulation order only. The mandatory sweep uses n_splits=1, where the per-split tensor equals the sum and is therefore element-wise comparable; split-K>1 keeps the sum-invariant (validated in tests/) but its per-split tensors legitimately differ and are compared via .sum(0), not element-wise."
+  },
+  "shape_sweep": "hc_prenorm_gemm",
+  "composes_with": ["mhc_pre@1.0.0"]
+}

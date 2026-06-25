@@ -1,0 +1,25 @@
+{
+  "id": "hc_prenorm_gemm.triton@1.0.0",
+  "implements": "hc_prenorm_gemm@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": { "kind": "lds", "bytes": 0 }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "Memory-bound tall-skinny fused GEMM (huge K, tiny N): one program per (split, row-tile) fuses the squared-sum into the same A load. ~120x over naive fp32 F.linear on gfx942 decode shapes (issue #36), in part because the naive fp32 dense-GEMM path is slow on this torch/rocm stack. Perf unmeasured without a GPU.",
+    "roofline": "memory_bound",
+    "measured": []
+  },
+  "uses_primitives": ["gemm.tile_dot_fp32acc", "reduce.row_squaresum", "gemm.split_k"],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-06-25T00:00:00Z",
+    "source_path": "src/xkernels/ops/mhc/triton/prenorm_gemm_kernel.py"
+  },
+  "notes": "Portable Triton. The split-K parallelization is for occupancy at small T; its correctness contract is the SUM invariant (gemm_out_mul.sum(0) == F.linear(a,fn)), so the mandatory sweep pins n_splits=1 where the per-split tensor equals the sum and is element-wise comparable. Internal BLOCK_M/BLOCK_K/BLOCK_N autotune tiles are not exposed at the entry callable (hc_prenorm_gemm_triton only takes n_splits), so they are not declared as knobs here. wave_size not load-bearing at this metadata tier."
+}

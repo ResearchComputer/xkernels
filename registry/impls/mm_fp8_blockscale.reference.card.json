@@ -1,0 +1,18 @@
+{
+  "id": "mm_fp8_blockscale.reference@1.0.0",
+  "implements": "mm_fp8_blockscale@1.0.0",
+  "backend": "reference",
+  "arch": { "family": "any", "wave_size": 0, "scratch": { "kind": "none", "bytes": 0 } },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "pure-torch oracle: full fp32 dequant materialization + dense fp32 matmul. Numerically exact; not a perf target.",
+    "roofline": "latency_bound"
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-06-25T00:00:00Z",
+    "source_path": "src/xkernels/ops/gemm/reference.py"
+  }
+}

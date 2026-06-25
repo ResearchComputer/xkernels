@@ -132,8 +132,11 @@ def test_find_impl_rejects_on_dtype_constraint():
 
 
 def test_find_impl_missing_backend_signal():
-    # gemm canonical_op is not seeded -> op absent entirely
-    res = find_impl("gemm", target_arch="nvidia_sm90")
+    # an unseeded canonical_op returns no candidates at all (conv2d has no Op Spec).
+    # (gemm used to be the empty example, but the GEMM category is now seeded —
+    # mm_fp8_blockscale / hc_prenorm_gemm / moe_int4_w4a16 — so it is no longer
+    # a valid "absent op" probe.)
+    res = find_impl("conv2d", target_arch="nvidia_sm90")
     assert res == []
 
 
@@ -154,6 +157,12 @@ def test_find_impl_cuda_card_rejected_on_amd_target():
     "moe_sum_reduce.reference@1.0.0",
     "mha_merge_state.reference@1.0.0",
     "moe_align_block_size.reference@1.0.0",
+    # milestone wave: dense-fp8 / fused / grouped-quant GEMMs, sparse-MLA, mhc pre-fusion
+    "mm_fp8_blockscale.reference@1.0.0",
+    "hc_prenorm_gemm.reference@1.0.0",
+    "moe_int4_w4a16.reference@1.0.0",
+    "sparse_mla_attention.reference@1.0.0",
+    "mhc_pre.reference@1.0.0",
 ])
 def test_verify_reference_card_passes_on_cpu(card_id):
     v = verify(card_id, arch="any")

@@ -1,0 +1,44 @@
+{
+  "id": "mm_fp8_blockscale@1.0.0",
+  "name": "fp8 block-scale dense GEMM",
+  "version": "1.0.0",
+  "kernel": "mm_fp8_blockscale",
+  "op": {
+    "signature": "out[M,N] = (A_deq) @ (B_deq).T  with A per-token-group fp8 e4m3, B per-block fp8 e4m3",
+    "canonical_op": "gemm",
+    "fusions": ["fp8_blockscale_dequant"]
+  },
+  "inputs": {
+    "a_fp8":    { "dtype": ["fp8"], "layout": "row_major", "rank": 2, "shape_symbols": ["M", "K"] },
+    "a_scales": { "dtype": ["fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["M", "kt"] },
+    "b_fp8":    { "dtype": ["fp8"], "layout": "row_major", "rank": 2, "shape_symbols": ["N", "K"] },
+    "b_scales": { "dtype": ["fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["nt", "kt"] }
+  },
+  "outputs": {
+    "out": { "dtype": ["bf16", "fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["M", "N"] }
+  },
+  "constraints": [
+    "K % 128 == 0",
+    "N % 128 == 0",
+    "kt == K // 128",
+    "nt == N // 128"
+  ],
+  "preconditions": [
+    "block == 128 (DeepSeek block-scale convention); operands already quantized to fp8 e4m3",
+    "a_fp8, a_scales, b_fp8, b_scales contiguous"
+  ],
+  "numerics": {
+    "reference": "xkernels.ops.gemm.reference:mm_fp8_blockscale_ref",
+    "rtol": 1e-2,
+    "atol": 1e-1,
+    "reduce_dtype": "fp32",
+    "by_dtype": {
+      "bf16": { "rtol": 1e-2, "atol": 1e-1 },
+      "fp32": { "rtol": 1e-3, "atol": 1e-3 }
+    },
+    "cross_backend_rtol": 1e-2,
+    "notes": "Parity target is dequant-then-fp32-matmul. Both backends consume identical fp8 operands and dequant identically, so the only divergence is fp32 accumulation order (empirically rel < 1e-3 on the fp32-dot path). Tolerances left honest-loose to also cover the opt-in bf16-dot path. out_dtype follows the point dtype."
+  },
+  "shape_sweep": "mm_fp8_blockscale",
+  "composes_with": []
+}

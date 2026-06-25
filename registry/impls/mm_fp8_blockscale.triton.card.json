@@ -1,0 +1,28 @@
+{
+  "id": "mm_fp8_blockscale.triton@1.0.0",
+  "implements": "mm_fp8_blockscale@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": { "kind": "registers", "bytes": 0 }
+  },
+  "specialization_knobs": {
+    "path":     { "type": "int", "choices": ["auto", "mfma", "portable"], "_doc": "Selects the native fp8 MFMA fast path (AMD fnuz operands), the dequant-then-dot portable path, or auto routing. Accepted by the triton entry callable." },
+    "dot_bf16": { "type": "bool", "choices": [false, true], "_doc": "Portable-path only: cast dequantized operands to bf16 for the tl.dot (CDNA3 bf16 MFMA, fp32 accumulate). Faster in principle, ~bf16-accurate; forces the portable path." }
+  },
+  "perf": {
+    "regime": "Dense GEMM, fp8 block-scale. Default fp32-dot is exact but does not use the native fp8 MFMA path; on gfx942 the tuned-BLAS torch reference currently beats the naive Triton tiling (issue #38 honest negative result). The native fp8 MFMA path (path='mfma', fnuz operands) is the planned fast path. Perf is arch-gated and unmeasured without a GPU.",
+    "roofline": "compute_bound",
+    "measured": []
+  },
+  "uses_primitives": ["gemm.tile_dot_fp32acc", "quant.fp8_blockscale_dequant"],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-06-25T00:00:00Z",
+    "source_path": "src/xkernels/ops/gemm/triton/entry.py"
+  },
+  "notes": "Portable Triton (runs on NVIDIA and AMD); one program per (row-tile, col-tile), dequant in registers (operands never materialized in DRAM). Internal autotune tile space (BLOCK_M/BLOCK_N/BLOCK_K, num_warps, num_stages) lives inside the @triton.autotune kernels and is not exposed at the entry callable, so it is intentionally NOT declared in specialization_knobs (the harness would report it unapplied); it will be plumbed when a GPU measurement lands. wave_size is not load-bearing at this metadata tier (arch-specific tile math is encoded in the JIT kernels)."
+}

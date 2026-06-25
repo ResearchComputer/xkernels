@@ -1,0 +1,44 @@
+{
+  "id": "moe_int4_w4a16@1.0.0",
+  "name": "INT4 W4A16 grouped fused-MoE GEMM",
+  "version": "1.0.0",
+  "kernel": "moe_int4_w4a16",
+  "op": {
+    "signature": "out[m] = sum_j w[m,j] * (A[m] @ W[e]^T)  with W dequantized from uint4b8 packed weights",
+    "canonical_op": "gemm",
+    "fusions": ["grouped", "w4a16_dequant", "moe_routing"]
+  },
+  "inputs": {
+    "A":        { "dtype": ["bf16", "fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["M", "K"] },
+    "packed":   { "dtype": ["int32"], "layout": "row_major", "rank": 3, "shape_symbols": ["E", "N", "Kp"] },
+    "scale":    { "dtype": ["bf16"], "layout": "row_major", "rank": 3, "shape_symbols": ["E", "N", "Kg"] },
+    "topk_ids": { "dtype": ["int32"], "layout": "row_major", "rank": 2, "shape_symbols": ["M", "top_k"] },
+    "topk_w":   { "dtype": ["fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["M", "top_k"] }
+  },
+  "outputs": {
+    "out": { "dtype": ["bf16", "fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["M", "N"] }
+  },
+  "constraints": [
+    "Kp == K // 8",
+    "Kg == K // 32",
+    "K % 32 == 0"
+  ],
+  "preconditions": [
+    "topk_ids in [0, E); group_size == 32 (compressed-tensors pack-quantized)",
+    "packed holds uint4b8 nibbles, low nibble = lowest K index; scale is [E,N,K//32] bf16"
+  ],
+  "numerics": {
+    "reference": "xkernels.ops.moe.reference:moe_w4a16_ref",
+    "rtol": 2e-2,
+    "atol": 2e-2,
+    "reduce_dtype": "fp32",
+    "by_dtype": {
+      "bf16": { "rtol": 2e-2, "atol": 2e-2 },
+      "fp32": { "rtol": 1e-3, "atol": 1e-3 }
+    },
+    "cross_backend_rtol": 2e-2,
+    "notes": "Weights are dequantized (uint4b8 -> bf16 via the group scale) identically by both backends, then the grouped GEMM accumulates in fp32. Divergence is fp32 accumulation order. bf16 atol/rtol 2e-2 matches the issue #1 / #26 acceptance bar."
+  },
+  "shape_sweep": "moe_int4_w4a16",
+  "composes_with": ["moe_align_block_size@1.0.0", "moe_sum_reduce@1.0.0"]
+}

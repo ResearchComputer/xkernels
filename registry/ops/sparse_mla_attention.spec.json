@@ -1,0 +1,43 @@
+{
+  "id": "sparse_mla_attention@1.0.0",
+  "name": "sparse latent-MLA attention compute (DSA-indexer-selected KV)",
+  "version": "1.0.0",
+  "kernel": "sparse_mla_attention",
+  "op": {
+    "signature": "out[t,h] = softmax_j(sm_scale * q[t,h] . kv[idx[t,j]]) @ kv[idx[t,j], :d_v]",
+    "canonical_op": "attention",
+    "fusions": ["sparse_gather", "online_softmax", "mla_mqa"]
+  },
+  "inputs": {
+    "q":       { "dtype": ["bf16", "fp32"], "layout": "row_major", "rank": 3, "shape_symbols": ["T", "H", "D"] },
+    "kv":      { "dtype": ["bf16", "fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["Kv", "D"] },
+    "indices": { "dtype": ["int32"], "layout": "row_major", "rank": 2, "shape_symbols": ["T", "topk"] }
+  },
+  "outputs": {
+    "out":        { "dtype": ["bf16", "fp32"], "layout": "row_major", "rank": 3, "shape_symbols": ["T", "H", "d_v"] },
+    "lse":        { "dtype": ["fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["T", "H"] },
+    "max_logits": { "dtype": ["fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["T", "H"] }
+  },
+  "constraints": [
+    "dtype(q) == dtype(kv)",
+    "topk <= Kv"
+  ],
+  "preconditions": [
+    "indices in [0, Kv) or < 0 (padding sentinel); sm_scale is a runtime scalar (typically 1/sqrt(D))",
+    "d_v <= D (defaults to D = full latent dim)"
+  ],
+  "numerics": {
+    "reference": "xkernels.ops.attention.sparse_mla_reference:sparse_mla_attention_ref",
+    "rtol": 1e-2,
+    "atol": 1e-1,
+    "reduce_dtype": "fp32",
+    "by_dtype": {
+      "bf16": { "rtol": 1e-2, "atol": 1e-1 },
+      "fp32": { "rtol": 1e-4, "atol": 1e-3 }
+    },
+    "cross_backend_rtol": 1e-2,
+    "notes": "Flash online-softmax in fp32 over the indexer-selected latent KV. Both backends consume identical q/kv/indices, so divergence is fp32 accumulation order (empirically rel ~9e-4 on the bf16 path). lse/max_logits are fp32 and can be O(sqrt(D)); the larger atol covers near-zero softmax rows / attention sinks."
+  },
+  "shape_sweep": "sparse_mla_attention",
+  "composes_with": ["mha_merge_state@1.0.0"]
+}

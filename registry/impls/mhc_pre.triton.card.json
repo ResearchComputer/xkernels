@@ -1,0 +1,25 @@
+{
+  "id": "mhc_pre.triton@1.0.0",
+  "implements": "mhc_pre@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": { "kind": "registers", "bytes": 0 }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "Fused MHC pre-norm: RMS-prenorm projection split into pre/post/comb heads, sinkhorn mixing, and the pre-weighted residual combine that produces layer_input (the branch the TileLang kernel mislowers on gfx942). Perf unmeasured without a GPU.",
+    "roofline": "memory_bound",
+    "measured": []
+  },
+  "uses_primitives": ["norm.rms_rsqrt", "gemm.tile_dot_fp32acc", "elementwise.sigmoid_heads", "reduce.sinkhorn", "reduce.residual_combine"],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-06-25T00:00:00Z",
+    "source_path": "src/xkernels/ops/mhc/triton/pre_post_kernel.py"
+  },
+  "notes": "Portable Triton (runs on NVIDIA and AMD); a drop-in replacement for the TileLang fusion. The near-twin mhc_post (sinkhorn-mixed residual + gated block update) shares this Op Spec family and could be added as its own op/spec by the same procedure. wave_size not load-bearing at this metadata tier."
+}

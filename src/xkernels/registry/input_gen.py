@@ -5,6 +5,7 @@ One generator per Op Spec id. Each takes a shape-sweep ``point`` (symbolic dims
 backend-neutral reference and the backend callable (they share the signature
 modulo ``backend=``). Generators are pinned and seeded — determinism rule §5.4.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -62,8 +63,12 @@ def _moe_align_block_size(point: dict[str, Any], seed: int, device: str) -> dict
     g = torch.Generator(device=device).manual_seed(int(seed))
     num_experts = int(point["num_experts"])
     topk_ids = torch.randint(
-        0, num_experts, (int(point["M"]), int(point["top_k"])),
-        generator=g, device=device, dtype=torch.int32,
+        0,
+        num_experts,
+        (int(point["M"]), int(point["top_k"])),
+        generator=g,
+        device=device,
+        dtype=torch.int32,
     )
     return {
         "topk_ids": topk_ids,
@@ -73,12 +78,105 @@ def _moe_align_block_size(point: dict[str, Any], seed: int, device: str) -> dict
     }
 
 
+def _mm_fp8_blockscale(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
+    # fp8 block-scale operands are produced by the exact-dequant quant helpers,
+    # so reference and every backend consume byte-identical fp8 inputs.
+    from ..ops.gemm.reference import per_block_quant_fp8, per_token_group_quant_fp8
+
+    block = int(point.get("block", 128))
+    M, K, N = int(point["M"]), int(point["K"]), int(point["N"])
+    out_dtype = to_torch_dtype(point["dtype"])
+    a = _gen(device, torch.float32, M, K, seed=seed)
+    b = _gen(device, torch.float32, N, K, seed=seed + 1)
+    a_fp8, a_scales = per_token_group_quant_fp8(a, block=block)
+    b_fp8, b_scales = per_block_quant_fp8(b, block=block)
+    return {
+        "a_fp8": a_fp8,
+        "a_scales": a_scales,
+        "b_fp8": b_fp8,
+        "b_scales": b_scales,
+        "block": block,
+        "out_dtype": out_dtype,
+    }
+
+
+def _hc_prenorm_gemm(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
+    # n_splits=1: the per-split tensor equals the sum and is element-wise
+    # comparable (the split-K>1 sum-invariant is validated in tests/).
+    dt = to_torch_dtype(point["dtype"])
+    T, K, N = int(point["T"]), int(point["K"]), int(point["N"])
+    a = _gen(device, dt, T, K, seed=seed)
+    fn = _gen(device, torch.float32, N, K, seed=seed + 1)
+    return {"a": a, "fn": fn, "n_splits": 1}
+
+
+def _moe_int4_w4a16(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
+    from ..ops.moe.w4a16 import make_w4a16_weights
+
+    dt = to_torch_dtype(point["dtype"])
+    M, K, N = int(point["M"]), int(point["K"]), int(point["N"])
+    E, top_k = int(point["E"]), int(point["top_k"])
+    group_size = int(point.get("group_size", 32))
+    A = _gen(device, dt, M, K, seed=seed)
+    # exact-inverse packed/scale generator -> both backends dequant identically
+    packed, scale, _w = make_w4a16_weights(E, N, K, group_size, device=device, seed=seed + 1)
+    g = torch.Generator(device=device).manual_seed(seed + 2)
+    topk_ids = torch.randint(0, E, (M, top_k), generator=g, device=device, dtype=torch.int32)
+    topk_w = torch.rand(M, top_k, generator=g, device=device, dtype=torch.float32)
+    return {
+        "A": A,
+        "packed": packed,
+        "scale": scale,
+        "topk_ids": topk_ids,
+        "topk_w": topk_w,
+        "group_size": group_size,
+        "mul_routed_weight": True,
+    }
+
+
+def _sparse_mla_attention(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
+    dt = to_torch_dtype(point["dtype"])
+    T, H, D = int(point["T"]), int(point["H"]), int(point["D"])
+    Kv, topk = int(point["Kv"]), int(point["topk"])
+    q = _gen(device, dt, T, H, D, seed=seed)
+    kv = _gen(device, dt, Kv, D, seed=seed + 1)
+    g = torch.Generator(device=device).manual_seed(seed + 2)
+    # all-valid columns (no -1 padding / sink in the mandatory sweep)
+    indices = torch.randint(0, Kv, (T, topk), generator=g, device=device, dtype=torch.int32)
+    sm_scale = float(1.0 / (D**0.5))
+    return {"q": q, "kv": kv, "indices": indices, "sm_scale": sm_scale}
+
+
+def _mhc_pre(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
+    dt = to_torch_dtype(point["dtype"])
+    T, hc_mult, hidden = int(point["T"]), int(point["hc_mult"]), int(point["hidden"])
+    hc_mult3 = 2 * hc_mult + hc_mult * hc_mult
+    residual = _gen(device, dt, T, hc_mult, hidden, seed=seed)
+    fn = _gen(device, torch.float32, hc_mult3, hc_mult * hidden, seed=seed + 1)
+    hc_scale = _gen(device, torch.float32, 3, seed=seed + 2)
+    hc_base = _gen(device, torch.float32, hc_mult3, seed=seed + 3)
+    return {
+        "residual": residual,
+        "fn": fn,
+        "hc_scale": hc_scale,
+        "hc_base": hc_base,
+        "rms_eps": 1e-6,
+        "hc_eps": 1e-6,
+        "sinkhorn_iters": int(point.get("sinkhorn_iters", 2)),
+    }
+
+
 _GENERATORS: dict[str, Callable[[dict, int, str], dict[str, Any]]] = {
     "fused_ffn@1.0.0": _ffn,
     "dual_rmsnorm@1.0.0": _dual_rmsnorm,
     "moe_sum_reduce@1.0.0": _moe_sum_reduce,
     "mha_merge_state@1.0.0": _mha_merge_state,
     "moe_align_block_size@1.0.0": _moe_align_block_size,
+    "mm_fp8_blockscale@1.0.0": _mm_fp8_blockscale,
+    "hc_prenorm_gemm@1.0.0": _hc_prenorm_gemm,
+    "moe_int4_w4a16@1.0.0": _moe_int4_w4a16,
+    "sparse_mla_attention@1.0.0": _sparse_mla_attention,
+    "mhc_pre@1.0.0": _mhc_pre,
 }
 
 

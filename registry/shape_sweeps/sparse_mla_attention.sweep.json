@@ -1,0 +1,9 @@
+{
+  "default_dtype": "bf16",
+  "points": [
+    { "dtype": "bf16", "T": 4, "H": 8,  "D": 64,  "Kv": 32, "topk": 16 },
+    { "dtype": "bf16", "T": 1, "H": 8,  "D": 64,  "Kv": 32, "topk": 16 },
+    { "dtype": "bf16", "T": 8, "H": 16, "D": 128, "Kv": 64, "topk": 32 },
+    { "dtype": "fp32", "T": 4, "H": 8,  "D": 64,  "Kv": 32, "topk": 16 }
+  ]
+}

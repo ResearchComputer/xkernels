@@ -1,0 +1,9 @@
+{
+  "default_dtype": "bf16",
+  "points": [
+    { "dtype": "bf16", "T": 4, "hc_mult": 2, "hidden": 32 },
+    { "dtype": "bf16", "T": 1, "hc_mult": 2, "hidden": 32 },
+    { "dtype": "bf16", "T": 8, "hc_mult": 3, "hidden": 48 },
+    { "dtype": "fp32", "T": 4, "hc_mult": 2, "hidden": 32 }
+  ]
+}

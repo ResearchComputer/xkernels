@@ -1,0 +1,18 @@
+{
+  "id": "moe_int4_w4a16.reference@1.0.0",
+  "implements": "moe_int4_w4a16@1.0.0",
+  "backend": "reference",
+  "arch": { "family": "any", "wave_size": 0, "scratch": { "kind": "none", "bytes": 0 } },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "pure-torch oracle: explicit unpack -> dequant -> per-(token,expert) grouped GEMM with routing-weight fold. Written for clarity, not speed.",
+    "roofline": "latency_bound"
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-06-25T00:00:00Z",
+    "source_path": "src/xkernels/ops/moe/reference.py"
+  }
+}

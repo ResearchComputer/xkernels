@@ -1,0 +1,18 @@
+{
+  "id": "mhc_pre.reference@1.0.0",
+  "implements": "mhc_pre@1.0.0",
+  "backend": "reference",
+  "arch": { "family": "any", "wave_size": 0, "scratch": { "kind": "none", "bytes": 0 } },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "pure-torch oracle: RMS rsqrt, fn projection, sigmoid pre/post heads, sinkhorn comb, and the pre-weighted residual combine (layer_input). Written for clarity, not speed.",
+    "roofline": "latency_bound"
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-06-25T00:00:00Z",
+    "source_path": "src/xkernels/ops/mhc/pre_post_reference.py"
+  }
+}

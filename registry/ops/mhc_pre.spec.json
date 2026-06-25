@@ -1,0 +1,44 @@
+{
+  "id": "mhc_pre@1.0.0",
+  "name": "MHC pre-norm fusion (RMS-prenorm projection -> pre/post/comb heads + residual combine)",
+  "version": "1.0.0",
+  "kernel": "mhc_pre",
+  "op": {
+    "signature": "(layer_input, post, comb) = rmsnorm_proj_split_combine(residual, fn, hc_scale, hc_base)",
+    "canonical_op": "mhc",
+    "fusions": ["rmsnorm_prologue", "sigmoid_heads", "sinkhorn", "residual_combine"]
+  },
+  "inputs": {
+    "residual": { "dtype": ["bf16", "fp32"], "layout": "row_major", "rank": 3, "shape_symbols": ["T", "hc_mult", "hidden"] },
+    "fn":       { "dtype": ["fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["hc_mult3", "K_fn"] },
+    "hc_scale": { "dtype": ["fp32"], "layout": "row_major", "rank": 1, "shape_symbols": ["3"] },
+    "hc_base":  { "dtype": ["fp32"], "layout": "row_major", "rank": 1, "shape_symbols": ["hc_mult3"] }
+  },
+  "outputs": {
+    "layer_input": { "dtype": ["bf16", "fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["T", "hidden"] },
+    "post":        { "dtype": ["fp32"], "layout": "row_major", "rank": 3, "shape_symbols": ["T", "hc_mult", "1"] },
+    "comb":        { "dtype": ["fp32"], "layout": "row_major", "rank": 3, "shape_symbols": ["T", "hc_mult", "hc_mult"] }
+  },
+  "constraints": [
+    "hc_mult3 == 2*hc_mult + hc_mult*hc_mult",
+    "K_fn == hc_mult*hidden"
+  ],
+  "preconditions": [
+    "rms_eps > 0 and hc_eps > 0; sinkhorn_iters >= 1 (runtime scalars)",
+    "hc_scale is [3] (pre/post/comb head scales); hc_base is [hc_mult3] per-channel bias"
+  ],
+  "numerics": {
+    "reference": "xkernels.ops.mhc.pre_post_reference:mhc_pre_ref",
+    "rtol": 1e-2,
+    "atol": 1e-2,
+    "reduce_dtype": "fp32",
+    "by_dtype": {
+      "bf16": { "rtol": 1e-2, "atol": 1e-2 },
+      "fp32": { "rtol": 1e-4, "atol": 1e-4 }
+    },
+    "cross_backend_rtol": 1e-2,
+    "notes": "All math in fp32 (RMS rsqrt, projection, sigmoid pre/post heads, sinkhorn mixing, residual combine); layer_input is cast back to residual.dtype. Divergence is fp32 accumulation order only. This is the full pre-fusion that replaces the TileLang kernel whose layer_input branch mislowers on gfx942."
+  },
+  "shape_sweep": "mhc_pre",
+  "composes_with": ["hc_prenorm_gemm@1.0.0"]
+}

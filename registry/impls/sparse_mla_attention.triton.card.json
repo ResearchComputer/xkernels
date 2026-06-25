@@ -1,0 +1,25 @@
+{
+  "id": "sparse_mla_attention.triton@1.0.0",
+  "implements": "sparse_mla_attention@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": { "kind": "registers", "bytes": 0 }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "One Triton program per (token, head), streaming the top-k in BLOCK_N=64 chunks with online (flash) softmax and a [D] fp32 value accumulator; the attention sink folds in after the stream. Variant-agnostic (CSA/HCS/SWA selection is upstream of this compute). Perf unmeasured without a GPU.",
+    "roofline": "memory_bound",
+    "measured": []
+  },
+  "uses_primitives": ["attention.online_softmax", "attention.sink_fold", "attention.mqa_value_acc"],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-06-25T00:00:00Z",
+    "source_path": "src/xkernels/ops/attention/triton/sparse_mla_kernel.py"
+  },
+  "notes": "Portable Triton (runs on NVIDIA and AMD). BLOCK_N and num_warps are fixed internally (not exposed at the entry callable, hence not declared as knobs). This is the CUDA->HIP porting milestone target (§9): the same Op Spec reference validates both a future native CUDA card and a native HIP card via verify_parity. wave_size not load-bearing at this metadata tier."
+}
