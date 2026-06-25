@@ -6,6 +6,8 @@ reduction (issue #5), and the block-align dispatch builder (issue #4). Each
 public op dispatches across a pure-torch reference (default on CPU / no Triton)
 and, where available, an autotuned Triton backend.
 """
+from ..._backends import Backend
+from ..._dispatch import backend_registration_guard
 from .align import moe_align_block_size
 from .interface import fused_moe_int4_w4a16
 from .mxfp4 import dequant_mxfp4_weight, make_mxfp4_moe_weights
@@ -24,37 +26,37 @@ from .w4a16 import (
 # stock ``triton``) inside tokenspeed; see ``xkernels/_triton_compat.py``.
 # This matters for ``moe_int4_kernel`` in particular: its ``tl.dot`` asserts that
 # both operands share the same dtype *object*, which fails across packages.
-try:  # pragma: no cover - requires triton
+with backend_registration_guard(
+    "moe_int4_w4a16", Backend.TRITON, source="xkernels.ops.moe.triton.moe_int4_kernel"
+):  # pragma: no cover - requires triton
     from ..._triton_compat import triton_import_ctx
 
     with triton_import_ctx():
         from .triton import moe_int4_kernel  # noqa: F401
-except Exception:
-    pass
 
-try:  # pragma: no cover - requires triton
+with backend_registration_guard(
+    "moe_mxfp4", Backend.TRITON, source="xkernels.ops.moe.triton.moe_mxfp4_kernel"
+):  # pragma: no cover - requires triton
     from ..._triton_compat import triton_import_ctx
 
     with triton_import_ctx():
         from .triton import moe_mxfp4_kernel  # noqa: F401
-except Exception:
-    pass
 
-try:  # pragma: no cover - requires triton
+with backend_registration_guard(
+    "moe_sum_reduce", Backend.TRITON, source="xkernels.ops.moe.triton.sum_reduce_kernel"
+):  # pragma: no cover - requires triton
     from ..._triton_compat import triton_import_ctx
 
     with triton_import_ctx():
         from .triton import sum_reduce_kernel  # noqa: F401
-except Exception:
-    pass
 
-try:  # pragma: no cover - requires triton
+with backend_registration_guard(
+    "moe_align_block_size", Backend.TRITON, source="xkernels.ops.moe.triton.align_kernel"
+):  # pragma: no cover - requires triton
     from ..._triton_compat import triton_import_ctx
 
     with triton_import_ctx():
         from .triton import align_kernel  # noqa: F401
-except Exception:
-    pass
 
 __all__ = [
     "fused_moe_int4_w4a16",

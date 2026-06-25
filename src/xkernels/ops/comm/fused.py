@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import torch
 
+from ..._backends import Backend
+from ..._dispatch import backend_registration_guard
 from .hierarchical import hierarchical_all_reduce
 
 __all__ = [
@@ -48,12 +50,14 @@ def residual_rmsnorm(
     if use_triton is None:
         use_triton = x.is_cuda
     if use_triton:
-        try:
+        with backend_registration_guard(
+            "residual_rmsnorm",
+            Backend.TRITON,
+            source="xkernels.ops.comm.triton.add_rmsnorm_kernel",
+        ):
             from .triton.add_rmsnorm_kernel import add_rmsnorm_triton
 
             return add_rmsnorm_triton(x, residual, weight, eps)
-        except Exception:
-            pass
     return add_rmsnorm_ref(x, residual, weight, eps)
 
 

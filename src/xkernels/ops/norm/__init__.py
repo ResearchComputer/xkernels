@@ -3,18 +3,22 @@
 Ships the fused parallel dual RMSNorm (MLA ``q_a`` / ``kv_a`` latents, issue #2):
 two independent RMSNorms over differently-sized feature dims in a single launch.
 """
+from ..._backends import Backend
+from ..._dispatch import backend_registration_guard
 from .interface import dual_rmsnorm
 
 # Import the Triton backend for its registration side effect. Optional.
 # The import is routed through the optional ``_triton_compat`` redirect so the kernel
 # binds ``tokenspeed_triton`` (not stock ``triton``) when running inside
 # tokenspeed; see ``xkernels/_triton_compat.py``.
-try:  # pragma: no cover - requires triton
+with backend_registration_guard(
+    "dual_rmsnorm",
+    Backend.TRITON,
+    source="xkernels.ops.norm.triton.dual_rmsnorm_kernel",
+):  # pragma: no cover - requires triton
     from ..._triton_compat import triton_import_ctx
 
     with triton_import_ctx():
         from .triton import dual_rmsnorm_kernel  # noqa: F401
-except Exception:
-    pass
 
 __all__ = ["dual_rmsnorm"]

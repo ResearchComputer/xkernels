@@ -1,6 +1,7 @@
 """xkernels — customized compute kernels across vendors and kernel types."""
 
 from . import registry
+from ._dispatch import backend_diagnostics
 from .ops.attention import (
     dsa_indexer_logits,
     dsa_indexer_topk,
@@ -66,6 +67,7 @@ __all__ = [
     "flat_all_reduce",
     "hierarchical_all_reduce",
     "residual_rmsnorm",
+    "backend_diagnostics",
     "__version__",
     # agent-native surfaces
     "find_impl",
