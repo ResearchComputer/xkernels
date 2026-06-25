@@ -39,6 +39,19 @@ x-kernel-lib:
     supersedes: []
 ---
 
+> **Maturity note — harness perf fields.** `verify(..., measure_perf=True)`
+> returns `perf = {ms, tflops, achieved_bw_pct}`, but today only **`ms`** is
+> populated (median wall-clock via `do_bench`). `tflops` and `achieved_bw_pct` are
+> stubbed to `None` until an op-specific FLOP/byte model lands (open question
+> §11), and the normalized `stall_reasons`/`occupancy` vocabulary §10 describes
+> is not emitted either. So the only in-harness objective you can read directly
+> today is **min `perf.ms`**. When this skill references tflops, achieved
+> bandwidth, occupancy, or stalls, compute them yourself — `ms` + your own
+> FLOP/byte model for `tflops`/`achieved_bw_pct`; `rocprof` (AMD) or Nsight
+> Compute (NVIDIA) for occupancy and stalls — and pass them to
+> `record_measurement(..., tflops=, achieved_bw_pct=)`, which accepts both even
+> though `verify()` doesn't populate them yet.
+
 ## Procedure
 
 1. `get_impl_card(impl_card_id)`. Read `specialization_knobs` — this is the
@@ -48,8 +61,10 @@ x-kernel-lib:
 3. For each point, `verify(impl_card_id, arch, knobs=<point>, shapes=[<concrete point>])`.
    Discard any point where `correctness.passed` is false — a fast-but-wrong kernel
    is never the winner.
-4. Among passing points, pick the min `perf.ms` (or max `tflops` / `achieved_bw_pct`
-   if an op-specific model exists — §11).
+4. Among passing points, pick the min `perf.ms` — the only objective `verify()`
+   populates today (see the maturity note above; `tflops`/`achieved_bw_pct` are
+   stubbed to `None`). If you compute tflops/bandwidth yourself from an external
+   FLOP/byte model, you may optimize on that instead and record it in step 5.
 5. `record_measurement(impl_card_id, arch, shape, dtype, knobs=<winner>,
    ms=..., source=<verify run_id>)`. The next task with the same
    (arch, shape, dtype) is now served from cache — autotuning is skipped (§6.2).
@@ -61,5 +76,7 @@ x-kernel-lib:
   first, with justification.
 - Recording a winner without a `source` run id — un-sourced measurements are
   dropped by the loader (§2.4). Always pass `verify`'s `artifacts.run_id`.
-- Accepting a high-variance point — the harness reports median+IQR; a point with
-  high variance is flagged, not silently averaged (§5.4).
+- Accepting a high-variance point — the harness reports only the **median** ms
+  (a single number; no IQR/variance). If a point looks like a lucky-low outlier,
+  re-time it at a higher iteration count before crowning it: a noisy winner is
+  useless to the next task that skips autotuning off it.

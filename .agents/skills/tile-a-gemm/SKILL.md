@@ -41,6 +41,17 @@ x-kernel-lib:
     supersedes: []
 ---
 
+> **Maturity note — harness perf fields.** `verify(..., measure_perf=True)`
+> returns `perf = {ms, tflops, achieved_bw_pct}`, but today only **`ms`** is
+> populated (median wall-clock via `do_bench`). `tflops` and `achieved_bw_pct` are
+> stubbed to `None` until an op-specific FLOP/byte model lands (open question
+> §11). So the validation gate "achieved compute is a reasonable fraction of the
+> arch roofline" is checked by computing tflops yourself from `ms` + the GEMM
+> FLOP count (`2*M*N*K`) and the arch's peak FP rate, then comparing to the roofline
+> (NVIDIA peak, or the AMD MFMA ceiling on CDNA — never grade AMD against the
+> NVIDIA card, §10). Pass it to `record_measurement(..., tflops=)`, which accepts
+> it even though `verify()` doesn't populate it yet.
+
 ## Procedure
 
 1. `get_op_spec(op_id)`. Confirm `op.canonical_op == "gemm"`, read `constraints`

@@ -42,6 +42,19 @@ x-kernel-lib:
     supersedes: []
 ---
 
+> **Maturity note — harness perf fields.** `verify(..., measure_perf=True)`
+> returns `perf = {ms, tflops, achieved_bw_pct}`, but today only **`ms`** is
+> populated (median wall-clock via `do_bench`). `tflops` and `achieved_bw_pct` are
+> stubbed to `None` until an op-specific FLOP/byte model lands (open question
+> §11), and the normalized `stall_reasons`/`occupancy` vocabulary §10 describes
+> is not emitted either. So the only in-harness objective you can read directly
+> today is **min `perf.ms`**; grade tflops/achieved-bandwidth against the AMD
+> roofline (rocBLAS/hipBLASLt/Composable Kernel baseline — step 1) by computing
+> them yourself from `ms` + a FLOP/byte model, and use `rocprof`/`omniperf` for
+> occupancy & stalls. Pass them to `record_measurement(..., tflops=,
+> achieved_bw_pct=)`, which accepts both even though `verify()` doesn't populate
+> them yet.
+
 ## Procedure
 
 Separate from `port-cuda-to-hip` on purpose: functional port and performance

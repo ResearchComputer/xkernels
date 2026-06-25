@@ -12,7 +12,7 @@ x-kernel-lib:
   backend_scope: [cuda, hip]
   when_to_use:
     triggers:
-      - "card correct but achieved_bw_pct below target"
+      - "card correct but memory-bound and far from the arch bandwidth roofline (compute achieved_bw_pct yourself — verify() stubs it to None; see maturity note)"
       - "perf.roofline == memory_bound and regime misses"
     preconditions:
       - "verify(card).correctness.passed == true"
@@ -42,11 +42,26 @@ x-kernel-lib:
     supersedes: []
 ---
 
+> **Maturity note — harness perf fields.** `verify(..., measure_perf=True)`
+> returns `perf = {ms, tflops, achieved_bw_pct}`, but today only **`ms`** is
+> populated (median wall-clock via `do_bench`). `tflops` and `achieved_bw_pct` are
+> stubbed to `None` until an op-specific FLOP/byte model lands (open question
+> §11), and the normalized `stall_reasons`/`occupancy` vocabulary §10 describes
+> is not emitted either. So the only in-harness objective you can read directly
+> today is **min `perf.ms`**. When this skill references tflops, achieved
+> bandwidth, occupancy, or stalls, compute them yourself — `ms` + your own
+> FLOP/byte model for `tflops`/`achieved_bw_pct`; `rocprof` (AMD) or Nsight
+> Compute (NVIDIA) for occupancy and stalls — and pass them to
+> `record_measurement(..., tflops=, achieved_bw_pct=)`, which accepts both even
+> though `verify()` doesn't populate them yet.
+
 ## Procedure
 
 1. `verify(impl_card_id, arch, measure_perf=True)`. Read `perf.ms` and
-   `correctness` (must be passing). Pull the card's `perf.roofline` and
-   `arch.wave_size`.
+   `correctness` (must be passing). Pull the card's `perf.roofline` (the card's
+   *declared* metadata — real) and `arch.wave_size`. Note `perf.achieved_bw_pct`
+   is stubbed to `None`: compute it yourself as
+   `bytes_moved / (perf.ms * peak_bandwidth)` to see how far you are from the roofline.
 2. Confirm memory-bound: the op's byte traffic dominates. For a GEMM that's
    usually compute-bound — if a GEMM shows memory-bound, suspect redundant
    reloads or a transpose materialization.
