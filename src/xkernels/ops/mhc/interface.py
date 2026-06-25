@@ -61,15 +61,15 @@ def tf32_hc_prenorm_gemm(
     pre-allocated ``gemm_out_mul [n_splits, T, N]`` / ``gemm_out_sqrsum
     [n_splits, T]`` fp32 buffers in place and returns ``None``.
     """
-    mul, sqr = hc_prenorm_gemm(a, fn, n_splits=n_splits, backend=backend)
-    if gemm_out_mul.shape != mul.shape or gemm_out_sqrsum.shape != sqr.shape:
-        raise ValueError(
-            f"out buffer shape mismatch: mul {tuple(gemm_out_mul.shape)} vs "
-            f"{tuple(mul.shape)}, sqrsum {tuple(gemm_out_sqrsum.shape)} vs "
-            f"{tuple(sqr.shape)}"
-        )
-    gemm_out_mul.copy_(mul)
-    gemm_out_sqrsum.copy_(sqr)
+    dispatch(
+        "hc_prenorm_gemm_out",
+        a,
+        fn,
+        gemm_out_mul,
+        gemm_out_sqrsum,
+        n_splits=n_splits,
+        backend=backend,
+    )
     return None
 
 

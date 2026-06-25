@@ -23,7 +23,7 @@ from ...._backends import Backend
 from ...._dispatch import register
 from .configs import resolve_mhc_gemm_config
 
-__all__ = ["hc_prenorm_gemm_triton", "hc_prenorm_gemm_kernel"]
+__all__ = ["hc_prenorm_gemm_triton", "hc_prenorm_gemm_out_triton", "hc_prenorm_gemm_kernel"]
 
 
 @triton.jit
@@ -74,19 +74,31 @@ def hc_prenorm_gemm_kernel(
     tl.store(sqr_ptr + s * stride_ss + rows * stride_st, sq, mask=row_mask)
 
 
-def hc_prenorm_gemm_triton(a, fn, *, n_splits):
+def _check_shapes(a, fn, gemm_out_mul, gemm_out_sqrsum, n_splits):
     if n_splits < 1:
         raise ValueError(f"n_splits must be >= 1, got {n_splits}")
-    a = a.contiguous()
-    fn = fn.contiguous()
     T, K = a.shape
     N = fn.shape[0]
     if fn.shape[1] != K:
         raise ValueError(f"fn must be [N, K] with K={K}, got {tuple(fn.shape)}")
-    mul = torch.empty(n_splits, T, N, device=a.device, dtype=torch.float32)
-    sqr = torch.empty(n_splits, T, device=a.device, dtype=torch.float32)
+    expected_mul = (n_splits, T, N)
+    expected_sqr = (n_splits, T)
+    if tuple(gemm_out_mul.shape) != expected_mul or tuple(gemm_out_sqrsum.shape) != expected_sqr:
+        raise ValueError(
+            f"out buffer shape mismatch: mul {tuple(gemm_out_mul.shape)} vs "
+            f"{expected_mul}, sqrsum {tuple(gemm_out_sqrsum.shape)} vs {expected_sqr}"
+        )
+    if gemm_out_mul.dtype != torch.float32 or gemm_out_sqrsum.dtype != torch.float32:
+        raise ValueError("out buffers must be torch.float32")
+    return T, K, N
+
+
+def hc_prenorm_gemm_out_triton(a, fn, gemm_out_mul, gemm_out_sqrsum, *, n_splits):
+    T, K, N = _check_shapes(a, fn, gemm_out_mul, gemm_out_sqrsum, n_splits)
+    a = a.contiguous()
+    fn = fn.contiguous()
     if T == 0:
-        return mul, sqr  # no rows; nothing to write
+        return None  # no rows; nothing to write
 
     # Perf pass (#39): block sizes + CDNA3 lowering knobs are resolved from a
     # config (env-overridable for the on-device sweep). The default reproduces
@@ -107,18 +119,30 @@ def hc_prenorm_gemm_triton(a, fn, *, n_splits):
         "kpack": int(cfg.get("kpack", 2)),
     }
     hc_prenorm_gemm_kernel[grid](
-        a, fn, mul, sqr,
+        a, fn, gemm_out_mul, gemm_out_sqrsum,
         T, K, N, n_splits, num_kblocks,
         a.stride(0), a.stride(1),
         fn.stride(0), fn.stride(1),
-        mul.stride(0), mul.stride(1), mul.stride(2),
-        sqr.stride(0), sqr.stride(1),
+        gemm_out_mul.stride(0), gemm_out_mul.stride(1), gemm_out_mul.stride(2),
+        gemm_out_sqrsum.stride(0), gemm_out_sqrsum.stride(1),
         BLOCK_M=BLOCK_M, BLOCK_K=BLOCK_K, BLOCK_N=BLOCK_N,
         num_warps=int(cfg.get("num_warps", 4)),
         num_stages=int(cfg.get("num_stages", 2)),
         **amd_knobs,
     )
+    return None
+
+
+def hc_prenorm_gemm_triton(a, fn, *, n_splits):
+    if n_splits < 1:
+        raise ValueError(f"n_splits must be >= 1, got {n_splits}")
+    T = a.shape[0]
+    N = fn.shape[0]
+    mul = torch.empty(n_splits, T, N, device=a.device, dtype=torch.float32)
+    sqr = torch.empty(n_splits, T, device=a.device, dtype=torch.float32)
+    hc_prenorm_gemm_out_triton(a, fn, mul, sqr, n_splits=n_splits)
     return mul, sqr
 
 
 register("hc_prenorm_gemm", Backend.TRITON)(hc_prenorm_gemm_triton)
+register("hc_prenorm_gemm_out", Backend.TRITON)(hc_prenorm_gemm_out_triton)

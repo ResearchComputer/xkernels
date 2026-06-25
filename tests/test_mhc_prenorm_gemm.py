@@ -81,6 +81,31 @@ def test_faithful_wrapper_writes_in_place():
     torch.testing.assert_close(gemm_out_sqrsum.sum(0), fsqr, atol=1e-4, rtol=1e-4)
 
 
+def test_faithful_wrapper_uses_out_backend(monkeypatch):
+    """The faithful wrapper should not allocate through the convenience API."""
+    import xkernels.ops.mhc.interface as mhc_interface
+
+    dev = _dev()
+    torch.manual_seed(22)
+    T, K, N, n_splits = 3, 64, 8, 2
+    a = torch.randn(T, K, device=dev, dtype=torch.bfloat16)
+    fn = torch.randn(N, K, device=dev, dtype=torch.float32)
+    gemm_out_mul = torch.full((n_splits, T, N), float("nan"), device=dev)
+    gemm_out_sqrsum = torch.full((n_splits, T), float("nan"), device=dev)
+
+    def _unexpected_allocating_path(*args, **kwargs):
+        raise AssertionError("tf32_hc_prenorm_gemm should dispatch to hc_prenorm_gemm_out")
+
+    monkeypatch.setattr(mhc_interface, "hc_prenorm_gemm", _unexpected_allocating_path)
+    ret = mhc_interface.tf32_hc_prenorm_gemm(
+        a, fn, gemm_out_mul, gemm_out_sqrsum, n_splits, backend="reference"
+    )
+    assert ret is None
+    fmul, fsqr = _full(a, fn)
+    torch.testing.assert_close(gemm_out_mul.sum(0), fmul, atol=1e-4, rtol=1e-4)
+    torch.testing.assert_close(gemm_out_sqrsum.sum(0), fsqr, atol=1e-4, rtol=1e-4)
+
+
 from xkernels._backends import Backend  # noqa: E402
 from xkernels._dispatch import registered_backends  # noqa: E402
 
