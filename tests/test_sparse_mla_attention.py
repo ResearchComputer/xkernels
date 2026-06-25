@@ -15,14 +15,9 @@ import pytest
 import torch
 
 from xkernels.ops.attention.sparse_mla_reference import sparse_mla_attention_ref
+from xkernels.utils.testing import gpu_device_or_skip as _dev
 
 _INTERP = os.environ.get("TRITON_INTERPRET", "0") == "1"
-
-
-def _dev():
-    if _INTERP:
-        return "cpu"
-    return "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def _naive(q, kv, indices, sm_scale, topk_length, attn_sink, d_v):

@@ -34,6 +34,7 @@ from xkernels._backends import Backend
 from xkernels._dispatch import registered_backends
 from xkernels.ops.moe.mxfp4 import dequant_mxfp4_weight, make_mxfp4_moe_weights
 from xkernels.ops.moe.mxfp4_reference import moe_mxfp4_ref
+from xkernels.utils.testing import gpu_device_or_skip as _device
 
 _INTERP = os.environ.get("TRITON_INTERPRET", "0") == "1"
 _HAS_TRITON = Backend.TRITON in registered_backends("moe_mxfp4")
@@ -45,14 +46,6 @@ _LIMIT = 10.0
 # the 1–2/16384 near-zero elements that land just over 2e-2 (issue #43 acceptance
 # is "~2e-2"). The fp32 interpreter path is tighter at 2e-2.
 _TOL = 2e-2 if _INTERP else 3e-2
-
-
-def _device():
-    if _INTERP:
-        return "cpu"
-    if torch.cuda.is_available():
-        return "cuda"
-    pytest.skip("no GPU and TRITON_INTERPRET!=1")
 
 
 def _pin_single_config():

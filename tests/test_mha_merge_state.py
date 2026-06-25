@@ -16,17 +16,10 @@ from xkernels import mha_merge_state
 from xkernels._backends import Backend
 from xkernels._dispatch import registered_backends
 from xkernels.ops.attention.reference import merge_state_ref
+from xkernels.utils.testing import gpu_device_or_skip as _device
 
 _INTERP = os.environ.get("TRITON_INTERPRET", "0") == "1"
 _HAS_TRITON = Backend.TRITON in registered_backends("mha_merge_state")
-
-
-def _device():
-    if _INTERP:
-        return "cpu"
-    if torch.cuda.is_available():
-        return "cuda"
-    pytest.skip("no GPU and TRITON_INTERPRET!=1")
 
 
 def _inputs(T, H, D, dtype, dev):

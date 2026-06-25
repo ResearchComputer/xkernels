@@ -19,16 +19,15 @@ This directory contains documentation for the xkernels project, organized by iss
 - **[issue-17-bf16-dense-gemm.md](./issue-17-bf16-dense-gemm.md)** - bf16 dense GEMM MFMA characterization and `TORCH_BLAS_PREFER_HIPBLASLT=0` recommendation
 - **[issue-32-sparse-mla-attention.md](./issue-32-sparse-mla-attention.md)** - Sparse-MLA attention compute for DeepSeek-V4
 - **[issue-36-mhc-prenorm-gemm.md](./issue-36-mhc-prenorm-gemm.md)** - MHC hidden-compression prenorm GEMM
+- **[issue-38-fp8-blockscale-gemm.md](./issue-38-fp8-blockscale-gemm.md)** - fp8 block-scale dense GEMM (portable gfx942 path)
+- **[issue-39-v4-perf-pass.md](./issue-39-v4-perf-pass.md)** - Tunable launch knobs for the V4 sparse-MLA + MHC prenorm GEMM
+- **[issue-41-fp8-mfma-blockscale-gemm.md](./issue-41-fp8-mfma-blockscale-gemm.md)** - Native fp8 MFMA fast path for the block-scale GEMM
 - **[issue-43-mxfp4-moe-gemm.md](./issue-43-mxfp4-moe-gemm.md)** - Fast MXFP4 grouped fused-MoE GEMM for DeepSeek-V4
 - **[issue-44-mhc-pre-post.md](./issue-44-mhc-pre-post.md)** - Full MHC `mhc_pre` / `mhc_post` fusions for DeepSeek-V4
 
 ### MoE (Mixture of Experts)
 - **[issue-26-mxfp4-moe-ep.md](./issue-26-mxfp4-moe-ep.md)** - Expert parallelism for quantized fused-MoE
 - **[issue-28-mxfp4-paged-gather.md](./issue-28-mxfp4-paged-gather.md)** - MXFP4 paged KV gather for DeepSeek-V4 DSA indexer
-
-### Technical Specs & Plans
-- **[superpowers/plans/2026-06-11-issue-18-moe-align-syncfree.md](./superpowers/plans/2026-06-11-issue-18-moe-align-syncfree.md)** - Implementation plan for sync-free `moe_align_block_size`
-- **[superpowers/specs/2026-06-11-issue-18-moe-align-syncfree-design.md](./superpowers/specs/2026-06-11-issue-18-moe-align-syncfree-design.md)** - Detailed design spec for issue #18
 
 ## Directory Structure
 
@@ -46,24 +45,7 @@ docs/
 ├── issue-36-mhc-prenorm-gemm.md
 ├── issue-43-mxfp4-moe-gemm.md
 ├── issue-44-mhc-pre-post.md
-├── benchmarking-on-beverin.md
-└── superpowers/
-    ├── plans/                        # High-level implementation roadmaps
-    │   ├── 2026-06-10-xkernels-scaffold.md
-    │   ├── 2026-06-11-issue-16-tuned-moe-int4-config.md
-    │   ├── 2026-06-11-issue-17-bf16-dense-gemm-characterization.md
-    │   ├── 2026-06-11-issue-18-moe-align-syncfree.md
-    │   ├── 2026-06-11-issue-20-fused-combine-epilogue.md
-    │   ├── 2026-06-11-issue-32-sparse-mla-attention.md
-    │   └── 2026-06-12-issue-36-mhc-prenorm-gemm.md
-    └── specs/                        # Detailed design specifications
-        ├── 2026-06-10-xkernels-scaffold-design.md
-        ├── 2026-06-11-issue-16-tuned-moe-int4-config-design.md
-        ├── 2026-06-11-issue-17-bf16-dense-gemm-characterization-design.md
-        ├── 2026-06-11-issue-18-moe-align-syncfree-design.md
-        ├── 2026-06-11-issue-20-fused-combine-epilogue-design.md
-        ├── 2026-06-11-issue-32-sparse-mla-attention-design.md
-        └── 2026-06-12-issue-36-mhc-prenorm-gemm-design.md
+└── benchmarking-on-beverin.md
 ```
 
 ## Documentation Standards
@@ -75,23 +57,6 @@ Each issue document follows this structure:
 3. **API** - Function signatures and parameters
 4. **Correctness (acceptance)** - Test criteria and validation results
 5. **Notes / scope** - Limitations and related work
-
-### Superpowers Specs (`superpowers/specs/`)
-Detailed design specifications include:
-1. **Purpose** - What this change achieves
-2. **Design** - Technical approach and algorithm details
-3. **Components** - Files and functions to modify/create
-4. **Data flow** - How data moves through the system
-5. **Testing** - Unit tests and on-device validation
-6. **Deliverable acceptance** - Concrete success criteria
-
-### Superpowers Plans (`superpowers/plans/`)
-High-level implementation plans:
-1. **Goal** - What needs to be done
-2. **Architecture** - High-level design
-3. **Tech Stack** - Tools and libraries used
-4. **File structure** - Directory layout
-5. **Task breakdown** - Step-by-step implementation checklist
 
 ## Related Resources
 

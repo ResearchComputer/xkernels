@@ -14,3 +14,4 @@ uv.lock
 *.pdf
 .DS_Store
 .rcc/
+.omx/

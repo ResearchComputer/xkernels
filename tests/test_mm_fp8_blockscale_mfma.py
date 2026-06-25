@@ -6,6 +6,8 @@ import os
 import pytest
 import torch
 
+from xkernels.utils.testing import gpu_device_or_skip as _dev
+
 _HAS_FP8 = hasattr(torch, "float8_e4m3fn")
 try:
     import triton  # noqa: F401
@@ -41,12 +43,6 @@ from xkernels.ops.gemm.reference import (  # noqa: E402
     per_block_quant_fp8,
     per_token_group_quant_fp8,
 )
-
-
-def _dev():
-    if _INTERP:
-        return "cpu"
-    return "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def _inputs(M, N, K, block, dev, seed=0, fp8_dtype=torch.float8_e4m3fn):

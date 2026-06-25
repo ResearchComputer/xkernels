@@ -6,6 +6,8 @@ import os
 import pytest
 import torch
 
+from xkernels.utils.testing import gpu_device_or_skip as _dev
+
 _HAS_FP8 = hasattr(torch, "float8_e4m3fn")
 pytestmark = pytest.mark.skipif(not _HAS_FP8, reason="torch lacks float8_e4m3fn")
 
@@ -18,12 +20,6 @@ from xkernels.ops.gemm.reference import (  # noqa: E402
 )
 
 _INTERP = os.environ.get("TRITON_INTERPRET", "0") == "1"
-
-
-def _dev():
-    if _INTERP:
-        return "cpu"
-    return "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def _quantized_inputs(M, N, K, block, dev, seed=0):

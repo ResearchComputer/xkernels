@@ -16,13 +16,9 @@ import pytest
 import torch
 import torch.nn.functional as F
 
+from xkernels.utils.testing import gpu_device_or_skip as _dev
+
 _INTERP = os.environ.get("TRITON_INTERPRET", "0") == "1"
-
-
-def _dev():
-    if _INTERP:
-        return "cpu"
-    return "cuda" if torch.cuda.is_available() else "cpu"
 
 
 # ---------------------------------------------------------------------------

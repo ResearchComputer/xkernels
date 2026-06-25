@@ -29,17 +29,10 @@ import torch
 from xkernels._backends import Backend
 from xkernels._dispatch import registered_backends
 from xkernels.ops.moe import dequant_w4a16, fused_moe_int4_w4a16, make_w4a16_weights
+from xkernels.utils.testing import gpu_device_or_skip as _device
 
 _INTERP = os.environ.get("TRITON_INTERPRET", "0") == "1"
 _HAS_TRITON = Backend.TRITON in registered_backends("moe_int4_w4a16")
-
-
-def _device():
-    if _INTERP:
-        return "cpu"
-    if torch.cuda.is_available():
-        return "cuda"
-    pytest.skip("no GPU and TRITON_INTERPRET!=1")
 
 
 def _pin_single_config():

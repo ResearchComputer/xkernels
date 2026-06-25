@@ -7,12 +7,19 @@ probe defines a @triton.jit kernel at import.
 """
 from __future__ import annotations
 
+import os
 import pathlib
 import sys
 
 import pytest
 
 pytest.importorskip("triton")
+
+# The probe defines a real @triton.jit kernel; it only runs on a GPU or under
+# the CPU interpreter (TRITON_INTERPRET=1). On a no-GPU box outside interpreter
+# mode it would crash at launch ("0 active drivers").
+_INTERP = os.environ.get("TRITON_INTERPRET", "0") == "1"
+_GPU_OK = _INTERP or __import__("torch").cuda.is_available()
 
 # probe_ffn lives in benchmarks/, which isn't an installed package.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
@@ -32,6 +39,7 @@ def test_apply_blas_mode_no_raise(mode):
     assert state["mode"] == mode
 
 
+@pytest.mark.skipif(not _GPU_OK, reason="requires TRITON_INTERPRET=1 or a GPU")
 def test_triton_gemm_matches_torch():
     import torch
 

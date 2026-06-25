@@ -16,17 +16,10 @@ from xkernels import moe_sum_reduce
 from xkernels._backends import Backend
 from xkernels._dispatch import registered_backends
 from xkernels.ops.moe.sum_reduce import moe_sum_reduce_ref
+from xkernels.utils.testing import gpu_device_or_skip as _device
 
 _INTERP = os.environ.get("TRITON_INTERPRET", "0") == "1"
 _HAS_TRITON = Backend.TRITON in registered_backends("moe_sum_reduce")
-
-
-def _device():
-    if _INTERP:
-        return "cpu"
-    if torch.cuda.is_available():
-        return "cuda"
-    pytest.skip("no GPU and TRITON_INTERPRET!=1")
 
 
 @pytest.mark.parametrize("M,top_k,H", [(8, 8, 256), (4, 2, 7168), (5, 4, 96)])

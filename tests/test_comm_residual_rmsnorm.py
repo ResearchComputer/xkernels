@@ -13,16 +13,9 @@ import pytest
 import torch
 
 from xkernels.ops.comm.fused import add_rmsnorm_ref
+from xkernels.utils.testing import gpu_device_or_skip as _device
 
 _INTERP = os.environ.get("TRITON_INTERPRET", "0") == "1"
-
-
-def _device():
-    if _INTERP:
-        return "cpu"
-    if torch.cuda.is_available():
-        return "cuda"
-    pytest.skip("no GPU and TRITON_INTERPRET!=1")
 
 
 @pytest.mark.parametrize("T,H", [(4, 7168), (16, 512), (3, 320)])
