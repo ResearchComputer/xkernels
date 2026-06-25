@@ -14,6 +14,7 @@ from xkernels.ops.gemm.reference import (  # noqa: E402
     mm_fp8_blockscale_ref,
     per_block_quant_fp8,
     per_token_group_quant_fp8,
+    preferred_fp8_dtype,
 )
 
 _INTERP = os.environ.get("TRITON_INTERPRET", "0") == "1"
@@ -50,10 +51,40 @@ def test_quant_roundtrip_shapes():
     b = torch.randn(N, K, device=dev)
     a_fp8, a_scales = per_token_group_quant_fp8(a, block=block)
     b_fp8, b_scales = per_block_quant_fp8(b, block=block)
-    assert a_fp8.shape == (M, K) and a_fp8.dtype == torch.float8_e4m3fn
+    expected_dtype = preferred_fp8_dtype(dev)
+    assert a_fp8.shape == (M, K) and a_fp8.dtype == expected_dtype
     assert a_scales.shape == (M, (K + block - 1) // block)
-    assert b_fp8.shape == (N, K) and b_fp8.dtype == torch.float8_e4m3fn
+    assert b_fp8.shape == (N, K) and b_fp8.dtype == expected_dtype
     assert b_scales.shape == ((N + block - 1) // block, (K + block - 1) // block)
+
+
+def test_preferred_fp8_dtype_respects_device_and_vendor(monkeypatch):
+    import xkernels.ops.gemm.reference as gemm_reference
+
+    monkeypatch.setattr(gemm_reference, "detect_vendor", lambda: "amd")
+    expected_amd = (
+        torch.float8_e4m3fnuz
+        if hasattr(torch, "float8_e4m3fnuz")
+        else torch.float8_e4m3fn
+    )
+    assert preferred_fp8_dtype("cuda") == expected_amd
+    assert preferred_fp8_dtype("cpu") == torch.float8_e4m3fn
+
+    monkeypatch.setattr(gemm_reference, "detect_vendor", lambda: "nvidia")
+    assert preferred_fp8_dtype("cuda") == torch.float8_e4m3fn
+
+
+def test_quant_helpers_preserve_explicit_fn_dtype():
+    dev = _dev()
+    M, N, K, block = 5, 7, 256, 128
+    a = torch.randn(M, K, device=dev)
+    b = torch.randn(N, K, device=dev)
+    a_fp8, _a_scales = per_token_group_quant_fp8(
+        a, block=block, fp8_dtype=torch.float8_e4m3fn
+    )
+    b_fp8, _b_scales = per_block_quant_fp8(b, block=block, fp8_dtype=torch.float8_e4m3fn)
+    assert a_fp8.dtype == torch.float8_e4m3fn
+    assert b_fp8.dtype == torch.float8_e4m3fn
 
 
 def test_quant_helpers_accept_fnuz_dtype():
@@ -139,7 +170,7 @@ def _rel_err(got, ref):
     ],
 )
 def test_triton_matches_reference(M, N, K):
-    """Default (exact fp32 dot) Triton path reproduces the fp32 dequant oracle."""
+    """Auto Triton dispatch reproduces the fp32 dequant oracle."""
     if not _HAS_TRITON:
         pytest.skip("triton backend not registered")
     dev = _dev()
@@ -150,11 +181,11 @@ def test_triton_matches_reference(M, N, K):
         block=block, out_dtype=torch.float32, backend=Backend.TRITON,
     )
     assert got.shape == (M, N)
-    # Exact fp32 dot: matches the fp32 dequant oracle up to accumulation order.
     if _INTERP:
         torch.testing.assert_close(got, ref, atol=1e-3, rtol=1e-3)
     else:
-        assert _rel_err(got, ref) < 1e-3
+        fnuz = hasattr(torch, "float8_e4m3fnuz") and a_fp8.dtype == torch.float8_e4m3fnuz
+        assert _rel_err(got, ref) < (5e-3 if fnuz else 1e-3)
 
 
 @pytest.mark.parametrize("M,N,K", [(64, 128, 256), (37, 130, 384), (8, 512, 1024)])
@@ -223,7 +254,12 @@ def test_empty_m_returns_empty():
 
 def test_top_level_exports():
     import xkernels
-    for name in ("mm_fp8_blockscale", "per_token_group_quant_fp8", "per_block_quant_fp8"):
+    for name in (
+        "mm_fp8_blockscale",
+        "per_token_group_quant_fp8",
+        "per_block_quant_fp8",
+        "preferred_fp8_dtype",
+    ):
         assert hasattr(xkernels, name), name
 
 

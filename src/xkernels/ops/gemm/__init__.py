@@ -16,6 +16,7 @@ from .reference import (
     FP8_BLOCK,
     per_block_quant_fp8,
     per_token_group_quant_fp8,
+    preferred_fp8_dtype,
 )
 
 # Import the Triton backend for its registration side effect (optional). Routed
@@ -33,5 +34,6 @@ __all__ = [
     "mm_fp8_blockscale",
     "per_token_group_quant_fp8",
     "per_block_quant_fp8",
+    "preferred_fp8_dtype",
     "FP8_BLOCK",
 ]

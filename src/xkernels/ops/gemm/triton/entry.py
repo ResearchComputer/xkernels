@@ -5,9 +5,11 @@ routes between the native fp8 MFMA fast path (#41) and the portable
 dequant-then-dot fallback (#40)."""
 from __future__ import annotations
 
+import warnings
+
 import torch
 
-from ...._backends import Backend
+from ...._backends import Backend, detect_vendor
 from ...._dispatch import register
 from .mm_fp8_blockscale_kernel import mm_fp8_blockscale_triton as _portable
 from .mm_fp8_blockscale_mfma_kernel import mm_fp8_blockscale_mfma_triton as _mfma
@@ -23,6 +25,30 @@ _FNUZ_FP8 = {
     for n in ("float8_e4m3fnuz", "float8_e5m2fnuz")
     if hasattr(torch, n)
 }
+_AUTO_PORTABLE_WARNED: set[torch.dtype] = set()
+
+
+def _warn_auto_portable_on_amd(
+    a_fp8: torch.Tensor,
+    *,
+    block: int,
+    dot_bf16: bool,
+    path: str,
+) -> None:
+    if path != "auto" or dot_bf16 or block != 128:
+        return
+    if not getattr(a_fp8, "is_cuda", False) or detect_vendor() != "amd":
+        return
+    if a_fp8.dtype in _FNUZ_FP8 or a_fp8.dtype in _AUTO_PORTABLE_WARNED:
+        return
+    _AUTO_PORTABLE_WARNED.add(a_fp8.dtype)
+    warnings.warn(
+        "mm_fp8_blockscale(path='auto') is using the portable Triton path on AMD "
+        f"because operands are {a_fp8.dtype}; quantize with fp8_dtype='auto' or "
+        "torch.float8_e4m3fnuz to use the native fp8 MFMA path.",
+        RuntimeWarning,
+        stacklevel=2,
+    )
 
 
 def mm_fp8_blockscale_triton(
@@ -53,6 +79,8 @@ def mm_fp8_blockscale_triton(
         and block == 128
         and a_fp8.dtype in _FNUZ_FP8
     )
+    if not want_mfma:
+        _warn_auto_portable_on_amd(a_fp8, block=block, dot_bf16=dot_bf16, path=path)
     if want_mfma and block == 128:
         return _mfma(a_fp8, a_scales, b_fp8, b_scales, block=block, out_dtype=out_dtype)
     return _portable(

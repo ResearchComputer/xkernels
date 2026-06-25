@@ -21,6 +21,7 @@ from .ops.gemm import (
     mm_fp8_blockscale,
     per_block_quant_fp8,
     per_token_group_quant_fp8,
+    preferred_fp8_dtype,
 )
 from .ops.mhc import hc_prenorm_gemm, mhc_post, mhc_pre, tf32_hc_prenorm_gemm
 from .ops.moe import (
@@ -42,6 +43,7 @@ __all__ = [
     "mm_fp8_blockscale",
     "per_token_group_quant_fp8",
     "per_block_quant_fp8",
+    "preferred_fp8_dtype",
     "hc_prenorm_gemm",
     "tf32_hc_prenorm_gemm",
     "mhc_pre",
