@@ -31,11 +31,12 @@ import warnings
 
 import torch
 
-from ..._backends import Backend
+from ..._backends import Backend, detect_vendor
 from ..._dispatch import register
 
 __all__ = [
     "mm_fp8_blockscale_ref",
+    "preferred_fp8_dtype",
     "per_token_group_quant_fp8",
     "per_block_quant_fp8",
     "FP8_BLOCK",
@@ -59,6 +60,31 @@ def _fp8_max(fp8_dtype: torch.dtype) -> float:
         return _FP8_MAX_BY_DTYPE[fp8_dtype]
     except KeyError:
         raise ValueError(f"unsupported fp8 dtype {fp8_dtype}") from None
+
+
+def preferred_fp8_dtype(device: torch.device | str | None = None) -> torch.dtype:
+    """Return the fastest portable fp8 e4m3 dtype for the current device.
+
+    ROCm reports AMD GPUs as ``cuda`` devices. On AMD builds with PyTorch's fnuz
+    dtype available, prefer ``float8_e4m3fnuz`` so ``mm_fp8_blockscale(...,
+    path="auto")`` reaches the native CDNA3 fp8 MFMA path. CPU and non-AMD
+    devices keep the OCP ``float8_e4m3fn`` default for portability.
+    """
+    if not hasattr(torch, "float8_e4m3fnuz"):
+        return torch.float8_e4m3fn
+    if device is not None and torch.device(device).type != "cuda":
+        return torch.float8_e4m3fn
+    if detect_vendor() == "amd":
+        return torch.float8_e4m3fnuz
+    return torch.float8_e4m3fn
+
+
+def _resolve_fp8_dtype(fp8_dtype: torch.dtype | str, device: torch.device) -> torch.dtype:
+    if fp8_dtype == "auto":
+        return preferred_fp8_dtype(device)
+    if isinstance(fp8_dtype, torch.dtype):
+        return fp8_dtype
+    raise ValueError(f"fp8_dtype must be 'auto' or a torch.dtype, got {fp8_dtype!r}")
 
 
 def _dequant_a(a_fp8: torch.Tensor, a_scales: torch.Tensor, block: int) -> torch.Tensor:
@@ -135,7 +161,7 @@ def mm_fp8_blockscale_ref(
 
 
 def per_token_group_quant_fp8(
-    x: torch.Tensor, *, block: int = FP8_BLOCK, fp8_dtype: torch.dtype = torch.float8_e4m3fn
+    x: torch.Tensor, *, block: int = FP8_BLOCK, fp8_dtype: torch.dtype | str = "auto"
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Quantize ``x [M, K]`` (fp32/bf16) to per-token-group fp8 e4m3.
 
@@ -143,9 +169,11 @@ def per_token_group_quant_fp8(
     ``(x_fp8 [M, K] fp8, x_scales [M, ceil(K/block)] fp32)`` such that
     ``mm_fp8_blockscale_ref`` consumes them directly. The scale is the OCP-style
     ``amax/FP8_MAX`` per group — keeping the reference an exact dequant oracle.
-    ``fp8_dtype`` selects the encoding: ``float8_e4m3fn`` (default, max 448) or
-    ``float8_e4m3fnuz`` (max 240, the AMD-native CDNA3 fp8 MFMA encoding).
+    ``fp8_dtype="auto"`` selects ``preferred_fp8_dtype(x.device)``. Pass an
+    explicit dtype to force ``float8_e4m3fn`` (max 448) or ``float8_e4m3fnuz``
+    (max 240, the AMD-native CDNA3 fp8 MFMA encoding).
     """
+    fp8_dtype = _resolve_fp8_dtype(fp8_dtype, x.device)
     fp8_max = _fp8_max(fp8_dtype)
     M, K = x.shape
     kt = (K + block - 1) // block
@@ -164,14 +192,16 @@ def per_token_group_quant_fp8(
 
 
 def per_block_quant_fp8(
-    w: torch.Tensor, *, block: int = FP8_BLOCK, fp8_dtype: torch.dtype = torch.float8_e4m3fn
+    w: torch.Tensor, *, block: int = FP8_BLOCK, fp8_dtype: torch.dtype | str = "auto"
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Quantize a weight ``w [N, K]`` (fp32/bf16) to per-``block``×``block`` fp8 e4m3.
 
     Returns ``(w_fp8 [N, K] fp8, w_scales [ceil(N/block), ceil(K/block)] fp32)``.
-    ``fp8_dtype`` selects the encoding (``float8_e4m3fn`` default, max 448;
-    ``float8_e4m3fnuz`` max 240 for the AMD-native CDNA3 fp8 MFMA path).
+    ``fp8_dtype="auto"`` selects ``preferred_fp8_dtype(w.device)``. Pass an
+    explicit dtype to force ``float8_e4m3fn`` (max 448) or ``float8_e4m3fnuz``
+    (max 240 for the AMD-native CDNA3 fp8 MFMA path).
     """
+    fp8_dtype = _resolve_fp8_dtype(fp8_dtype, w.device)
     fp8_max = _fp8_max(fp8_dtype)
     N, K = w.shape
     nt = (N + block - 1) // block
