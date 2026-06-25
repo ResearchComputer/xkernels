@@ -39,7 +39,7 @@ find_impl("norm", {"x1": {"dtype": "bf16", "shape": [64, 1536]}}, target_arch="a
   consumption tier is "just read the JSON").
 - `src/xkernels/registry/` — loader, validation, constraint evaluator.
 - `src/xkernels/retrieval.py`, `src/xkernels/verify.py` — the agent surfaces.
-- `skills/*/SKILL.md` — authoring/porting/tuning playbooks (SKILL.md standard).
+- `.agents/skills/*/SKILL.md` — authoring/porting/tuning playbooks (SKILL.md standard).
 - `src/xkernels/mcp_server.py` — the MCP server exposing the above as tools.
 
 ## Adding a kernel

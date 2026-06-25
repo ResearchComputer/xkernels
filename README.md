@@ -56,8 +56,9 @@ verify_parity("dual_rmsnorm@1.0.0")
 - **Implementation Cards** (`registry/impls/*.card.json`) — backend-specific: arch,
   specialization knobs, `perf.measured`, provenance. Many per op, each validated
   against the same reference.
-- **Skills** (`skills/*/SKILL.md`) — authoring/porting/tuning playbooks (open
-  SKILL.md format). Seed set: `tile-a-gemm`, `port-cuda-to-hip`, `tune-for-cdna`,
+- **Skills** (`.agents/skills/*/SKILL.md`) — authoring/porting/tuning playbooks (open
+  SKILL.md format, at the cross-harness `.agents/` standard so any skills-
+  compatible agent discovers them). Seed set: `tile-a-gemm`, `port-cuda-to-hip`, `tune-for-cdna`,
   `establish-parity`, …
 - **MCP** (`python -m xkernels.mcp_server`, optional `[mcp]` extra) — exposes
   `find_impl`/`verify`/`verify_parity`/`record_measurement` to any MCP client.
@@ -176,7 +177,7 @@ Notes:
   (`find_impl`, `verify`, `verify_parity`).
 - `registry/` — machine-readable artifacts: `ops/` (Op Specs), `impls/` (Impl
   Cards), `shape_sweeps/`, `schema/` (JSON Schemas).
-- `skills/` — SKILL.md authoring/porting/tuning playbooks.
+- `.agents/skills/` — SKILL.md authoring/porting/tuning playbooks (cross-harness standard).
 - `tests/`, `benchmarks/`, `examples/` — harness and demos.
 
 See `docs/adding-a-kernel.md` to extend. Design: `docs/library.md`,

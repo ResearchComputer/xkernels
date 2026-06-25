@@ -155,6 +155,33 @@ def _tools() -> list[dict[str, Any]]:
             "inputSchema": {"type": "object", "properties": {"skill_id": {"type": "string"}},
                             "required": ["skill_id"]},
         },
+        {
+            "name": "list_skills",
+            "description": (
+                "List the SKILL.md skills library (§7), optionally filtered by "
+                "backend_scope (§7.2). Each entry has the trigger `description`, "
+                "the namespaced x-kernel-lib metadata (id, backend_scope, tools), "
+                "and the procedure body path."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "backend": {
+                        "type": "string",
+                        "description": ("only skills whose backend_scope applies "
+                                         "(cuda|hip|agnostic)"),
+                    }
+                },
+            },
+        },
+        {
+            "name": "get_skill",
+            "description": (
+                "Return a single skill's parsed metadata + procedure body."
+            ),
+            "inputSchema": {"type": "object", "properties": {"skill_id": {"type": "string"}},
+                            "required": ["skill_id"]},
+        },
     ]
 
 
@@ -180,6 +207,36 @@ def _dispatch(name: str, args: dict[str, Any]) -> Any:
     if name == "skill_metrics":
         from .registry.outcomes import skill_metrics
         return skill_metrics(**args)
+    if name == "list_skills":
+        from .registry import all_skills, skills_for_backend
+        backend = (args or {}).get("backend")
+        lib = skills_for_backend(backend) if backend else all_skills()
+        return [
+            {
+                "id": s.id,
+                "name": s.name,
+                "description": s.description,
+                "backend_scope": list(s.meta.backend_scope) if s.meta else ["agnostic"],
+                "tools": list(s.meta.tools) if s.meta else [],
+                "triggers": list(s.meta.triggers) if s.meta else [],
+                "path": str(s.path),
+            }
+            for s in lib.values()
+        ]
+    if name == "get_skill":
+        from .registry import get_skill
+        s = get_skill(args["skill_id"])
+        return {
+            "id": s.id,
+            "name": s.name,
+            "description": s.description,
+            "license": s.license,
+            "backend_scope": list(s.meta.backend_scope) if s.meta else ["agnostic"],
+            "tools": list(s.meta.tools) if s.meta else [],
+            "validation_must_pass": list(s.meta.validation_must_pass) if s.meta else [],
+            "body": s.body,
+            "path": str(s.path),
+        }
     raise ValueError(f"unknown tool {name!r}")
 
 

@@ -65,6 +65,25 @@ def record_outcome(
             "external callers may not write skill outcomes (§8.4); "
             "outcomes are recorded by the integrated runtime only"
         )
+    # Integrity for the governance loop (§7.3): the skill_id must name a real
+    # skill, else metrics would roll for a phantom. Tolerate the bare-name form
+    # (no @version) by resolving via validate_skill_id. If the skills corpus
+    # itself isn't loadable (e.g. a stripped install), we skip rather than fail
+    # so the outcome path stays usable — but a KeyError (unknown skill) or a
+    # version ValueError must propagate.
+    try:
+        from .skills import skills_dir, validate_skill_id
+    except Exception:
+        skills_dir = None  # type: ignore[assignment]
+    if skills_dir is not None and skills_dir().is_dir():
+        resolved_id = validate_skill_id(skill_id)  # raises KeyError if unknown
+        resolved_version = resolved_id.split("@", 1)[1] if "@" in resolved_id else ""
+        if version and resolved_version and version != resolved_version:
+            raise ValueError(
+                f"version mismatch: outcome records {version!r} for "
+                f"{skill_id!r} but the skill declares {resolved_version!r}"
+            )
+        skill_id = resolved_id
     record = {
         "skill_id": skill_id,
         "version": version,
@@ -83,8 +102,29 @@ def record_outcome(
     return record
 
 
+def _resolve_query_id(skill_id: str | None) -> str | None:
+    """Resolve a bare skill name to its canonical id for filtering records.
+
+    ``record_outcome`` stores the canonical id (e.g. ``tune-for-cdna@1.0.0``),
+    but callers query with either form. If the skills corpus is present we
+    resolve; otherwise we fall back to the input verbatim."""
+    if skill_id is None:
+        return None
+    try:
+        from .skills import skills_dir, validate_skill_id
+        if skills_dir().is_dir():
+            return validate_skill_id(skill_id)
+    except Exception:
+        pass
+    return skill_id
+
+
 def all_outcomes(skill_id: str | None = None) -> list[dict[str, Any]]:
-    """Read all outcome records, optionally filtered by ``skill_id``."""
+    """Read all outcome records, optionally filtered by ``skill_id``.
+
+    Accepts either the canonical id (``tune-for-cdna@1.0.0``) or the bare
+    name (``tune-for-cdna``)."""
+    skill_id = _resolve_query_id(skill_id)
     path = _outcomes_path()
     if not path.exists():
         return []
@@ -102,8 +142,9 @@ def all_outcomes(skill_id: str | None = None) -> list[dict[str, Any]]:
 def skill_metrics(skill_id: str) -> dict[str, Any]:
     """Roll outcome records into a skill's metrics (§7.3.1).
 
-    Returns {uses, success_rate, median_iterations, regression_count,
-    failure_modes: {...}, versions: [...]}.
+    Accepts either the canonical id (``tune-for-cdna@1.0.0``) or the bare
+    name (``tune-for-cdna``). Returns {uses, success_rate, median_iterations,
+    regression_count, failure_modes: {...}, versions: [...]}.
     ``regression_count`` counts fails on task_signatures that previously succeeded
     (the §7.3.3 revise trigger).
     """
