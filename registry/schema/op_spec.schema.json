@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xkernels.dev/schema/op_spec.schema.json",
+  "title": "Op Spec",
+  "description": "Backend-agnostic operation contract. Defined ONCE per logical operation; every Implementation Card (any backend) must satisfy it. See docs/library.md §2.1.",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "version",
+    "kernel",
+    "op",
+    "inputs",
+    "outputs",
+    "constraints",
+    "numerics",
+    "shape_sweep"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable identifier, '<name>@<semver>'. The canonical handle cards reference via `implements`.",
+      "pattern": "^.+@(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d+)$"
+    },
+    "name": { "type": "string", "description": "Human/agent-readable op name." },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d+)$"
+    },
+    "kernel": {
+      "type": "string",
+      "description": "The xkernels dispatch key (the name passed to dispatch/select_backend), e.g. 'ffn', 'dual_rmsnorm'. Lets an Impl Card resolve to a callable via (kernel, backend)."
+    },
+    "op": {
+      "type": "object",
+      "required": ["signature", "canonical_op"],
+      "additionalProperties": false,
+      "properties": {
+        "signature": { "type": "string", "description": "Short math signature, e.g. 'rmsnorm(x) @ w  (fused epilogue)'." },
+        "canonical_op": {
+          "type": "string",
+          "description": "Canonical op family; the primary retrieval key.",
+          "enum": ["gemm", "conv2d", "rmsnorm", "attention", "reduce", "gather", "scatter", "norm", "activation", "quantize", "comm", "index", "elementwise", "moe", "mhc"]
+        },
+        "fusions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Fusion tags, e.g. ['rmsnorm_prologue', 'bias', 'gelu']."
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "description": "Map of argument name -> tensor contract. Ordered to match the dispatch signature.",
+      "additionalProperties": {
+        "$ref": "#/$defs/tensorContract"
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/tensorContract" }
+    },
+    "constraints": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/constraint" },
+      "description": "Decidable-from-shape/dtype-only predicates. Each must be expressible in the predicate mini-language (see $defs/predicate)."
+    },
+    "preconditions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Runtime invariants the caller guarantees (e.g. 'x is contiguous'). Not statically checked, but declared."
+    },
+    "numerics": {
+      "type": "object",
+      "required": ["reference", "rtol", "atol"],
+      "additionalProperties": false,
+      "properties": {
+        "reference": {
+          "type": "string",
+          "description": "Import path of the backend-neutral reference callable, e.g. 'xkernels.ops.ffn.reference:ffn_reference'. Never a CUDA/HIP impl."
+        },
+        "rtol": { "type": "number", "minimum": 0, "description": "Relative tolerance vs the reference for a single backend." },
+        "atol": { "type": "number", "minimum": 0 },
+        "cross_backend_rtol": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Max allowed pairwise relative error between two backends. Required when >=2 cards exist; defaults to rtol."
+        },
+        "reduce_dtype": {
+          "type": "string",
+          "description": "Accumulation dtype note, e.g. 'fp32'.",
+          "enum": ["fp32", "fp16", "bf16", "fp8"]
+        },
+        "by_dtype": {
+          "type": "object",
+          "description": "Optional per-dtype tolerance refinements (short dtype name -> {rtol, atol}). When present, the verifier uses these for the matching dtype and falls back to the top-level rtol/atol otherwise. Keeps tolerance defined once, centrally, while staying honest across dtypes.",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["rtol", "atol"],
+            "properties": {
+              "rtol": { "type": "number", "minimum": 0 },
+              "atol": { "type": "number", "minimum": 0 }
+            }
+          }
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "shape_sweep": {
+      "type": "string",
+      "description": "Id of the mandatory correctness sweep manifest under registry/shape_sweeps/, e.g. 'ffn'."
+    },
+    "composes_with": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Op ids this op composes with (reasoned at the op level)."
+    }
+  },
+  "$defs": {
+    "tensorContract": {
+      "type": "object",
+      "required": ["dtype", "rank"],
+      "additionalProperties": false,
+      "properties": {
+        "dtype": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Accepted dtypes, e.g. ['fp32','bf16','fp16']."
+        },
+        "layout": {
+          "type": "string",
+          "description": "e.g. 'row_major', 'col_major', 'any'."
+        },
+        "rank": { "type": "integer", "minimum": 0 },
+        "shape_symbols": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Symbolic dims, e.g. ['M','K'] or ['T','d1']. Symbols may carry divisibility in constraints."
+        },
+        "contiguous": { "type": "boolean", "description": "Whether the arg must be contiguous (default false)." }
+      }
+    },
+    "constraint": {
+      "type": "string",
+      "description": "A decidable predicate. Supported syntax (see xkernels.registry.constraints.evaluate): comparisons (==, !=, <, <=, >, >=, %), boolean and/or, and shape/dtype bindings like 'K % 8 == 0' or \"dtype(x) == 'bf16'\"."
+    }
+  }
+}

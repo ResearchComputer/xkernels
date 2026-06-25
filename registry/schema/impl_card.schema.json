@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xkernels.dev/schema/impl_card.schema.json",
+  "title": "Implementation Card",
+  "description": "Backend-specific implementation of an Op Spec. Many cards point at one Op Spec. Validated against that Op Spec's one reference + tolerances. See docs/library.md §2.2.",
+  "type": "object",
+  "required": [
+    "id",
+    "implements",
+    "backend",
+    "arch",
+    "specialization_knobs",
+    "perf",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "'<op_short_name>.<backend>@<semver>', e.g. 'ffn.triton@1.0.0'.",
+      "pattern": "^.+\\.(reference|triton|cuda|hip|sycl)@(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d+)$"
+    },
+    "implements": {
+      "type": "string",
+      "description": "The Op Spec id this card satisfies."
+    },
+    "backend": {
+      "type": "string",
+      "enum": ["reference", "triton", "cuda", "hip", "sycl"],
+      "description": "Maps 1:1 to xkernels._backends.Backend for callable resolution."
+    },
+    "arch": {
+      "type": "object",
+      "required": ["family"],
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "type": "string",
+          "description": "Architecture family. 'any' for backend-neutral (e.g. reference, or portable Triton).",
+          "enum": [
+            "any",
+            "nvidia_sm80",
+            "nvidia_sm90",
+            "amd_cdna2",
+            "amd_cdna3"
+          ]
+        },
+        "requires": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Hardware features needed, e.g. ['tensor_cores','tma'] (NVIDIA) or ['matrix_cores','mfma'] (AMD)."
+        },
+        "wave_size": {
+          "type": "integer",
+          "enum": [0, 32, 64],
+          "description": "32 (NVIDIA warp) | 64 (AMD wavefront) | 0 (agnostic). Never hardcode 32 in a kernel above this card."
+        },
+        "scratch": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "type": "string", "enum": ["smem", "lds", "none", "registers"] },
+            "bytes": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "specialization_knobs": {
+      "type": "object",
+      "description": "Per-backend tuning space. Map of knob name -> {type, choices} (or {type:'int', min, max} for ranges). Empty for reference.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string", "enum": ["int", "bool"] },
+          "choices": { "type": "array", "items": {} },
+          "min": { "type": "integer" },
+          "max": { "type": "integer" }
+        }
+      }
+    },
+    "perf": {
+      "type": "object",
+      "required": ["roofline"],
+      "additionalProperties": false,
+      "properties": {
+        "regime": { "type": "string", "description": "Free-form per-arch regime hint, e.g. 'memory-bound tall-skinny'." },
+        "roofline": {
+          "type": "string",
+          "enum": ["compute_bound", "memory_bound", "latency_bound", "unknown"]
+        },
+        "measured": {
+          "type": "array",
+          "description": "Write-back measurements. Each MUST cite a reproducible `source` run id and an `arch`; un-sourced or arch-less entries are dropped by the loader.",
+          "items": {
+            "type": "object",
+            "required": ["arch", "shape", "dtype", "knobs", "source"],
+            "additionalProperties": false,
+            "properties": {
+              "arch": { "type": "string" },
+              "shape": { "type": "object" },
+              "dtype": { "type": "string" },
+              "knobs": { "type": "object" },
+              "tflops": { "type": ["number", "null"], "minimum": 0 },
+              "achieved_bw_pct": { "type": ["number", "null"], "minimum": 0 },
+              "ms": { "type": ["number", "null"], "minimum": 0 },
+              "source": { "type": "string", "description": "Reproducible run id, e.g. 'run:2026-06-25T10:00:00Z#abc123'." }
+            }
+          }
+        }
+      }
+    },
+    "uses_primitives": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Primitive ids this card is assembled from. Enables bug-traceability across cards/backends."
+    },
+    "supersedes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Impl card ids this one replaces (lineage)."
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["authored_by", "created", "source_path"],
+      "additionalProperties": false,
+      "properties": {
+        "authored_by": { "type": "string", "enum": ["human", "agent", "hybrid"] },
+        "skill_used": { "type": "array", "items": { "type": "string" } },
+        "derived_from": { "type": "string", "description": "Impl card id this was ported/derived from." },
+        "created": { "type": "string", "description": "ISO-8601 timestamp." },
+        "source_path": { "type": "string", "description": "Repo-relative path to the source the card describes." }
+      }
+    },
+    "notes": {
+      "type": "string",
+      "description": "Free-form agent/human notes (e.g. portability caveats: wave-size 32 vs 64 is not load-bearing here)."
+    }
+  }
+}

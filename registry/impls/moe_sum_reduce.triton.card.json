@@ -1,0 +1,30 @@
+{
+  "id": "moe_sum_reduce.triton@1.0.0",
+  "implements": "moe_sum_reduce@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": {
+      "kind": "registers",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "memory-bound reduce over top-k; ~8\u00d7 over torch reduce.",
+    "roofline": "memory_bound",
+    "measured": []
+  },
+  "uses_primitives": [
+    "reduce.weighted_topk"
+  ],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-06-25T00:00:00Z",
+    "source_path": "src/xkernels/ops/moe/triton/sum_reduce_kernel.py"
+  },
+  "notes": "Portable Triton reduce over the top-k axis."
+}

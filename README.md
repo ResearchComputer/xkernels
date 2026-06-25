@@ -32,6 +32,39 @@ out = fused_moe_int4_w4a16(A, packed, scale, topk_ids, topk_w, group_size=32)
 
 Override globally with `XKERNELS_BACKEND=reference|triton|cuda|hip`.
 
+## Agent-native surfaces
+
+xkernels is **agent-native**: the primary consumer can be an LLM agent. The
+contract (full design: `docs/library.md`) lives in machine-readable artifacts,
+not prose.
+
+```python
+from xkernels import find_impl, verify, verify_parity
+
+# Structured retrieval over the contract (not text search). Ranked + reject_reasons.
+find_impl("norm", {"x1": {"dtype": "bf16", "shape": [64, 1536]}}, target_arch="amd_cdna3")
+
+# Correctness vs the op's single backend-neutral reference + tolerances.
+verify("dual_rmsnorm.triton@1.0.0", arch="amd_cdna3")
+
+# Cross-backend parity gate (do the backends agree with each other?).
+verify_parity("dual_rmsnorm@1.0.0")
+```
+
+- **Op Specs** (`registry/ops/*.spec.json`) — backend-agnostic contract: constraints,
+  numerics/tolerances, reference, shape sweep. One per op.
+- **Implementation Cards** (`registry/impls/*.card.json`) — backend-specific: arch,
+  specialization knobs, `perf.measured`, provenance. Many per op, each validated
+  against the same reference.
+- **Skills** (`skills/*/SKILL.md`) — authoring/porting/tuning playbooks (open
+  SKILL.md format). Seed set: `tile-a-gemm`, `port-cuda-to-hip`, `tune-for-cdna`,
+  `establish-parity`, …
+- **MCP** (`python -m xkernels.mcp_server`, optional `[mcp]` extra) — exposes
+  `find_impl`/`verify`/`verify_parity`/`record_measurement` to any MCP client.
+- **`AGENTS.md`** — the minimal pointer + the hard rule for any coding agent.
+
+See `docs/adding-a-kernel.md` for the card-driven contribution flow.
+
 ## Performance
 
 Speedup of each kernel's optimized backend over the naive PyTorch a practitioner
@@ -137,6 +170,13 @@ Notes:
 - `src/xkernels/ops/<type>/` — kernels by type; each has `reference.py`,
   `interface.py`, and per-backend subdirs (`triton/`, `cuda/`).
 - `src/xkernels/_dispatch.py` — backend registry + selection.
+- `src/xkernels/registry/` — Op Spec / Impl Card loader, JSON-Schema validation,
+  the decidable-constraint evaluator.
+- `src/xkernels/retrieval.py`, `src/xkernels/verify.py` — the agent surfaces
+  (`find_impl`, `verify`, `verify_parity`).
+- `registry/` — machine-readable artifacts: `ops/` (Op Specs), `impls/` (Impl
+  Cards), `shape_sweeps/`, `schema/` (JSON Schemas).
+- `skills/` — SKILL.md authoring/porting/tuning playbooks.
 - `tests/`, `benchmarks/`, `examples/` — harness and demos.
 
-See `docs/adding-a-kernel.md` to extend. Design: `docs/superpowers/specs/`.
+See `docs/adding-a-kernel.md` to extend. Design: `docs/library.md`,

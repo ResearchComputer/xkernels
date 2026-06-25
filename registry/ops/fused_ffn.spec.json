@@ -1,0 +1,41 @@
+{
+  "id": "fused_ffn@1.0.0",
+  "name": "fused SwiGLU FFN",
+  "version": "1.0.0",
+  "kernel": "ffn",
+  "op": {
+    "signature": "(silu(x @ w_gate) * (x @ w_up)) @ w_down",
+    "canonical_op": "activation",
+    "fusions": ["silu", "swiglu"]
+  },
+  "inputs": {
+    "x":      { "dtype": ["fp32", "fp16", "bf16"], "layout": "row_major", "rank": 2, "shape_symbols": ["M", "K"] },
+    "w_gate": { "dtype": ["fp32", "fp16", "bf16"], "layout": "row_major", "rank": 2, "shape_symbols": ["K", "N"] },
+    "w_up":   { "dtype": ["fp32", "fp16", "bf16"], "layout": "row_major", "rank": 2, "shape_symbols": ["K", "N"] },
+    "w_down": { "dtype": ["fp32", "fp16", "bf16"], "layout": "row_major", "rank": 2, "shape_symbols": ["N", "K"] }
+  },
+  "outputs": {
+    "out": { "dtype": ["fp32", "fp16", "bf16"], "layout": "row_major", "rank": 2, "shape_symbols": ["M", "K"] }
+  },
+  "constraints": [
+    "dtype(x) == dtype(w_gate)",
+    "dtype(x) == dtype(w_up)",
+    "dtype(x) == dtype(w_down)"
+  ],
+  "preconditions": ["x, w_gate, w_up, w_down are contiguous"],
+  "numerics": {
+    "reference": "xkernels.ops.ffn.reference:ffn_reference",
+    "rtol": 1.6e-2,
+    "atol": 1e-2,
+    "reduce_dtype": "fp32",
+    "by_dtype": {
+      "fp32": { "rtol": 1e-5, "atol": 1e-6 },
+      "fp16": { "rtol": 1e-3, "atol": 1e-3 },
+      "bf16": { "rtol": 1.6e-2, "atol": 1e-2 }
+    },
+    "cross_backend_rtol": 1.6e-2,
+    "notes": "Projections are torch.matmul; the fused part is the SwiGLU activation. Accumulate the activation products in fp32."
+  },
+  "shape_sweep": "ffn",
+  "composes_with": []
+}

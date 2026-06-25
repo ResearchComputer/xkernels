@@ -1,0 +1,18 @@
+{
+  "id": "dual_rmsnorm.reference@1.0.0",
+  "implements": "dual_rmsnorm@1.0.0",
+  "backend": "reference",
+  "arch": { "family": "any", "wave_size": 0, "scratch": { "kind": "none", "bytes": 0 } },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "pure-torch oracle: two sequential RMSNorm launches.",
+    "roofline": "latency_bound"
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-06-25T00:00:00Z",
+    "source_path": "src/xkernels/ops/norm/reference.py"
+  }
+}

@@ -1,5 +1,6 @@
 """xkernels — customized compute kernels across vendors and kernel types."""
 
+from . import registry
 from .ops.attention import (
     dsa_indexer_logits,
     dsa_indexer_topk,
@@ -32,6 +33,11 @@ from .ops.moe import (
 )
 from .ops.norm import dual_rmsnorm
 
+# --- agent-native surfaces (docs/library.md) ----------------------------------
+# These are lazily-evaluating; importing the package does not parse the registry.
+from .retrieval import find_impl
+from .verify import verify, verify_parity
+
 __version__ = "0.0.1"
 __all__ = [
     "fused_ffn",
@@ -61,4 +67,9 @@ __all__ = [
     "hierarchical_all_reduce",
     "residual_rmsnorm",
     "__version__",
+    # agent-native surfaces
+    "find_impl",
+    "verify",
+    "verify_parity",
+    "registry",
 ]

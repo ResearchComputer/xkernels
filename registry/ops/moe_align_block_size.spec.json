@@ -1,0 +1,35 @@
+{
+  "id": "moe_align_block_size@1.0.0",
+  "name": "sort/pad routed token-slots into per-expert blocks",
+  "version": "1.0.0",
+  "kernel": "moe_align_block_size",
+  "op": {
+    "signature": "(sorted_token_ids, expert_ids, num_tokens_post_padded) = align(topk_ids, block_size, num_experts)",
+    "canonical_op": "scatter",
+    "fusions": ["histogram", "padded_prefix_sum"]
+  },
+  "inputs": {
+    "topk_ids":    { "dtype": ["int32"], "layout": "row_major", "rank": 2, "shape_symbols": ["M", "top_k"] },
+    "block_size":  { "dtype": ["int32"], "layout": "scalar", "rank": 0, "shape_symbols": [] },
+    "num_experts": { "dtype": ["int32"], "layout": "scalar", "rank": 0, "shape_symbols": [] }
+  },
+  "outputs": {
+    "sorted_token_ids":     { "dtype": ["int32"], "layout": "row_major", "rank": 1 },
+    "expert_ids":           { "dtype": ["int32"], "layout": "row_major", "rank": 1 },
+    "num_tokens_post_padded": { "dtype": ["int32"], "layout": "scalar", "rank": 1 }
+  },
+  "constraints": [
+    "block_size > 0",
+    "num_experts > 0"
+  ],
+  "preconditions": ["topk_ids in [0, num_experts)"],
+  "numerics": {
+    "reference": "xkernels.ops.moe.w4a16:moe_align_block_size_ref",
+    "rtol": 0.0,
+    "atol": 0.0,
+    "cross_backend_rtol": 0.0,
+    "notes": "Integer dispatch builder; correctness is bit-for-bit (exact equality), hence rtol=atol=0. Validated as a set-equality + ordering match, not float closeness."
+  },
+  "shape_sweep": "moe_align_block_size",
+  "composes_with": ["moe_int4_w4a16@1.0.0"]
+}

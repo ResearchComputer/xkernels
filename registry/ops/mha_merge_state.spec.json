@@ -1,0 +1,40 @@
+{
+  "id": "mha_merge_state@1.0.0",
+  "name": "online-softmax merge of two attention partials",
+  "version": "1.0.0",
+  "kernel": "mha_merge_state",
+  "op": {
+    "signature": "merge(out_a, lse_a, out_b, lse_b) via log-sum-exp",
+    "canonical_op": "attention",
+    "fusions": ["online_softmax_combine"]
+  },
+  "inputs": {
+    "out_a": { "dtype": ["fp32", "bf16"], "layout": "row_major", "rank": 3, "shape_symbols": ["T", "H", "D"] },
+    "lse_a": { "dtype": ["fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["T", "H"] },
+    "out_b": { "dtype": ["fp32", "bf16"], "layout": "row_major", "rank": 3, "shape_symbols": ["T", "H", "D"] },
+    "lse_b": { "dtype": ["fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["T", "H"] }
+  },
+  "outputs": {
+    "out": { "dtype": ["fp32", "bf16"], "layout": "row_major", "rank": 3, "shape_symbols": ["T", "H", "D"] },
+    "lse": { "dtype": ["fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["T", "H"] }
+  },
+  "constraints": [
+    "dtype(out_a) == dtype(out_b)",
+    "dtype(lse_a) == dtype(lse_b)"
+  ],
+  "preconditions": ["out_a and out_b share shape [T,H,D]", "lse_* are fp32 log-sum-exp on the natural-log basis"],
+  "numerics": {
+    "reference": "xkernels.ops.attention.reference:merge_state_ref",
+    "rtol": 1.6e-2,
+    "atol": 1e-2,
+    "reduce_dtype": "fp32",
+    "by_dtype": {
+      "fp32": { "rtol": 1e-5, "atol": 1e-6 },
+      "bf16": { "rtol": 1.6e-2, "atol": 1e-2 }
+    },
+    "cross_backend_rtol": 1.6e-2,
+    "notes": "Combine weights computed from fp32 log-sum-exp; output cast to out_a.dtype, lse kept fp32."
+  },
+  "shape_sweep": "mha_merge_state",
+  "composes_with": []
+}

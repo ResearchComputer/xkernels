@@ -1,0 +1,11 @@
+{
+  "default_dtype": "int32",
+  "points": [
+    { "M": 64,    "top_k": 8, "num_experts": 48, "block_size": 16, "truncate": true },
+    { "M": 64,    "top_k": 8, "num_experts": 48, "block_size": 16, "truncate": false },
+    { "M": 1,     "top_k": 8, "num_experts": 48, "block_size": 16, "truncate": true },
+    { "M": 37,    "top_k": 4, "num_experts": 8,  "block_size": 16, "truncate": true },
+    { "M": 16384, "top_k": 8, "num_experts": 48, "block_size": 16, "truncate": true },
+    { "M": 16,    "top_k": 1, "num_experts": 4,  "block_size": 8,  "truncate": false }
+  ]
+}

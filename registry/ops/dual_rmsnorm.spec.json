@@ -1,0 +1,40 @@
+{
+  "id": "dual_rmsnorm@1.0.0",
+  "name": "fused parallel dual RMSNorm",
+  "version": "1.0.0",
+  "kernel": "dual_rmsnorm",
+  "op": {
+    "signature": "(rmsnorm(x1,w1), rmsnorm(x2,w2)) in a single launch",
+    "canonical_op": "norm",
+    "fusions": ["parallel_pair"]
+  },
+  "inputs": {
+    "x1": { "dtype": ["fp32", "bf16"], "layout": "row_major", "rank": 2, "shape_symbols": ["T", "d1"] },
+    "w1": { "dtype": ["fp32", "bf16"], "layout": "row_major", "rank": 1, "shape_symbols": ["d1"] },
+    "x2": { "dtype": ["fp32", "bf16"], "layout": "row_major", "rank": 2, "shape_symbols": ["T", "d2"] },
+    "w2": { "dtype": ["fp32", "bf16"], "layout": "row_major", "rank": 1, "shape_symbols": ["d2"] }
+  },
+  "outputs": {
+    "out1": { "dtype": ["fp32", "bf16"], "layout": "row_major", "rank": 2, "shape_symbols": ["T", "d1"] },
+    "out2": { "dtype": ["fp32", "bf16"], "layout": "row_major", "rank": 2, "shape_symbols": ["T", "d2"] }
+  },
+  "constraints": [
+    "dtype(x1) == dtype(w1)",
+    "dtype(x2) == dtype(w2)"
+  ],
+  "preconditions": ["x1 and x2 share the same leading dim T", "inputs are contiguous"],
+  "numerics": {
+    "reference": "xkernels.ops.norm.reference:dual_rmsnorm_ref",
+    "rtol": 1.6e-2,
+    "atol": 1e-2,
+    "reduce_dtype": "fp32",
+    "by_dtype": {
+      "fp32": { "rtol": 1e-5, "atol": 1e-6 },
+      "bf16": { "rtol": 1.6e-2, "atol": 1e-2 }
+    },
+    "cross_backend_rtol": 1.6e-2,
+    "notes": "Variance reduced in fp32 (rsqrt of fp32 mean-of-squares)."
+  },
+  "shape_sweep": "dual_rmsnorm",
+  "composes_with": []
+}

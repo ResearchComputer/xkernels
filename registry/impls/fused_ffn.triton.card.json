@@ -1,0 +1,41 @@
+{
+  "id": "fused_ffn.triton@1.0.0",
+  "implements": "fused_ffn@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": {
+      "kind": "none",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {
+    "BLOCK": {
+      "type": "int",
+      "choices": [
+        256,
+        512,
+        1024,
+        2048
+      ],
+      "_doc": "Tile size for the fused SwiGLU elementwise kernel."
+    }
+  },
+  "perf": {
+    "regime": "GEMM-bound: the three projection matmuls dominate and are torch.matmul in both paths, so the fused activation wins little end-to-end (\u22481\u00d7). The win is in launch overhead only.",
+    "roofline": "compute_bound",
+    "measured": []
+  },
+  "uses_primitives": [
+    "elementwise.swiglu"
+  ],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-06-25T00:00:00Z",
+    "source_path": "src/xkernels/ops/ffn/triton/ffn_kernel.py"
+  },
+  "notes": "Portable Triton (runs on NVIDIA and AMD). The three projection GEMMs are torch.matmul; only the SwiGLU activation is a Triton kernel, so wave-size (32 vs 64) is not load-bearing here."
+}

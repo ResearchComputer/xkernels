@@ -1,0 +1,30 @@
+{
+  "id": "mha_merge_state.triton@1.0.0",
+  "implements": "mha_merge_state@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": {
+      "kind": "registers",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "memory-bound combine; ~3\u00d7 over torch merge.",
+    "roofline": "memory_bound",
+    "measured": []
+  },
+  "uses_primitives": [
+    "reduce.online_softmax"
+  ],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-06-25T00:00:00Z",
+    "source_path": "src/xkernels/ops/attention/triton/merge_state_kernel.py"
+  },
+  "notes": "Portable Triton online-softmax combine."
+}

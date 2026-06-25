@@ -15,14 +15,14 @@ dependencies = ["torch>=2.1"]
 [project.optional-dependencies]
 triton = ["triton>=3.0"]
 bench = ["pandas", "matplotlib"]
-dev = ["pytest>=7", "ruff>=0.4", "pre-commit"]
+dev = ["pytest>=7", "ruff>=0.4", "pre-commit", "jsonschema>=4"]
+mcp = ["mcp>=1.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
 xkernels = ["ops/**/*.cu", "ops/**/*.cpp", "ops/**/*.h", "ops/**/*.json"]
-
 [tool.ruff]
 line-length = 100
 target-version = "py310"

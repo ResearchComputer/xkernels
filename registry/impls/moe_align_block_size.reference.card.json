@@ -1,0 +1,19 @@
+{
+  "id": "moe_align_block_size.reference@1.0.0",
+  "implements": "moe_align_block_size@1.0.0",
+  "backend": "reference",
+  "arch": { "family": "any", "wave_size": 0, "scratch": { "kind": "none", "bytes": 0 } },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "pure-torch oracle: argsort + per-expert Python padding loop with per-step host syncs. Launch-heavy, not a perf target.",
+    "roofline": "latency_bound"
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "notes": "`truncate` is a semantic parameter of the op (changes output shape), not a perf knob; it flows to both reference and optimized backends via the op signature.",
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-06-25T00:00:00Z",
+    "source_path": "src/xkernels/ops/moe/w4a16.py"
+  }
+}

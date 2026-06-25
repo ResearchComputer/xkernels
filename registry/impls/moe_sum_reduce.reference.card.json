@@ -1,0 +1,18 @@
+{
+  "id": "moe_sum_reduce.reference@1.0.0",
+  "implements": "moe_sum_reduce@1.0.0",
+  "backend": "reference",
+  "arch": { "family": "any", "wave_size": 0, "scratch": { "kind": "none", "bytes": 0 } },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "pure-torch oracle: weighted sum over the top-k dim in fp32.",
+    "roofline": "latency_bound"
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-06-25T00:00:00Z",
+    "source_path": "src/xkernels/ops/moe/sum_reduce.py"
+  }
+}

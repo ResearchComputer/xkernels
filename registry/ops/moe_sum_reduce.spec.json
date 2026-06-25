@@ -1,0 +1,37 @@
+{
+  "id": "moe_sum_reduce@1.0.0",
+  "name": "weighted reduction of top-k expert outputs",
+  "version": "1.0.0",
+  "kernel": "moe_sum_reduce",
+  "op": {
+    "signature": "out[m] = routed_scaling_factor * sum_k w[m,k] * y[m,k,:]",
+    "canonical_op": "reduce",
+    "fusions": ["weighted_topk_reduce"]
+  },
+  "inputs": {
+    "y": { "dtype": ["fp32", "bf16"], "layout": "row_major", "rank": 3, "shape_symbols": ["M", "top_k", "H"] },
+    "w": { "dtype": ["fp32", "bf16"], "layout": "row_major", "rank": 2, "shape_symbols": ["M", "top_k"] }
+  },
+  "outputs": {
+    "out": { "dtype": ["fp32", "bf16"], "layout": "row_major", "rank": 2, "shape_symbols": ["M", "H"] }
+  },
+  "constraints": [],
+  "preconditions": [
+    "w may be None (plain sum, in-stack case)",
+    "y is contiguous"
+  ],
+  "numerics": {
+    "reference": "xkernels.ops.moe.sum_reduce:moe_sum_reduce_ref",
+    "rtol": 1.6e-2,
+    "atol": 1e-2,
+    "reduce_dtype": "fp32",
+    "by_dtype": {
+      "fp32": { "rtol": 1e-5, "atol": 1e-6 },
+      "bf16": { "rtol": 1.6e-2, "atol": 1e-2 }
+    },
+    "cross_backend_rtol": 1.6e-2,
+    "notes": "Accumulate the top-k sum in fp32; cast back to y.dtype."
+  },
+  "shape_sweep": "moe_sum_reduce",
+  "composes_with": ["fused_ffn@1.0.0"]
+}
