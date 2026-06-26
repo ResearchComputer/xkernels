@@ -171,36 +171,52 @@ def test_swiglu_limit_disabled_matches_unclamped():
 
 
 def test_expert_parallel_partials_sum_to_dense():
-    """Sum of per-rank EP partials == the full non-EP MoE output (issue #26 invariant)."""
+    """Sum of per-rank EP partials == the full non-EP MoE output (issue #26 invariant).
+
+    Runs through the launcher's device-side Triton routing (issue #50: sync-free,
+    ``truncate=False`` ghost-expert EP dispatch), so the end-to-end output validates
+    that dispatch path across decode buckets (``M=1,2,4,8,16``) and a prefill bucket.
+    """
     if not _HAS_TRITON:
         pytest.skip("triton backend not registered")
     dev = _device()
     _pin_single_config()
-    M, E, hidden, ispp, top_k = 4, 8, 128, 64, 4
-    ep = 2
-    w, A, topk_ids, topk_w = _inputs(M, E, hidden, ispp, top_k, dev, with_bias=True)
-    dense = fused_moe_mxfp4(
-        A, w["w13"], w["w13_scale"], w["w2"], w["w2_scale"], topk_ids, topk_w,
-        b13=w["b13"], b2=w["b2"], swiglu_limit=_LIMIT, group_size=_GROUP,
-        backend=Backend.TRITON,
-    )
-    e_per = E // ep
-    acc = torch.zeros_like(dense.float())
-    for r in range(ep):
-        lo, hi = r * e_per, (r + 1) * e_per
-        emap = torch.full((E,), -1, device=dev, dtype=torch.int32)
-        emap[lo:hi] = torch.arange(e_per, device=dev, dtype=torch.int32)
-        part = fused_moe_mxfp4(
-            A, w["w13"][lo:hi], w["w13_scale"][lo:hi], w["w2"][lo:hi], w["w2_scale"][lo:hi],
-            topk_ids, topk_w,
-            b13=None if w["b13"] is None else w["b13"][lo:hi],
-            b2=None if w["b2"] is None else w["b2"][lo:hi],
-            swiglu_limit=_LIMIT, group_size=_GROUP, expert_map=emap,
+    if _INTERP:
+        buckets = [(4, 8, 128, 64, 4, 2)]  # small, for the slow CPU interpreter
+    else:
+        # (M, E, hidden, ispp, top_k, ep)
+        buckets = [
+            (1, 16, 256, 128, 8, 4),    # decode
+            (2, 16, 256, 128, 8, 4),    # decode
+            (4, 8, 128, 64, 4, 2),      # decode
+            (8, 8, 128, 64, 4, 2),      # decode
+            (16, 16, 256, 128, 4, 4),   # decode
+            (64, 8, 256, 128, 4, 2),    # prefill
+        ]
+    for M, E, hidden, ispp, top_k, ep in buckets:
+        w, A, topk_ids, topk_w = _inputs(M, E, hidden, ispp, top_k, dev, with_bias=True)
+        dense = fused_moe_mxfp4(
+            A, w["w13"], w["w13_scale"], w["w2"], w["w2_scale"], topk_ids, topk_w,
+            b13=w["b13"], b2=w["b2"], swiglu_limit=_LIMIT, group_size=_GROUP,
             backend=Backend.TRITON,
         )
-        acc += part.float()
-    atol = rtol = _TOL
-    torch.testing.assert_close(acc, dense.float(), atol=atol, rtol=rtol)
+        e_per = E // ep
+        acc = torch.zeros_like(dense.float())
+        for r in range(ep):
+            lo, hi = r * e_per, (r + 1) * e_per
+            emap = torch.full((E,), -1, device=dev, dtype=torch.int32)
+            emap[lo:hi] = torch.arange(e_per, device=dev, dtype=torch.int32)
+            part = fused_moe_mxfp4(
+                A, w["w13"][lo:hi], w["w13_scale"][lo:hi], w["w2"][lo:hi], w["w2_scale"][lo:hi],
+                topk_ids, topk_w,
+                b13=None if w["b13"] is None else w["b13"][lo:hi],
+                b2=None if w["b2"] is None else w["b2"][lo:hi],
+                swiglu_limit=_LIMIT, group_size=_GROUP, expert_map=emap,
+                backend=Backend.TRITON,
+            )
+            acc += part.float()
+        atol = rtol = _TOL
+        torch.testing.assert_close(acc, dense.float(), atol=atol, rtol=rtol)
 
 
 def test_dequant_roundtrip():

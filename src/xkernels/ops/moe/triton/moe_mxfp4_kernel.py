@@ -46,6 +46,7 @@ import triton.language as tl
 from ...._backends import Backend
 from ...._dispatch import register
 from ..w4a16 import moe_align_block_size_ep, moe_align_block_size_ref
+from .align_kernel import moe_align_block_size_ep_triton, moe_align_block_size_triton
 from .mxfp4_configs import get_autotune_configs, get_default_config, prune_configs
 
 __all__ = ["mxfp4_moe_gemm", "fused_mxfp4_moe_kernel"]
@@ -157,7 +158,14 @@ def _mxfp4_moe_gemm_kernel(
         return
 
     offs_token_id = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M).to(tl.int64)
-    offs_token = tl.load(sorted_token_ids_ptr + offs_token_id).to(tl.int64)
+    # Mask the gather (see int4 kernel): the last M-block can read past ``EM``
+    # when ``EM`` is not a multiple of BLOCK_SIZE_M (notably during autotune).
+    # OOB lanes get ``num_valid_tokens`` (= pad_id), dropped by ``token_mask``.
+    offs_token = tl.load(
+        sorted_token_ids_ptr + offs_token_id,
+        mask=offs_token_id < EM,
+        other=num_valid_tokens,
+    ).to(tl.int64)
     token_mask = offs_token < num_valid_tokens
 
     off_experts = tl.load(expert_ids_ptr + pid_m).to(tl.int64)
@@ -489,13 +497,29 @@ def _moe_mxfp4_triton(
     # derive it from the config.
     config = get_default_config(M)
     block_m = config["BLOCK_SIZE_M"]
+    # On GPU (issue #50) build the sort/pad dispatch through the sync-free Triton
+    # align backend (``truncate=False``) instead of the torch argsort + Python-pad
+    # reference, which every fused call otherwise pays before the GEMM. Under EP,
+    # remap global expert ids to local rows device-side and let ``FILTER_EXPERT``
+    # skip the non-local (-1) blocks; the reference helpers stay the CPU /
+    # Triton-interpreter fallback (no GPU kernels there).
     if expert_map is not None:
-        sorted_ids, expert_ids, num_post = moe_align_block_size_ep(
-            topk_ids, block_m, expert_map.numel(), expert_map
-        )
+        if topk_ids.is_cuda:
+            sorted_ids, expert_ids, num_post = moe_align_block_size_ep_triton(
+                topk_ids, block_m, E, expert_map, truncate=False
+            )
+        else:
+            sorted_ids, expert_ids, num_post = moe_align_block_size_ep(
+                topk_ids, block_m, expert_map.numel(), expert_map
+            )
         filter_expert = True
     else:
-        sorted_ids, expert_ids, num_post = moe_align_block_size_ref(topk_ids, block_m, E)
+        if topk_ids.is_cuda:
+            sorted_ids, expert_ids, num_post = moe_align_block_size_triton(
+                topk_ids, block_m, E, truncate=False
+            )
+        else:
+            sorted_ids, expert_ids, num_post = moe_align_block_size_ref(topk_ids, block_m, E)
         filter_expert = False
     out = mxfp4_moe_gemm(
         A, w13, w13_scale, w2, w2_scale,

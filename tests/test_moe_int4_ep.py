@@ -96,10 +96,19 @@ def _build_expert_map(E, ep_size, rank, dev):
 def _ep_params():
     if _INTERP:
         return [(4, 8, 64, 128, 2, 2), (2, 8, 128, 256, 4, 4), (3, 6, 96, 64, 2, 3)]
+    # Decode buckets (M=1,2,4,8,16) with EP, across E/top_k shapes. INT4 EP keeps
+    # the reference align (issue #50's documented fallback — see the launcher
+    # comment), so these validate the EP partial-sum invariant end-to-end. NB the
+    # buckets are all M<=16 (align_block_m=16): the test pins a single autotune
+    # config with BLOCK_SIZE_M=16 (_pin_single_config), which is only valid where
+    # align_block_m(M)==16, so M>32 prefill shapes are excluded here (the unpinned
+    # prefill path is measured end-to-end in benchmarks/bench_moe_e2e_routing.py).
     return [
-        (1, 48, 256, 512, 8, 4),  # decode, Kimi-ish E/top_k, ep=4
-        (4, 16, 512, 1024, 4, 2),
-        (8, 16, 1024, 2048, 4, 4),
+        (1, 48, 256, 512, 8, 4),    # decode, Kimi-ish E/top_k, ep=4
+        (2, 48, 256, 512, 8, 4),    # decode
+        (4, 16, 512, 1024, 4, 2),   # decode
+        (8, 16, 512, 1024, 4, 2),   # decode
+        (16, 16, 512, 1024, 4, 4),  # decode
     ]
 
 

@@ -43,7 +43,7 @@ import triton.language as tl
 from ...._backends import Backend
 from ...._dispatch import register
 
-__all__ = ["moe_align_block_size_triton"]
+__all__ = ["moe_align_block_size_triton", "moe_align_block_size_ep_triton"]
 
 # Sentinel for masked-out cumsum lanes. Must be a `tl.constexpr` instance (not a
 # plain module global) to be readable from inside a @triton.jit function — the
@@ -215,6 +215,70 @@ def moe_align_block_size_triton(
         return sorted_ids, expert_ids[: n // block_size], num_post
     # Sync-free / fixed-shape mode (graph-capturable): no .item(); expert_ids is
     # the full max_blocks length with unused trailing blocks = 0.
+    return sorted_ids, expert_ids, num_post
+
+
+def moe_align_block_size_ep_triton(
+    topk_ids: torch.Tensor,
+    block_size: int,
+    num_local_experts: int,
+    expert_map: torch.Tensor,
+    *,
+    truncate: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Device-side expert-parallel (EP) sort/pad routing — no host sync (issue #50).
+
+    Drop-in device-side replacement for ``moe_align_block_size_ep`` that the fused
+    MoE launchers call on GPU so every end-to-end call skips the torch argsort +
+    Python-padding tax of the reference. ``num_local_experts`` (= the rank-local
+    weight-row count, host-known from ``packed.shape[0]``) is passed in, so there
+    is **no** ``e_local = .sum().item()`` sync; the global->local remap is a single
+    device-side gather on ``expert_map`` and the dispatch is built by the
+    sync-free Triton align (``truncate=False``).
+
+    Routing (the "ghost expert" trick): each routed slot's global expert id is
+    remapped to its local row via ``expert_map``; non-local ids collapse to ONE
+    sentinel = ``num_local_experts`` (one past the valid local rows) instead of one
+    bin per non-local expert. The 4-stage Triton align then runs over
+    ``num_local_experts + 1`` experts, so the launch grid scales with the LOCAL
+    expert count (not the global one) — matching the reference's small grid
+    instead of inflating it ~``ep_size``x. The sentinel's blocks land in
+    ``expert_ids`` as ``-1``; the fused-MoE GEMM's ``FILTER_EXPERT`` path skips
+    them, so this rank computes only its local experts' partial output (the caller
+    all-reduces the partials across the EP group).
+
+    Args:
+        topk_ids: ``[M, top_k]`` int32 **global** expert ids.
+        block_size: GEMM block size each expert run is padded up to.
+        num_local_experts: ``E_local`` — the rank-local expert (weight-row) count.
+            Host-known (e.g. ``packed.shape[0]``); passing it in avoids the
+            ``.sum().item()`` sync the reference pays on every call.
+        expert_map: ``[num_global_experts]`` int tensor mapping global id -> local
+            row in ``[0, num_local_experts)`` (``-1`` if not on this rank).
+        truncate: forwarded to :func:`moe_align_block_size_triton`; defaults to
+            ``False`` (sync-free / graph-capturable).
+
+    Returns:
+        ``(sorted_token_ids, expert_ids, num_tokens_post_padded)`` where
+        ``expert_ids`` holds **local** rows in ``[0, num_local_experts)`` with
+        ``-1`` for the collapsed non-local sentinel blocks (skipped by the GEMM's
+        ``FILTER_EXPERT``).
+    """
+    e_local = num_local_experts  # host-known (rank-local weight-row count); no sync
+    emap = expert_map.to(device=topk_ids.device)
+    # Remap global -> local row; non-local (-1) collapses to one sentinel = e_local
+    # so every routed id lands in [0, e_local] (valid for an e_local+1 expert align).
+    local_or_neg = emap[topk_ids.long()].to(torch.int32)
+    collapsed = torch.where(local_or_neg >= 0, local_or_neg, e_local)
+    sorted_ids, expert_ids_g, num_post = moe_align_block_size_triton(
+        collapsed, block_size, e_local + 1, truncate=truncate
+    )
+    # Sentinel blocks (owning expert == e_local) -> -1 for the GEMM's FILTER_EXPERT.
+    # e_local is one past the valid local rows [0, e_local), so this never clobbers
+    # a real local expert (including the e_local == 0 / owns-no-experts case).
+    expert_ids = torch.where(
+        expert_ids_g == e_local, torch.full_like(expert_ids_g, -1), expert_ids_g
+    ).to(torch.int32)
     return sorted_ids, expert_ids, num_post
 
 

@@ -63,6 +63,7 @@ import triton.language as tl
 from ...._backends import Backend
 from ...._dispatch import register
 from ..w4a16 import moe_align_block_size_ep, moe_align_block_size_ref
+from .align_kernel import moe_align_block_size_triton
 from .configs import (
     align_block_m,
     get_autotune_configs,
@@ -144,7 +145,18 @@ def _fused_moe_int4_kernel(
         return
 
     offs_token_id = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M).to(tl.int64)
-    offs_token = tl.load(sorted_token_ids_ptr + offs_token_id).to(tl.int64)
+    # Mask the gather: the last M-block can read past ``EM`` when ``EM`` is not a
+    # multiple of BLOCK_SIZE_M (notably during autotune, which trials configs with
+    # larger BLOCK_SIZE_M). OOB lanes get ``num_valid_tokens`` (= pad_id), which
+    # ``token_mask`` drops below, so the result is unchanged but no garbage token
+    # id can reach a pointer. Issue #50's EP device-side routing exposed this: the
+    # ghost path's larger ``EM`` let autotune trial a config whose last block read
+    # OOB, corrupting the output buffer / crashing under concurrency.
+    offs_token = tl.load(
+        sorted_token_ids_ptr + offs_token_id,
+        mask=offs_token_id < EM,
+        other=num_valid_tokens,
+    ).to(tl.int64)
     token_mask = offs_token < num_valid_tokens
 
     off_experts = tl.load(expert_ids_ptr + pid_m).to(tl.int64)
@@ -447,11 +459,32 @@ def _moe_int4_w4a16_triton(
         # other ranks' experts. ``expert_ids`` then indexes ``packed`` directly.
         # Non-local token-slots are never gathered, so the GEMM writes this rank's
         # partial output (the caller all-reduces the partials across the EP group).
+        #
+        # NOTE (issue #50): the device-side ghost-expert routing
+        # (``moe_align_block_size_ep_triton`` — no ``.sum().item()`` host sync) is
+        # logic-correct for this kernel (verified on A100 via the resolved-config
+        # DIRECT path: every EP decode/prefill bucket passes, combine==scratch
+        # agree). BUT this kernel's *autotune wrapper* corrupts for that ghost
+        # dispatch — an order-dependent illegal-memory-access under concurrency
+        # that is clean under ``CUDA_LAUNCH_BLOCKING=1`` / ``compute-sanitizer`` /
+        # the direct (non-autotuned) path. That is a pre-existing latent
+        # autotune/kernel interaction specific to the INT4 GEMM (the MXFP4 GEMM,
+        # with the identical routing, is A100-clean at M<=256), not a routing-logic
+        # bug; resolving it is GPU-gated work outside the routing issue's scope.
+        # So INT4 EP keeps the reference align (issue #50's documented fallback);
+        # the sync-free Triton align is used for INT4 non-EP and BOTH MXFP4 paths.
         sorted_ids, expert_ids, num_post = moe_align_block_size_ep(
             topk_ids, block_m, expert_map.numel(), expert_map
         )
+        filter_expert = False
     else:
-        sorted_ids, expert_ids, num_post = moe_align_block_size_ref(topk_ids, block_m, E)
+        if topk_ids.is_cuda:
+            sorted_ids, expert_ids, num_post = moe_align_block_size_triton(
+                topk_ids, block_m, E, truncate=False
+            )
+        else:
+            sorted_ids, expert_ids, num_post = moe_align_block_size_ref(topk_ids, block_m, E)
+        filter_expert = False
     if fused_combine is None:
         fused_combine = _auto_fused_combine(M, top_k, expert_map)
     if fused_combine:
@@ -472,7 +505,7 @@ def _moe_int4_w4a16_triton(
             group_size=group_size,
             mul_routed_weight=mul_routed_weight,
             compute_type=tl.float32,
-            filter_expert=False,
+            filter_expert=filter_expert,
             config=config,
             combine=True,
         )
@@ -493,7 +526,7 @@ def _moe_int4_w4a16_triton(
         group_size=group_size,
         mul_routed_weight=mul_routed_weight,
         compute_type=compute_type,
-        filter_expert=False,
+        filter_expert=filter_expert,
         config=config,
     )
     return c.view(M, top_k, N).sum(dim=1)

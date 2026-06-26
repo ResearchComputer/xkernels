@@ -17,7 +17,11 @@ import torch
 from xkernels import moe_align_block_size
 from xkernels._backends import Backend
 from xkernels._dispatch import registered_backends
-from xkernels.ops.moe.w4a16 import moe_align_block_size_ref
+from xkernels.ops.moe.triton.align_kernel import moe_align_block_size_ep_triton
+from xkernels.ops.moe.w4a16 import (
+    moe_align_block_size_ep,
+    moe_align_block_size_ref,
+)
 from xkernels.utils.testing import gpu_device_or_skip as _device
 
 _INTERP = os.environ.get("TRITON_INTERPRET", "0") == "1"
@@ -183,3 +187,120 @@ def test_triton_matches_reference_randomized(seed):
     ref = moe_align_block_size_ref(topk_ids, block_size, num_experts)
     for g_out, r_out in zip(got, ref, strict=True):
         torch.testing.assert_close(g_out, r_out, rtol=0, atol=0)
+
+
+# --------------------------------------------------------------------------- #
+# Device-side EP routing (issue #50): ``moe_align_block_size_ep_triton``.      #
+# Runs on GPU or under ``TRITON_INTERPRET=1``. Validates the ghost-expert       #
+# remap against (a) the reference EP helper's per-rank local assignments and   #
+# (b) the EP union-coverage invariant the GEMM relies on.                      #
+# --------------------------------------------------------------------------- #
+
+
+def _ep_partition(num_experts, ep_size, rank, device):
+    """Contiguous EP slice: rank r owns experts [r*per, (r+1)*per)."""
+    assert num_experts % ep_size == 0
+    per = num_experts // ep_size
+    lo, hi = rank * per, (rank + 1) * per
+    emap = torch.full((num_experts,), -1, dtype=torch.int32, device=device)
+    emap[lo:hi] = torch.arange(per, dtype=torch.int32, device=device)
+    return emap, lo, hi
+
+
+@pytest.mark.parametrize(
+    "M,top_k,num_experts,block_size,ep_size",
+    [
+        (16, 8, 48, 16, 4),   # Kimi-ish E/top_k, ep=4
+        (4, 4, 16, 16, 2),
+        (1, 8, 256, 16, 8),   # decode, large E
+        (8, 4, 8, 8, 4),
+    ],
+)
+def test_ep_triton_local_assignments_match_reference(M, top_k, num_experts, block_size, ep_size):
+    """The device-side ghost routing assigns each local slot to the same local
+    expert row as the reference EP builder; it only adds ``-1`` (filtered) blocks
+    for the collapsed non-local slots."""
+    if not _HAS_TRITON:
+        pytest.skip("triton backend not registered")
+    dev = _device()
+    g = torch.Generator(device=dev).manual_seed(0)
+    topk_ids = torch.randint(0, num_experts, (M, top_k), generator=g, dtype=torch.int32, device=dev)
+    e_local = num_experts // ep_size
+    flat_e = topk_ids.reshape(-1).long()
+
+    for rank in range(ep_size):
+        emap, lo, hi = _ep_partition(num_experts, ep_size, rank, dev)
+        s, eids, npost = moe_align_block_size_ep_triton(
+            topk_ids, block_size, e_local, emap, truncate=False
+        )
+        # Build the (local_row, global_slot) multiset from LOCAL blocks only.
+        new_local = []
+        for b in range((s.shape[0] + block_size - 1) // block_size):
+            e = int(eids[b].item())
+            if e == -1:
+                continue  # collapsed non-local sentinel block -> filtered by GEMM
+            for slot in s[b * block_size : (b + 1) * block_size].tolist():
+                if slot < M * top_k:
+                    assert lo <= int(flat_e[slot].item()) < hi  # local slot in local block
+                    new_local.append((e, int(slot)))
+        # Reference EP: non-local slots are dropped, so its full dispatch is local.
+        s_r, eids_r, _ = moe_align_block_size_ep(topk_ids, block_size, num_experts, emap)
+        ref_local = []
+        for b in range(eids_r.shape[0]):
+            e = int(eids_r[b].item())
+            for slot in s_r[b * block_size : (b + 1) * block_size].tolist():
+                if slot < M * top_k:
+                    ref_local.append((e, int(slot)))
+        assert sorted(new_local) == sorted(ref_local)
+
+
+@pytest.mark.parametrize(
+    "M,top_k,num_experts,block_size,ep_size",
+    [
+        (16, 8, 48, 16, 4),
+        (1, 8, 256, 16, 8),   # decode bucket
+        (8, 4, 8, 8, 4),
+    ],
+)
+def test_ep_triton_union_covers_every_slot_once(M, top_k, num_experts, block_size, ep_size):
+    """Union of per-rank device-side EP dispatches covers every routed slot
+    exactly once (each computed on precisely the rank that owns its expert)."""
+    if not _HAS_TRITON:
+        pytest.skip("triton backend not registered")
+    dev = _device()
+    g = torch.Generator(device=dev).manual_seed(1)
+    topk_ids = torch.randint(0, num_experts, (M, top_k), generator=g, dtype=torch.int32, device=dev)
+    e_local = num_experts // ep_size
+    seen = torch.zeros(M * top_k, dtype=torch.int64, device=dev)
+    for rank in range(ep_size):
+        emap, lo, hi = _ep_partition(num_experts, ep_size, rank, dev)
+        s, eids, npost = moe_align_block_size_ep_triton(
+            topk_ids, block_size, e_local, emap, truncate=False
+        )
+        for b in range((s.shape[0] + block_size - 1) // block_size):
+            if int(eids[b].item()) == -1:
+                continue  # filtered; not computed on this rank
+            for slot in s[b * block_size : (b + 1) * block_size].tolist():
+                if slot < M * top_k:
+                    seen[slot] += 1
+    assert torch.all(seen == 1), f"slot coverage broken: {seen.tolist()[:32]}..."
+
+
+@pytest.mark.parametrize("num_experts,block_size,ep_size", [(48, 16, 4), (256, 16, 8)])
+def test_ep_triton_grid_scales_with_local_expert_count(num_experts, block_size, ep_size):
+    """The launch grid must scale with the LOCAL expert count (issue #50: no
+    ~ep_size grid inflation), so decode EP does not regress vs the reference."""
+    if not _HAS_TRITON:
+        pytest.skip("triton backend not registered")
+    dev = _device()
+    g = torch.Generator(device=dev).manual_seed(0)
+    topk_ids = torch.randint(0, num_experts, (1, 8), generator=g, dtype=torch.int32, device=dev)
+    e_local = num_experts // ep_size
+    emap, _, _ = _ep_partition(num_experts, ep_size, 0, dev)
+    s, eids, _ = moe_align_block_size_ep_triton(topk_ids, block_size, e_local, emap, truncate=False)
+    new_blocks = (s.shape[0] + block_size - 1) // block_size
+    # Reference EP grid is e_local-based; the ghost adds at most one expert's
+    # worth of padding (<= 2 extra M-blocks over the reference bound).
+    max_pad_ref = 1 * 8 + (e_local + 1) * (block_size - 1)
+    ref_blocks = (max_pad_ref + block_size - 1) // block_size
+    assert new_blocks <= ref_blocks + 2, (new_blocks, ref_blocks)
