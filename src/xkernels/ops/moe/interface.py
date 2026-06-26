@@ -25,7 +25,7 @@ def fused_moe_int4_w4a16(
     *,
     group_size: int = 32,
     mul_routed_weight: bool = True,
-    fused_combine: bool = False,
+    fused_combine: bool | None = None,
     expert_map: torch.Tensor | None = None,
     backend: Backend | str = "auto",
 ) -> torch.Tensor:
@@ -43,8 +43,10 @@ def fused_moe_int4_w4a16(
         topk_w: ``[M, top_k]`` fp32 routing weights.
         group_size: quant group size along K (default 32).
         mul_routed_weight: fold routing weights into the output (down GEMM).
-        fused_combine: fuse the weighted top-k combine into the GEMM epilogue
-            (Triton backend) — returns ``[M, N]`` directly with no separate reduce.
+        fused_combine: ``None`` (default) lets the Triton backend choose a
+            conservative auto policy; ``True`` fuses the weighted top-k combine
+            into the GEMM epilogue and returns ``[M, N]`` directly with no
+            separate reduce; ``False`` forces the scratch+sum path.
         expert_map: optional ``[num_global_experts]`` int tensor for expert
             parallelism (issue #26). Entry ``g`` is the local weight-row of global
             expert ``g`` (in ``[0, E_local)``), or ``-1`` if that expert is not on
