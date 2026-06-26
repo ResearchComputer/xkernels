@@ -9,6 +9,8 @@ weighted-ReLU MQA logits — the gfx942 forward path for the top-k KV selection
 that drives V4 sparse attention (portable replacement for the NVIDIA-only
 ``deep_gemm.fp8_fp4_mqa_logits``). Pair with ``dsa_indexer_topk``.
 """
+from ..._backends import Backend
+from ..._dispatch import backend_registration_guard
 from .interface import (
     dsa_indexer_logits,
     dsa_indexer_topk,
@@ -23,17 +25,35 @@ from .interface import (
 # through the optional ``_triton_compat`` redirect so the kernel binds ``tokenspeed_triton``
 # (not stock ``triton``) inside tokenspeed; see
 # ``xkernels/_triton_compat.py``.
-try:  # pragma: no cover - requires triton
+with backend_registration_guard(
+    "dsa_indexer_logits",
+    Backend.TRITON,
+    source="xkernels.ops.attention.triton.dsa_indexer_kernel",
+):  # pragma: no cover - requires triton
     from ..._triton_compat import triton_import_ctx
 
     with triton_import_ctx():
-        from .triton import (  # noqa: F401
-            dsa_indexer_kernel,
-            merge_state_kernel,
-            sparse_mla_kernel,
-        )
-except Exception:
-    pass
+        from .triton import dsa_indexer_kernel  # noqa: F401
+
+with backend_registration_guard(
+    "mha_merge_state",
+    Backend.TRITON,
+    source="xkernels.ops.attention.triton.merge_state_kernel",
+):  # pragma: no cover - requires triton
+    from ..._triton_compat import triton_import_ctx
+
+    with triton_import_ctx():
+        from .triton import merge_state_kernel  # noqa: F401
+
+with backend_registration_guard(
+    "sparse_mla_attention",
+    Backend.TRITON,
+    source="xkernels.ops.attention.triton.sparse_mla_kernel",
+):  # pragma: no cover - requires triton
+    from ..._triton_compat import triton_import_ctx
+
+    with triton_import_ctx():
+        from .triton import sparse_mla_kernel  # noqa: F401
 
 __all__ = [
     "mha_merge_state",

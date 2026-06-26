@@ -11,6 +11,8 @@ projection hot path on both prefill and decode.
 Also re-exports the quant helpers (``per_token_group_quant_fp8`` /
 ``per_block_quant_fp8``) used to produce the fp8 block-scale operands.
 """
+from ..._backends import Backend
+from ..._dispatch import backend_registration_guard
 from .interface import mm_fp8_blockscale
 from .reference import (
     FP8_BLOCK,
@@ -22,13 +24,13 @@ from .reference import (
 # Import the Triton backend for its registration side effect (optional). Routed
 # through the optional ``_triton_compat`` redirect so the kernel binds
 # ``tokenspeed_triton`` (not stock ``triton``) inside tokenspeed.
-try:  # pragma: no cover - requires triton
+with backend_registration_guard(
+    "mm_fp8_blockscale", Backend.TRITON, source="xkernels.ops.gemm.triton.entry"
+):  # pragma: no cover - requires triton
     from ..._triton_compat import triton_import_ctx
 
     with triton_import_ctx():
         from .triton import entry  # noqa: F401  (registers TRITON: mfma + portable)
-except Exception:
-    pass
 
 __all__ = [
     "mm_fp8_blockscale",
