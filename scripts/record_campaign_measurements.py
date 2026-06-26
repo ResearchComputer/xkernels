@@ -31,7 +31,8 @@ ROWS = [
     ("mha_merge_state.triton@1.0.0", "amd_cdna3",
      {"T": 8192, "H": 128, "D": 128}, "bf16", {}, BEV_BENCH, 0.784, None, None),
     ("sparse_mla_attention.triton@1.0.0", "amd_cdna3",
-     {"T": 8, "H": 128, "D": 512, "topk": 512, "Kv": 8192}, "bf16", {}, BEV_BENCH, 0.111, None, None),
+     {"T": 8, "H": 128, "D": 512, "topk": 512, "Kv": 8192},
+     "bf16", {}, BEV_BENCH, 0.111, None, None),
     ("mhc_pre.triton@1.0.0", "amd_cdna3",
      {"T": 8, "hc_mult": 4, "hidden": 4096}, "bf16", {}, BEV_BENCH, 0.080, None, None),
     # hc_prenorm_gemm at T=8 is launch-overhead-dominated (0.013 ms); recorded as-is.
@@ -42,14 +43,17 @@ ROWS = [
     ("fused_ffn.triton@1.0.0", "amd_cdna3",
      {"M": 4096, "d_model": 4096, "d_ff": 11008}, "fp16", {}, BEV_BENCH, 5.285, None, None),
     ("moe_int4_w4a16.triton@1.0.0", "amd_cdna3",
-     {"M": 64, "E": 48, "N": 4096, "K": 7168, "top_k": 8}, "bf16", {}, BEV_BENCH, 1.364, None, None),
+     {"M": 64, "E": 48, "N": 4096, "K": 7168, "top_k": 8},
+     "bf16", {}, BEV_BENCH, 1.364, None, None),
 
     # ---- beverin (amd_cdna3) : mm_fp8_blockscale, native fp8 MFMA, #530059 ----
     # tflops are the bench script's own computed values (authoritative).
     ("mm_fp8_blockscale.triton@1.0.0", "amd_cdna3",
-     {"M": 2048, "N": 512, "K": 7168, "block": 128}, "fp8", {"path": "mfma"}, BEV_FP8, 0.061, 246.1, None),
+     {"M": 2048, "N": 512, "K": 7168, "block": 128}, "fp8",
+     {"path": "mfma"}, BEV_FP8, 0.061, 246.1, None),
     ("mm_fp8_blockscale.triton@1.0.0", "amd_cdna3",
-     {"M": 4096, "N": 7168, "K": 2048, "block": 128}, "fp8", {"path": "mfma"}, BEV_FP8, 0.331, 363.6, None),
+     {"M": 4096, "N": 7168, "K": 2048, "block": 128}, "fp8",
+     {"path": "mfma"}, BEV_FP8, 0.331, 363.6, None),
 
     # ---- bristen (nvidia_sm80) : bench_one #71892 + ncu roof (achieved_bw_pct) ----
     ("dual_rmsnorm.triton@1.0.0", "nvidia_sm80",

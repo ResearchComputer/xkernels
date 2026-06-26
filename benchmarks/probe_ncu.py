@@ -148,7 +148,10 @@ def _moe_int4(dev: str):
     M, E, N, K, top_k, gs = 64, 48, 4096, 7168, 8, 32
     packed, scale, _ = make_w4a16_weights(E, N, K, gs, device=dev, seed=1)
     A = (torch.randn(M, K, device=dev) * 0.1).to(DT)
-    topk_ids = torch.stack([torch.randperm(E, device=dev)[:top_k] for _ in range(M)]).to(torch.int32)
+    topk_ids = (
+        torch.stack([torch.randperm(E, device=dev)[:top_k] for _ in range(M)])
+        .to(torch.int32)
+    )
     topk_w = torch.rand(M, top_k, device=dev, dtype=torch.float32)
     config = get_moe_int4_config(E, N, K, M)
     block_m = config["BLOCK_SIZE_M"] if config is not None else align_block_m(M)
