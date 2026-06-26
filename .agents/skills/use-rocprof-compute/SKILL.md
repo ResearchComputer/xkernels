@@ -182,6 +182,12 @@ RCP=(python3 "$ROCPC_SRC/src/rocprof-compute")
 
 ## Pitfalls
 
+- **Don't use this skill on a crashing / wrong-results dispatch.** rocprof
+  replays counters and will either die with the crash or report a stall reason
+  unrelated to the bug. This skill REQUIRES `verify().correctness.passed == true`.
+  If the kernel crashes or fails `verify` on GPU (e.g. interpreter-green but
+  GPU-red), route to [`diagnose-wrong-results`](../diagnose-wrong-results/SKILL.md)
+  FIRST to restore correctness, then come back here for perf.
 - **pandas 3.x breaks analyze (the load-bearing gotcha).** `requirements.txt`
   has `pandas>=1.4.3`; uv installs pandas 3, whose strict `str` dtype makes the
   v3→v2 counter join AND the metric assignment fail with

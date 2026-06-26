@@ -151,3 +151,93 @@ The sbatch's `REPO` default was `/capstor/scratch/cscs/xyao/kernels` (missing th
 `.../xkernels`, so the documented path works — but submitting the sbatch
 directly without `REPO=` would point at a stale/missing tree. Always submit via
 the driver, or pass `REPO=/capstor/scratch/cscs/xyao/xkernels`.
+
+---
+
+The entries below are from a **later** pass (issue #50, MoE device-side
+routing) — distinct campaign, same page, because this file's purpose is "facts
+that cost real debugging time," not "one campaign's log."
+
+## 11. The autotune wrapper corrupts certain dispatches under concurrency (the GPU debugging trichotomy)
+
+**Provenance.** Issue #50 (MoE sync-free device-side routing), GPU-validation
+pass on bristen A100 (sm_80), 2026-06-26. Produced the
+[`diagnose-wrong-results`](../.agents/skills/diagnose-wrong-results/SKILL.md)
+skill — the "kernel crashes / fails verify on GPU" peer of the perf-diagnose
+skills (which all assume `verify().correctness.passed == true`).
+
+**Symptom.** The fused INT4 MoE GEMM raises *illegal-memory-access* on the A100
+when launched through its `@triton.autotune` wrapper under the new ghost-expert
+EP routing dispatch — but ONLY when run after smaller decode buckets in the same
+process (in isolation it is fine). The MXFP4 GEMM, with the *identical* routing,
+is A100-clean at every scale.
+
+**The three-way signature that fingerprinted it** (this is the reusable part):
+
+| condition | result | implication |
+|---|---|---|
+| `CUDA_LAUNCH_BLOCKING=1` | **PASSES** | not a deterministic OOB in the hot loop |
+| `compute-sanitizer` | **0 errors, PASSES** | not a memory-safety violation the sanitizer can reach |
+| bypass autotune (resolved-config direct call) | **ALL buckets PASS** | the kernel is correct; the **autotune wrapper** is the corrupter |
+
+No single tool shows this — only the *combination*. (`compute-sanitizer`
+serializes enough that the trial-time corruption vanishes under it; blocking
+removes the cross-launch overlap the wrapper needs.) The PASSES/clean/PASSES
+signature is the fingerprint of autotune-wrapper corruption.
+
+**Cause.** Triton's `@triton.autotune` *trials* configs whose `BLOCK_SIZE_M`
+exceeds the dispatch, and the INT4 GEMM's token-id gather
+`tl.load(sorted_token_ids_ptr + offs_token_id)` was **unmasked** — so during a
+trial with a large `BLOCK_SIZE_M` the last block read past `EM`. The cached
+winner was fine, but the trial corrupted the output buffer / crashed under
+concurrency. The interpreter never saw it (it bounds-checks every load and runs
+no trials).
+
+**The fix, in two parts.**
+1. **Mask every gather by the true extent** (defensive, always — the canonical
+   lesson): `tl.load(..., mask=offs_token_id < EM, other=num_valid_tokens)`. The
+   `other=` value is the pad id, which the existing `token_mask` already drops,
+   so this is strictly result-preserving. Applied to BOTH the INT4 and MXFP4
+   GEMMs (`src/xkernels/ops/moe/triton/{moe_int4,moe_mxfp4}_kernel.py`). An
+   unmasked gather that "works" is a latent bug — it passes until a config trial
+   or a new shape reads past the end.
+2. **Pin/bypass the wrapper for the still-corrupting dispatch.** The mask alone
+   did not clear the INT4 EP path (the wrapper's interaction is deeper than the
+   one gather); INT4 EP keeps the reference align with a launcher comment
+   documenting why, and the device-side Triton routing is A100-verified for INT4
+   non-EP and both MXFP4 paths. The wrapper bug itself is GPU-gated follow-up.
+
+**The methodological lesson (encoded as a skill).** This cost hours because the
+repo had a `profile → diagnose → fix` pipeline that assumes the kernel already
+passes correctness. The thing that actually happens first on a GPU — a crash or
+wrong result — had no playbook. The ladder that cracked it:
+1. **Reproduce standalone**, not in pytest (the harness's autotune-pinning +
+   parametrize-ordering invent *and* hide bugs — see #12).
+2. **Isolation ladder**: in-isolation → in-sequence → on-main → on-stash. (It
+   also proved a *second* apparent failure — M=128 EP numerical drift — was a
+   harness config-pin artifact, `BLOCK_SIZE_M=16` vs `align_block_m(128)=64`,
+   not a kernel bug. The kernel was correct.)
+3. **The trichotomy** above. Read the three-way signature.
+
+If a kernel crashes or fails `verify` on GPU (rather than merely being slow),
+route to [`diagnose-wrong-results`](../.agents/skills/diagnose-wrong-results/SKILL.md)
+BEFORE touching a profiler.
+
+## 12. Autotune config-pinning in tests is shape-coupled (`align_block_m`)
+
+**Symptom.** A `test_ep_partials_sum_to_full[M=128-...]` reported ~94% numerical
+mismatch (max abs err ~2.3) on the A100 — but the *same* M=128 EP dispatch was
+correct in a standalone script (err 0.0080), and main passed the pytest case too.
+
+**Cause.** The test calls `_pin_single_config()`, which forces a single autotune
+config with `BLOCK_SIZE_M=16`. That pin is valid only for shapes where the
+launcher's `align_block_m(M)` equals 16 — i.e. `M <= 32`. At `M=128`,
+`align_block_m` returns 64, so the pinned 16-wide dispatch misroutes against a
+64-wide block sort → wrong token/expert mapping → numerical garbage. The
+standalone script (no pin) and main (no M=128 bucket) were both correct.
+
+**Fix.** When extending a parametrize list on a test that pins a config, check
+`align_block_m(M)` against the pin FIRST — it is a one-line CPU check. The M=128
+prefill bucket was dropped from the INT4 EP test; decode buckets (M<=16,
+`align_block_m=16`) are pin-compatible. The unpinned prefill path is validated
+separately in `benchmarks/bench_moe_e2e_routing.py`.

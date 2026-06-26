@@ -23,6 +23,7 @@ in a namespaced `x-kernel-lib` block that non-standard consumers ignore (§7.1).
 | [`autotune-knob-sweep`](autotune-knob-sweep/SKILL.md) | agnostic | search the declared knob space, record the winner |
 | [`port-cuda-to-hip`](port-cuda-to-hip/SKILL.md) | cuda→hip | functional port of a CUDA card to a HIP card |
 | [`tune-for-cdna`](tune-for-cdna/SKILL.md) | hip | make a correct HIP card fast on CDNA |
+| [`diagnose-wrong-results`](diagnose-wrong-results/SKILL.md) | cuda, hip | restore a kernel that CRASHES or fails verify on GPU after passing on the interpreter — runs BEFORE the perf-diagnose skills (which all require `verify().correctness.passed == true`) |
 | [`diagnose-memory-bound`](diagnose-memory-bound/SKILL.md) | cuda, hip | fix a correct-but-bandwidth-limited kernel |
 | [`diagnose-low-occupancy`](diagnose-low-occupancy/SKILL.md) | cuda, hip | fix a correct-but-latency/occupancy-limited kernel |
 | [`establish-parity`](establish-parity/SKILL.md) | agnostic | cross-backend parity gate + divergence localization |
