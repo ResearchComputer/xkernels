@@ -2,23 +2,18 @@
 name: diagnose-wrong-results
 description: >
   Diagnose a kernel that FAILS on a real GPU after passing on CPU / Triton-interpreter
-  — either a hard crash (illegal-memory-access / SIGSEGV / CUDA/HIP error) OR a
-  numerical mismatch in verify() / verify_parity() — BEFORE any perf work. The
-  peer of diagnose-low-occupancy / diagnose-memory-bound (which assume verify
-  PASSES): those fire on a correct-but-slow card; this fires on a wrong-or-crashing
-  one. Encodes the GPU debugging ladder the interpreter cannot surface: (1)
-  reproduce in isolation, NOT in the pytest harness (which adds autotune-pinning +
-  parametrize-ordering confounders); (2) the isolation ladder (in-isolation ->
-  in-sequence -> on-main -> on-stash) to separate your change from pre-existing /
-  state-pollution failures; (3) the crash-localization trichotomy — CUDA_LAUNCH_BLOCKING
-  / HIP_LAUNCH_BLOCKING, compute-sanitizer / rocgdb, and bypass-autotune — whose
-  three-way PASS/FAIL signature fingerprints the root cause; (4) pin/bypass/mask
-  to confirm. The load-bearing gotcha this captures: the autotune wrapper corrupts
-  certain dispatches under concurrency (PASSES under blocking, CLEAN under the
-  sanitizer, PASSES the resolved-config direct path) — the most time-consuming
-  failure mode in an autotune-heavy repo, and one no single profiler tool exposes.
-  GPU-gated on the failing backend. Use whenever interpreter-validated code crashes
-  or fails verify on first contact with a real GPU.
+  — a hard crash (illegal-memory-access / SIGSEGV / CUDA-HIP error) or a numerical
+  mismatch in verify() / verify_parity() — BEFORE any perf work. Peer of
+  diagnose-low-occupancy / diagnose-memory-bound (correct-but-slow): those require
+  verify PASSES, this fires when it does NOT. Method: (1) reproduce in a standalone
+  seeded script, NOT pytest (harness confounders); (2) isolation ladder
+  (in-isolation -> in-sequence -> on-main -> on-stash) to separate your change from
+  pre-existing / state pollution; (3) crash-localization trichotomy —
+  CUDA/HIP_LAUNCH_BLOCKING, compute-sanitizer / rocgdb, bypass-autotune — whose
+  three-way PASS/FAIL signature fingerprints the cause; (4) pin / bypass / mask and
+  NAME the root cause. Load-bearing gotcha: the autotune wrapper corrupts certain
+  dispatches under concurrency (PASSES/blocking + CLEAN/sanitizer + PASSES/direct) —
+  no single profiler surfaces it. GPU-gated on the failing backend.
 license: Apache-2.0
 x-kernel-lib:
   id: diagnose-wrong-results@1.0.0
