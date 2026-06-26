@@ -6,15 +6,37 @@
     "family": "any",
     "requires": [],
     "wave_size": 0,
-    "scratch": { "kind": "registers", "bytes": 0 }
+    "scratch": {
+      "kind": "registers",
+      "bytes": 0
+    }
   },
   "specialization_knobs": {},
   "perf": {
     "regime": "Fused MHC pre-norm: RMS-prenorm projection split into pre/post/comb heads, sinkhorn mixing, and the pre-weighted residual combine that produces layer_input (the branch the TileLang kernel mislowers on gfx942). Perf unmeasured without a GPU.",
     "roofline": "memory_bound",
-    "measured": []
+    "measured": [
+      {
+        "arch": "amd_cdna3",
+        "shape": {
+          "T": 8,
+          "hc_mult": 4,
+          "hidden": 4096
+        },
+        "dtype": "bf16",
+        "knobs": {},
+        "source": "bench_all.py on beverin MI300A gfx942 (slurm #530058)",
+        "ms": 0.08
+      }
+    ]
   },
-  "uses_primitives": ["norm.rms_rsqrt", "gemm.tile_dot_fp32acc", "elementwise.sigmoid_heads", "reduce.sinkhorn", "reduce.residual_combine"],
+  "uses_primitives": [
+    "norm.rms_rsqrt",
+    "gemm.tile_dot_fp32acc",
+    "elementwise.sigmoid_heads",
+    "reduce.sinkhorn",
+    "reduce.residual_combine"
+  ],
   "supersedes": [],
   "provenance": {
     "authored_by": "human",

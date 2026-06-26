@@ -6,18 +6,72 @@
     "family": "any",
     "requires": [],
     "wave_size": 0,
-    "scratch": { "kind": "registers", "bytes": 0 }
+    "scratch": {
+      "kind": "registers",
+      "bytes": 0
+    }
   },
   "specialization_knobs": {
-    "path":     { "type": "int", "choices": ["auto", "mfma", "portable"], "_doc": "Selects the native fp8 MFMA fast path (AMD fnuz operands), the dequant-then-dot portable path, or auto routing. Accepted by the triton entry callable." },
-    "dot_bf16": { "type": "bool", "choices": [false, true], "_doc": "Portable-path only: cast dequantized operands to bf16 for the tl.dot (CDNA3 bf16 MFMA, fp32 accumulate). Faster in principle, ~bf16-accurate; forces the portable path." }
+    "path": {
+      "type": "int",
+      "choices": [
+        "auto",
+        "mfma",
+        "portable"
+      ],
+      "_doc": "Selects the native fp8 MFMA fast path (AMD fnuz operands), the dequant-then-dot portable path, or auto routing. Accepted by the triton entry callable."
+    },
+    "dot_bf16": {
+      "type": "bool",
+      "choices": [
+        false,
+        true
+      ],
+      "_doc": "Portable-path only: cast dequantized operands to bf16 for the tl.dot (CDNA3 bf16 MFMA, fp32 accumulate). Faster in principle, ~bf16-accurate; forces the portable path."
+    }
   },
   "perf": {
     "regime": "Dense GEMM, fp8 block-scale. Default fp32-dot is exact but does not use the native fp8 MFMA path; on gfx942 the tuned-BLAS torch reference currently beats the naive Triton tiling (issue #38 honest negative result). The native fp8 MFMA path (path='mfma', fnuz operands) is the planned fast path. Perf is arch-gated and unmeasured without a GPU.",
     "roofline": "compute_bound",
-    "measured": []
+    "measured": [
+      {
+        "arch": "amd_cdna3",
+        "shape": {
+          "M": 2048,
+          "N": 512,
+          "K": 7168,
+          "block": 128
+        },
+        "dtype": "fp8",
+        "knobs": {
+          "path": "mfma"
+        },
+        "source": "bench_fp8_blockscale_gemm.py on beverin MI300A gfx942 (slurm #530059)",
+        "tflops": 246.1,
+        "ms": 0.061
+      },
+      {
+        "arch": "amd_cdna3",
+        "shape": {
+          "M": 4096,
+          "N": 7168,
+          "K": 2048,
+          "block": 128
+        },
+        "dtype": "fp8",
+        "knobs": {
+          "path": "mfma"
+        },
+        "source": "bench_fp8_blockscale_gemm.py on beverin MI300A gfx942 (slurm #530059)",
+        "tflops": 363.6,
+        "ms": 0.331
+      }
+    ]
   },
-  "uses_primitives": ["gemm.tile_dot_fp32acc", "quant.fp8_blockscale_dequant"],
+  "uses_primitives": [
+    "gemm.tile_dot_fp32acc",
+    "quant.fp8_blockscale_dequant"
+  ],
   "supersedes": [],
   "provenance": {
     "authored_by": "human",

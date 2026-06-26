@@ -15,7 +15,33 @@
   "perf": {
     "regime": "memory-bound reduce over top-k; ~8\u00d7 over torch reduce.",
     "roofline": "memory_bound",
-    "measured": []
+    "measured": [
+      {
+        "arch": "amd_cdna3",
+        "shape": {
+          "M": 8192,
+          "top_k": 8,
+          "H": 7168
+        },
+        "dtype": "bf16",
+        "knobs": {},
+        "source": "bench_all.py on beverin MI300A gfx942 (slurm #530058)",
+        "ms": 0.373
+      },
+      {
+        "arch": "nvidia_sm80",
+        "shape": {
+          "M": 8192,
+          "top_k": 8,
+          "H": 7168
+        },
+        "dtype": "bf16",
+        "knobs": {},
+        "source": "bench_one.py on bristen A100 sm_80 (slurm #71892); ncu roof profile (slurm #71893-71899)",
+        "achieved_bw_pct": 85.0,
+        "ms": 0.651
+      }
+    ]
   },
   "uses_primitives": [
     "reduce.weighted_topk"

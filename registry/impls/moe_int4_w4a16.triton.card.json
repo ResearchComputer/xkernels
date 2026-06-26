@@ -6,17 +6,63 @@
     "family": "any",
     "requires": [],
     "wave_size": 0,
-    "scratch": { "kind": "registers", "bytes": 0 }
+    "scratch": {
+      "kind": "registers",
+      "bytes": 0
+    }
   },
   "specialization_knobs": {
-    "fused_combine": { "type": "bool", "choices": [false, true], "_doc": "Fuse the weighted top-k combine into the GEMM epilogue (atomic-accumulate into one [M,N] fp32 buffer, no separate moe_sum_reduce). Opt-in; default False keeps the [M*top_k,N] scratch + sum(1). Accepted by the triton entry callable." }
+    "fused_combine": {
+      "type": "bool",
+      "choices": [
+        false,
+        true
+      ],
+      "_doc": "Fuse the weighted top-k combine into the GEMM epilogue (atomic-accumulate into one [M,N] fp32 buffer, no separate moe_sum_reduce). Opt-in; default False keeps the [M*top_k,N] scratch + sum(1). Accepted by the triton entry callable."
+    }
   },
   "perf": {
     "regime": "Grouped (batched-expert) GEMM with fused W4A16 dequant. Hides the moe_align_block_size dispatch build and the token-indexed scratch behind a single [M,N]-out interface. Perf unmeasured without a GPU; the token-slot block MUST equal the kernel BLOCK_SIZE_M.",
     "roofline": "compute_bound",
-    "measured": []
+    "measured": [
+      {
+        "arch": "amd_cdna3",
+        "shape": {
+          "M": 64,
+          "E": 48,
+          "N": 4096,
+          "K": 7168,
+          "top_k": 8
+        },
+        "dtype": "bf16",
+        "knobs": {},
+        "source": "bench_all.py on beverin MI300A gfx942 (slurm #530058)",
+        "tflops": 22.0,
+        "ms": 1.364
+      },
+      {
+        "arch": "nvidia_sm80",
+        "shape": {
+          "M": 64,
+          "E": 48,
+          "N": 4096,
+          "K": 7168,
+          "top_k": 8
+        },
+        "dtype": "bf16",
+        "knobs": {},
+        "source": "bench_one.py on bristen A100 sm_80 (slurm #71892); ncu roof profile (slurm #71893-71899)",
+        "tflops": 13.5,
+        "achieved_bw_pct": 18.0,
+        "ms": 2.225
+      }
+    ]
   },
-  "uses_primitives": ["quant.w4a16_dequant", "gemm.grouped", "reduce.weighted_topk"],
+  "uses_primitives": [
+    "quant.w4a16_dequant",
+    "gemm.grouped",
+    "reduce.weighted_topk"
+  ],
   "supersedes": [],
   "provenance": {
     "authored_by": "human",

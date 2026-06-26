@@ -42,6 +42,41 @@ find_impl("norm", {"x1": {"dtype": "bf16", "shape": [64, 1536]}}, target_arch="a
 - `.agents/skills/*/SKILL.md` — authoring/porting/tuning playbooks (SKILL.md standard).
 - `src/xkernels/mcp_server.py` — the MCP server exposing the above as tools.
 
+## Skills — read the matching SKILL.md *before* starting
+
+`.agents/skills/` are authoritative playbooks, not background reading. Each
+`SKILL.md` frontmatter has `when_to_use.triggers` — if a task matches one, load
+it (with the `read` tool on that `SKILL.md`) **before** doing the work it covers,
+not after. Reinventing what a skill already documents — metric names, launch
+commands, the load-bearing gotcha — is a known failure mode (the profiling pass
+that produced `wiki/` hit exactly this by naming rocprof/ncu metrics from memory
+instead of from the skills).
+
+Performance work is a pipeline; each stage has its own skill:
+
+1. **profile** (produce the numbers) — `use-rocprof-compute` on AMD,
+   `use-nsight-compute` on NVIDIA. These are **mandatory pre-reading before
+   running rocprof/ncu**: they hold the question→mode table, the exact metric
+   names (`2.1.16 Wavefront Occupancy` / `5.2.1 CPC Stall` on AMD;
+   `SpeedOfLight` DRAM-vs-Compute %, `WarpStateStats` stall reason on NVIDIA),
+   and the host-side gotchas (`dcgmi profile --pause`; the `pandas<3` pin +
+   `libdw.so.1` staging). Do not pick sections or metric names from memory.
+2. **diagnose** (branch on the profile) — `diagnose-low-occupancy`,
+   `diagnose-memory-bound`. Route by the **dominant stall reason**, which is
+   causal — not by the throughput ratio alone.
+3. **fix** (re-tile / retarget / fuse) — `tune-for-cdna`,
+   `map-to-matrix-cores`, `autotune-knob-sweep`, `port-cuda-to-hip`,
+   `port-across-arch`, `add-epilogue-fusion`, `fuse-elementwise-chain`,
+   `mixed-precision-convert`. Each ends by writing the winner to the card's
+   `perf.measured` (§6.2 compounding loop) and re-running `verify` +
+   `verify_parity`.
+
+`verify()`'s perf block returns only `ms`; the `tflops` / `achieved_bw_pct` it
+stubs to `None` come from the profile stage (above), then go to
+`record_measurement(...)`. Authoring a brand-new op (no Op Spec yet) starts with
+`author-an-op-spec` — the one skill whose gate is CPU-satisfiable, so it's the
+first productive step when no GPU is available.
+
 ## Adding a kernel
 
 Follow `docs/adding-a-kernel.md` (now card-driven): write the Op Spec + a

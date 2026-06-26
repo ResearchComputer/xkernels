@@ -26,7 +26,33 @@
   "perf": {
     "regime": "GEMM-bound: the three projection matmuls dominate and are torch.matmul in both paths, so the fused activation wins little end-to-end (\u22481\u00d7). The win is in launch overhead only.",
     "roofline": "compute_bound",
-    "measured": []
+    "measured": [
+      {
+        "arch": "amd_cdna3",
+        "shape": {
+          "M": 4096,
+          "d_model": 4096,
+          "d_ff": 11008
+        },
+        "dtype": "fp16",
+        "knobs": {},
+        "source": "bench_all.py on beverin MI300A gfx942 (slurm #530058)",
+        "ms": 5.285
+      },
+      {
+        "arch": "nvidia_sm80",
+        "shape": {
+          "M": 4096,
+          "d_model": 4096,
+          "d_ff": 11008
+        },
+        "dtype": "fp16",
+        "knobs": {},
+        "source": "bench_one.py on bristen A100 sm_80 (slurm #71892); ncu roof profile (slurm #71893-71899)",
+        "achieved_bw_pct": 87.0,
+        "ms": 4.288
+      }
+    ]
   },
   "uses_primitives": [
     "elementwise.swiglu"

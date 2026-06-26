@@ -15,7 +15,33 @@
   "perf": {
     "regime": "memory-bound row-wise reduce; ~4-6\u00d7 over two sequential RMSNorm launches. Win is one kernel/one pass.",
     "roofline": "memory_bound",
-    "measured": []
+    "measured": [
+      {
+        "arch": "amd_cdna3",
+        "shape": {
+          "T": 8192,
+          "D1": 1536,
+          "D2": 512
+        },
+        "dtype": "bf16",
+        "knobs": {},
+        "source": "bench_all.py on beverin MI300A gfx942 (slurm #530058)",
+        "ms": 0.054
+      },
+      {
+        "arch": "nvidia_sm80",
+        "shape": {
+          "T": 8192,
+          "D1": 1536,
+          "D2": 512
+        },
+        "dtype": "bf16",
+        "knobs": {},
+        "source": "bench_one.py on bristen A100 sm_80 (slurm #71892); ncu roof profile (slurm #71893-71899)",
+        "achieved_bw_pct": 68.0,
+        "ms": 0.053
+      }
+    ]
   },
   "uses_primitives": [
     "reduce.row_rms"
