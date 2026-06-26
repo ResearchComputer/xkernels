@@ -74,3 +74,8 @@ The `tokenspeed-rocm-aiter-myofi` container image has its own default working di
 
 - The head node has MI250X GPUs; for MI300A (gfx942) results, always use `--partition=mi300` or submit the provided `slurm/*_beverin.sbatch` scripts.
 - The container environment `tokenspeed-rocm-aiter-myofi` provides torch 2.11.0+rocm7.2 and the Triton build used by the kernels.
+
+## See also
+
+- [`docs/profiling-on-beverin.md`](profiling-on-beverin.md) — setting up + running AMD's ROCm Compute Profiler (Omniperf) for wave-level occupancy/stall/roofline diagnosis.
+- [`.agents/skills/use-rocprof-compute/SKILL.md`](../.agents/skills/use-rocprof-compute/SKILL.md) — the procedural skill that routes a profile to the `diagnose-*` / `map-to-matrix-cores` fix skills.

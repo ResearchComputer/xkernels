@@ -5,3 +5,10 @@ host = "beverin"                 # ssh alias from ~/.ssh/config
 remote_dir = "/capstor/scratch/cscs/xyao/xkernels"  # scratch working copy
 # ssh_control_persist = "30m"
 # ssh_control_dir = "~/.ssh/controlmasters"
+
+# bristen: CSCS Cray Shasta, NVIDIA A100-80GB (sm_80) compute nodes. /capstor is
+# shared with beverin, so the same remote tree serves both clusters. Select with
+#   rcc --profile bristen push   /   rcc --profile bristen run -- ...
+[profiles.bristen]
+host = "bristen"
+remote_dir = "/capstor/scratch/cscs/xyao/xkernels"

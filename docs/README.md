@@ -11,6 +11,9 @@ This directory contains documentation for the xkernels project, organized by iss
 ### Core Features
 - **[adding-a-kernel.md](./adding-a-kernel.md)** - Guide for adding new kernels to the codebase
 - **[benchmarking-on-beverin.md](./benchmarking-on-beverin.md)** - How to benchmark/test on the beverin MI300A cluster via `rcc`
+- **[benchmarking-on-bristen.md](./benchmarking-on-bristen.md)** - How to benchmark on the bristen NVIDIA A100 cluster (NGC container via pyxis)
+- **[profiling-on-beverin.md](./profiling-on-beverin.md)** - Profiling on beverin (MI300A) with the ROCm Compute Profiler
+- **[profiling-on-bristen.md](./profiling-on-bristen.md)** - Profiling on bristen (A100/sm_80) with Nsight Compute / Systems (+ the DCGM-pause gotcha)
 
 ### Distributed & Collectives
 - **[issue-12-hierarchical-all-reduce.md](./issue-12-hierarchical-all-reduce.md)** - Topology-aware hierarchical all-reduce with HIP-graph capture results

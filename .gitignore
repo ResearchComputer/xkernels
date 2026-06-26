@@ -15,3 +15,7 @@ uv.lock
 .DS_Store
 .rcc/
 .omx/
+.omniperf-workloads/
+.ncu-workloads/
+.nsys-workloads/
+*.out

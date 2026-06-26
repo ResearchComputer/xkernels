@@ -24,7 +24,10 @@ in a namespaced `x-kernel-lib` block that non-standard consumers ignore (§7.1).
 | [`port-cuda-to-hip`](port-cuda-to-hip/SKILL.md) | cuda→hip | functional port of a CUDA card to a HIP card |
 | [`tune-for-cdna`](tune-for-cdna/SKILL.md) | hip | make a correct HIP card fast on CDNA |
 | [`diagnose-memory-bound`](diagnose-memory-bound/SKILL.md) | cuda, hip | fix a correct-but-bandwidth-limited kernel |
+| [`diagnose-low-occupancy`](diagnose-low-occupancy/SKILL.md) | cuda, hip | fix a correct-but-latency/occupancy-limited kernel |
 | [`establish-parity`](establish-parity/SKILL.md) | agnostic | cross-backend parity gate + divergence localization |
+| [`use-rocprof-compute`](use-rocprof-compute/SKILL.md) | hip | run AMD ROCm Compute Profiler (Omniperf) on beverin to get the occupancy/stall/roofline profile the diagnose-* skills branch on |
+| [`use-nsight-compute`](use-nsight-compute/SKILL.md) | cuda | run NVIDIA Nsight Compute (ncu) / Systems (nsys) on bristen (A100/sm_80) to get the occupancy/stall/roofline profile the diagnose-* skills branch on (the NVIDIA twin of use-rocprof-compute) |
 
 ## Evolution (governance loop, §7.3)
 
