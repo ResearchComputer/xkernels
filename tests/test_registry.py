@@ -192,6 +192,10 @@ def test_verify_returns_run_id():
 def test_verify_applies_accepted_knobs_and_reports_unapplied():
     """Specialization is real: accepted knobs flow to the kernel, unaccepted ones
     are reported as unapplied (the honesty §10 demands)."""
+    from xkernels._backends import Backend
+    from xkernels._dispatch import registered_backends
+    if Backend.TRITON not in registered_backends("ffn"):
+        pytest.skip("triton backend not registered (triton not installed)")
     from xkernels.registry import backend_callable
     from xkernels.verify import _accepted_knobs
 
