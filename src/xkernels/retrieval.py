@@ -20,7 +20,7 @@ from .registry.models import ImplCard, OpSpec
 
 # --- arch / feature matching --------------------------------------------------
 
-_AMD, _NVIDIA = {"amd_cdna2", "amd_cdna3"}, {"nvidia_sm80", "nvidia_sm90"}
+_AMD, _NVIDIA = {"amd_cdna2", "amd_cdna3"}, {"nvidia_sm80", "nvidia_sm90", "nvidia_sm100", "nvidia_sm121"}
 
 
 def _vendor_of(arch: str) -> str:

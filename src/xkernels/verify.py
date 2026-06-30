@@ -99,6 +99,31 @@ def _errors(actual: list[torch.Tensor], expected: list[torch.Tensor]) -> tuple[f
     return max_abs, max_rel
 
 
+def _within_tolerance(
+    actual: list[torch.Tensor], expected: list[torch.Tensor], rtol: float, atol: float
+) -> bool:
+    """Standard combined per-element criterion: ``|a - e| <= atol + rtol * |e|``.
+
+    This is the form numpy ``allclose`` / torch ``assert_close`` / pytest
+    ``approx`` all use: ``atol`` absorbs the near-zero regime (where relative
+    error is ill-defined) and ``rtol`` scales with magnitude. The previous
+    ``abs <= atol AND rel <= rtol`` form made ``atol`` a magnitude-independent
+    absolute cap, which false-fails any non-bit-identical backend at moderate
+    magnitude (e.g. 1 bf16-ULP at |e|=2 is 0.0156 > any reasonable atol) — and
+    was inconsistent with ``verify_parity`` (which is rel-only). See
+    docs/ds5-cute-testbed.md follow-up (a) for the dual_rmsnorm case that forced
+    this fix.
+    """
+    for a, e in zip(actual, expected, strict=True):
+        af = a.detach().float()
+        ef = e.detach().float()
+        diff = (af - ef).abs()
+        limit = atol + rtol * ef.abs()
+        if bool((diff > limit).any().item()):
+            return False
+    return True
+
+
 def _resolve_shapes(shapes: str | list[dict]) -> list[dict]:
     if isinstance(shapes, str):
         return load_shape_sweep(shapes)
@@ -193,7 +218,7 @@ def verify(
             abs_err, rel_err = _errors(card_out, ref_out)
             max_abs = max(max_abs, abs_err)
             max_rel = max(max_rel, rel_err)
-            passed = (abs_err <= atol) and (rel_err <= rtol)
+            passed = _within_tolerance(card_out, ref_out, rtol, atol)
             if not passed:
                 failing.append({"point": p, "abs_err": abs_err, "rel_err": rel_err,
                                 "rtol": rtol, "atol": atol})

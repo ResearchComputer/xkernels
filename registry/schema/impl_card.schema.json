@@ -36,11 +36,13 @@
       "properties": {
         "family": {
           "type": "string",
-          "description": "Architecture family. 'any' for backend-neutral (e.g. reference, or portable Triton).",
+          "description": "Architecture family. 'any' for backend-neutral (e.g. reference, or portable Triton). nvidia_sm100 = Blackwell data-center (B100/B200); nvidia_sm121 = Grace+Blackwell GB10 (CUTE DSL test bed).",
           "enum": [
             "any",
             "nvidia_sm80",
             "nvidia_sm90",
+            "nvidia_sm100",
+            "nvidia_sm121",
             "amd_cdna2",
             "amd_cdna3"
           ]

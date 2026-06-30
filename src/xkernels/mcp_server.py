@@ -40,7 +40,7 @@ def _tools() -> list[dict[str, Any]]:
                         "description": "gemm|norm|reduce|attention|...",
                     },
                     "input_specs": {"type": "object"},
-                    "target_arch": {"type": "string", "description": "amd_cdna3|nvidia_sm90|any"},
+                    "target_arch": {"type": "string", "description": "amd_cdna3|nvidia_sm90|nvidia_sm100|nvidia_sm121|any"},
                     "available_features": {"type": "array", "items": {"type": "string"}},
                     "required_fusions": {"type": "array", "items": {"type": "string"}},
                     "objective": {"type": "string", "description": "throughput|latency|memory"},
