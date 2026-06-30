@@ -82,6 +82,17 @@ composes_with: [op_id]          # composition is reasoned at the op level
 id: string                      # e.g. "fused_rmsnorm_matmul.cuda@1.4.0" / ".hip@1.4.0"
 implements: op_id               # the Op Spec it must satisfy
 backend: enum                   # cuda | hip | triton | sycl | ...
+                               # NOTE: `backend` is the vendor-LANGUAGE slot
+                               # (cuda = any NVIDIA-native CUDA, hip = any
+                               # AMD-native ROCm/HIP). It does NOT distinguish
+                               # authoring technology: a hand-written C++
+                               # extension (ops/ffn/cuda/) and a CUTE DSL
+                               # kernel (ops/*/cute/) BOTH register `backend:
+                               # cuda`. The source SUBDIR name is the authoring-
+                               # tech hint (`cuda/` = cpp extension, `cute/` =
+                               # CUTE DSL, `triton/` = Triton). `Backend` stays
+                               # vendor-language because the contract is about
+                               # portability targets, not toolchains.
 arch:
   family: enum                 # nvidia_sm121 | nvidia_sm100 | nvidia_sm90 | nvidia_sm80 | amd_cdna3 | amd_cdna2 | any
   requires: [enum]             # tensor_cores | tma | cluster   (nvidia)
