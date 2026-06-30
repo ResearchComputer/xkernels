@@ -10,11 +10,16 @@ def benchmark(fn: Callable[[], object], warmup: int = 10, iters: int = 50) -> fl
     """Return median wall-clock milliseconds per call of `fn`.
 
     Prefers Triton's ``do_bench`` (more robust warmup/rep + median over repeats)
-    when available, falling back to CUDA events, then to wall clock. An import
-    failure of ``do_bench`` is swallowed (it's an optional dep); a *measurement-
-    time* error from ``do_bench`` is NOT — a swallowed OOM/crash inside the timing
-    loop would silently mask a real failure behind a less-accurate fallback, which
-    is worse than no measurement in a perf harness.
+    when available, falling back to CUDA events, then to wall clock.
+
+    Two failure modes are distinguished:
+      * ``do_bench`` infra failure (e.g. triton's driver-extension build breaks
+        on a box missing ``python3-dev``): swallowed — it's environmental, not a
+        kernel bug, and the CUDA-events fallback times the same ``fn`` honestly.
+      * ``fn()`` itself failing: NOT swallowed. The fallback paths run ``fn()``
+        directly and propagate its errors, so a real OOM/crash surfaces instead
+        of being masked by a silent fall-through. (The previous ``except Exception``
+        around the whole block swallowed both, which masked ``fn()`` failures.)
     """
     try:
         from triton.testing import do_bench
@@ -22,7 +27,13 @@ def benchmark(fn: Callable[[], object], warmup: int = 10, iters: int = 50) -> fl
         do_bench = None
 
     if do_bench is not None:
-        return float(do_bench(fn, warmup=warmup, rep=iters))
+        try:
+            return float(do_bench(fn, warmup=warmup, rep=iters))
+        except Exception:
+            # do_bench INFRA failed (triton driver build, etc.) — environmental,
+            # not a kernel bug. Fall through to the CUDA-events path, which runs
+            # fn() directly and will propagate any REAL fn() error.
+            pass
 
     if torch.cuda.is_available():
         for _ in range(warmup):
