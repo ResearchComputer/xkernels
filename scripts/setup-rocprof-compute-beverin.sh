@@ -3,7 +3,7 @@
 # Copyright (c) 2026 ResearchComputer
 # Install AMD ROCm Compute Profiler (formerly Omniperf) into PERSISTENT scratch
 # on beverin. Run INSIDE the tokenspeed container env on a compute node:
-#   scripts/run-on-beverin.sh srun --environment=tokenspeed-rocm-aiter-myofi \
+#   scripts/cluster.sh run --host beverin srun --environment=tokenspeed-rocm-aiter-myofi \
 #       --partition=mi300 --gpus-per-node=1 --time=00:25:00 \
 #       bash -c 'cd /capstor/scratch/cscs/xyao/xkernels && bash scripts/setup-rocprof-compute-beverin.sh'
 #

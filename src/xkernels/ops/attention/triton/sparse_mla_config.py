@@ -21,7 +21,7 @@ result — only how many chunks each program streams and how wide each KV load i
 Selection order:
 
 * ``XKERNELS_SPARSE_MLA_CONFIG`` (env, JSON dict) overrides everything — the knob
-  the on-device sweep (``benchmarks/tune_sparse_mla.py``) drives.
+  the on-device sweep (``meta/benchmarks/tune_sparse_mla.py``) drives.
 * Otherwise, when the caller passes ``num_query_tokens=1``, use the measured
   single-token decode winner.
 * Otherwise the behavior-preserving multi-token #33 default (``BLOCK_N=64``).

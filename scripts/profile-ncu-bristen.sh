@@ -9,12 +9,12 @@
 #
 # Run INSIDE the NGC PyTorch container on a compute node; the container ships ncu
 # at /opt/nvidia/nsight-compute/<ver>/ncu. The caller (the sbatch wrapper) MUST
-# pause DCGM first — see slurm/profile_ncu_bristen.sbatch — because DCGM holds the
+# pause DCGM first — see scripts/slurm/profile_ncu_bristen.sbatch — because DCGM holds the
 # GPU perf counters and ncu fails with "driver resource unavailable" otherwise.
 #
 #   bash scripts/profile-ncu-bristen.sh <kernel> [roof|sq|full]
 #
-#   kernel : benchmarks/probe_ncu.py name
+#   kernel : meta/benchmarks/probe_ncu.py name
 #            (dual_rmsnorm, moe_sum_reduce, fused_ffn, mha_merge_state)
 #   mode   : roof = SpeedOfLight roofline + compute/memory workload + occupancy
 #                    + launch stats  (DEFAULT — answers compute- vs memory-bound)
@@ -50,7 +50,7 @@ export PYTHONPATH="$REPO/src:${PYTHONPATH:-}"
 NCU="$(command -v ncu || true)"
 [[ -n "$NCU" ]] || NCU="$(compgen -G /opt/nvidia/nsight-compute/*/ncu | head -1)"
 [[ -n "$NCU" && -x "$NCU" ]] || { echo "[ncu] ncu binary not found in the container" >&2; exit 1; }
-PROBE="$REPO/benchmarks/probe_ncu.py"
+PROBE="$REPO/meta/benchmarks/probe_ncu.py"
 
 # Triton kernel names contain these fragments; -k matches them (regex) so ncu
 # profiles only the op under test, not the autotune/launch helpers. For ops that

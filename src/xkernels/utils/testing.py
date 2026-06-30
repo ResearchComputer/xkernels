@@ -1,7 +1,7 @@
 """Correctness-test helpers.
 
 Tolerances are defined ONCE per op in its Op Spec ``numerics`` block
-(docs/library.md §5.1). ``assert_close`` consults the Op Spec when given an
+(meta/docs/library.md §5.1). ``assert_close`` consults the Op Spec when given an
 ``op_id``; otherwise it falls back to the legacy per-dtype presets so existing
 kernel tests keep working unchanged.
 

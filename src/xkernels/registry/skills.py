@@ -1,4 +1,4 @@
-"""Load and serve the SKILL.md skills library (docs/library.md §7).
+"""Load and serve the SKILL.md skills library (meta/docs/library.md §7).
 
 Skills are reusable procedural knowledge authored in the open SKILL.md format
 (a folder with a ``SKILL.md``: YAML frontmatter + markdown body), so any

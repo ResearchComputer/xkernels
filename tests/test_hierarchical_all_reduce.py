@@ -4,7 +4,7 @@
 
 Launches an 8-rank logical topology (2 nodes x 4) on CPU/gloo via torchrun and
 checks ``hierarchical_all_reduce == flat_all_reduce``. Real RCCL numerics +
-latency on MI300A are exercised by slurm/bench_allreduce_beverin.sbatch.
+latency on MI300A are exercised by scripts/archive/issues/bench_allreduce_beverin.sbatch.
 """
 
 from __future__ import annotations

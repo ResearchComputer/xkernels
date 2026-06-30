@@ -46,7 +46,7 @@ x-kernel-lib:
     - ".agents/skills/use-rocprof-compute/SKILL.md (the AMD twin)"
     - ".agents/skills/diagnose-low-occupancy/SKILL.md, .agents/skills/diagnose-memory-bound/SKILL.md (the perf-diagnosis peers — both REQUIRE verify().correctness.passed == true, which this skill exists to restore)"
     - "src/xkernels/ops/moe/triton/moe_int4_kernel.py, src/xkernels/ops/moe/triton/moe_mxfp4_kernel.py (the masked-gather fix that resolved the issue-#50 autotune-wrapper case — concrete worked example)"
-    - "wiki/04-gotchas.md (entry: autotune-wrapper corruption under concurrency — the case study that produced this skill)"
+    - "meta/wiki/04-gotchas.md (entry: autotune-wrapper corruption under concurrency — the case study that produced this skill)"
   metrics:
     uses: 0
     success_rate: null

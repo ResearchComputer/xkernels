@@ -12,3 +12,9 @@ remote_dir = "/capstor/scratch/cscs/xyao/xkernels"  # scratch working copy
 [profiles.bristen]
 host = "bristen"
 remote_dir = "/capstor/scratch/cscs/xyao/xkernels"
+
+# ds5: ETH DGX Spark, aarch64 Grace+Blackwell (GB10, sm_120), CUDA 13.0 toolkit.
+# A native-CUDA (CUTE DSL) test bed. No SLURM — use `rcc --profile ds5 run/bg`.
+[profiles.ds5]
+host = "ds5"
+remote_dir = "/local/home/xiayao/xkernels"

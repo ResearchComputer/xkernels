@@ -88,7 +88,7 @@ def get_fp8_gemm_config(M: int, N: int, K: int) -> dict:
     """Baked direct-launch config (no runtime autotune).
 
     Tuned on beverin (gfx942 / MI300A) across the V4 MLA shapes via
-    ``benchmarks/tune_fp8_blockscale_gemm.py``. The dominant axis is **N**, not M:
+    ``meta/benchmarks/tune_fp8_blockscale_gemm.py``. The dominant axis is **N**, not M:
     the small-N projections (N=512) starve a 304-CU GPU with big tiles, so they
     want tiny tiles (more workgroups); the large-N projection (N=7168) wants big
     32x32-MFMA tiles to approach the ~400 TFLOP/s ceiling.

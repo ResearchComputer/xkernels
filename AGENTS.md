@@ -1,7 +1,7 @@
 # AGENTS.md
 
 This repo is an **agent-native kernel library**. The design contract is
-`docs/library.md` — read it if you're extending the substrate. Short version:
+`meta/docs/library.md` — read it if you're extending the substrate. Short version:
 
 ## The hard rule
 
@@ -49,7 +49,7 @@ find_impl("norm", {"x1": {"dtype": "bf16", "shape": [64, 1536]}}, target_arch="a
 it (with the `read` tool on that `SKILL.md`) **before** doing the work it covers,
 not after. Reinventing what a skill already documents — metric names, launch
 commands, the load-bearing gotcha — is a known failure mode (the profiling pass
-that produced `wiki/` hit exactly this by naming rocprof/ncu metrics from memory
+that produced `meta/wiki/` hit exactly this by naming rocprof/ncu metrics from memory
 instead of from the skills).
 
 Performance work is a pipeline; each stage has its own skill:
@@ -79,7 +79,7 @@ first productive step when no GPU is available.
 
 ## Adding a kernel
 
-Follow `docs/adding-a-kernel.md` (now card-driven): write the Op Spec + a
+Follow `meta/docs/adding-a-kernel.md` (now card-driven): write the Op Spec + a
 reference + a shape sweep, then an Impl Card per backend, then run `verify`.
 Every successful tuning is written back to the card's `perf.measured` so the
 next task is cheaper (the compounding loop, §6.2).

@@ -134,10 +134,10 @@ def fp32_matmul_cute(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
     # Transpose B to (K,N) row-major so the K-reduction reads a CONTIGUOUS column
     # across the warp (coalesced) instead of a K-strided row. The baseline ncu
-    # profile (scripts/ds5_ncu_baseline.py) flagged the LG-throttle stall ("waiting
-    # for the L1/LG memory queue to be not full") at 71.6% of cycles, caused by the
-    # 16-way strided B[n,k] access of consecutive-n threads. Coalescing B[k,n]
-    # removes it (see diagnose-memory-bound).
+    # profile (scripts/archive/ds5-probes/ds5_ncu_baseline.py) flagged the LG-throttle
+    # stall ("waiting for the L1/LG memory queue to be not full") at 71.6% of cycles,
+    # caused by the 16-way strided B[n,k] access of consecutive-n threads. Coalescing
+    # B[k,n] removes it (see diagnose-memory-bound).
     bT = b.t().contiguous()     # (K, N) row-major
     gA = from_dlpack(a)         # (M, K)
     gB = from_dlpack(bT)        # (K, N)

@@ -26,7 +26,7 @@ x-kernel-lib:
       - "a bristen A100 allocation (the login node has no GPU; everything runs on a compute node)"
       - "the NGC PyTorch container image is reachable (it bundles ncu + nsys — there is NO one-time install, unlike use-rocprof-compute)"
   inputs_required:
-    - "impl_card_id or a kernel name in benchmarks/probe_ncu.py"
+    - "impl_card_id or a kernel name in meta/benchmarks/probe_ncu.py"
     - "which question to answer: compute-vs-memory (roofline / SpeedOfLight), occupancy+stalls (SchedulerStats/WarpStateStats), or duration/timeline (nsys)"
   tools:
     - verify
@@ -88,7 +88,7 @@ counters, organized into **sections**:
   reason** (the ncu analog of rocprof's SQ stall block).
 
 `scripts/profile-ncu-bristen.sh` wraps it; `scripts/profile-nsys-bristen.sh`
-wraps nsys. Both run inside the container, driven by `benchmarks/probe_ncu.py`
+wraps nsys. Both run inside the container, driven by `meta/benchmarks/probe_ncu.py`
 (warm-up + fixed iteration count → one clean steady-state dispatch — the NVIDIA
 twin of `probe_omniperf.py`, same kernels, same seeded shapes, so a bristen
 profile is directly comparable to a beverin one).
@@ -116,7 +116,7 @@ The fix is host-side and must bracket the ncu run:
 /usr/bin/dcgmi profile --resume    # after ncu   (restores node monitoring)
 ```
 
-This is why `slurm/profile_ncu_bristen.sbatch` runs on the compute-node **host**
+This is why `scripts/slurm/profile_ncu_bristen.sbatch` runs on the compute-node **host**
 (calling `dcgmi` directly as user `xyao` — no sudo needed) and wraps the
 in-container `ncu` `srun` step, with a `trap … EXIT` that always resumes DCGM.
 **`ncu` profiling goes through the sbatch; it does not work from a plain
@@ -142,21 +142,21 @@ reliable one.
 2. **Run it** through the sbatch (ncu needs the host-side DCGM pause):
    ```bash
    # default: roofline + full metric set on dual_rmsnorm
-   KERNEL=dual_rmsnorm              scripts/bench-on-bristen.sh slurm/profile_ncu_bristen.sbatch
+   KERNEL=dual_rmsnorm              scripts/cluster.sh submit --host bristen scripts/slurm/profile_ncu_bristen.sbatch
    # SQ scheduler/stall block
-   KERNEL=moe_sum_reduce MODE=sq    scripts/bench-on-bristen.sh slurm/profile_ncu_bristen.sbatch
+   KERNEL=moe_sum_reduce MODE=sq    scripts/cluster.sh submit --host bristen scripts/slurm/profile_ncu_bristen.sbatch
    rcc --profile bristen run -- tail -f ncu-<jobid>.out
    ```
    `nsys` (no DCGM pause needed) can run interactively or via sbatch:
    ```bash
-   scripts/run-on-bristen.sh bash scripts/profile-nsys-bristen.sh dual_rmsnorm
+   scripts/cluster.sh run --host bristen bash scripts/profile-nsys-bristen.sh dual_rmsnorm
    # or
-   KERNEL=dual_rmsnorm scripts/bench-on-bristen.sh slurm/profile_nsys_bristen.sbatch
+   KERNEL=dual_rmsnorm scripts/cluster.sh submit --host bristen scripts/slurm/profile_nsys_bristen.sbatch
    ```
    Outputs land in `.ncu-workloads/<kernel>_<mode>/` (`<name>.ncu-rep` GUI-importable,
    `<name>.report.txt` section tables, `<name>.sol.csv` peak rows) and
    `.nsys-workloads/<kernel>/` (`<kernel>.nsys-rep`, `.sqlite`, `.stats.txt`).
-   To profile a kernel not in `benchmarks/probe_ncu.py`, add a builder there
+   To profile a kernel not in `meta/benchmarks/probe_ncu.py`, add a builder there
    first (warm-up + fixed iteration count → steady-state dispatch) plus the
    kernel's Triton name fragment.
 

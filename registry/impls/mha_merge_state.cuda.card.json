@@ -21,7 +21,7 @@
         "shape": {"T": 64, "H": 128, "D": 128},
         "dtype": "bf16",
         "knobs": {"read_dtype": "bf16-native (promote-on-load)"},
-        "source": "scripts/ds5_merge_perf.py + ncu on ds5 GB10 sm_121, CTK 13.0, post compile-cache. END-TO-END incl launch.",
+        "source": "scripts/archive/ds5-probes/ds5_merge_perf.py + ncu on ds5 GB10 sm_121, CTK 13.0, post compile-cache. END-TO-END incl launch.",
         "tflops": null,
         "achieved_bw_pct": 55.6,
         "ms": 0.0421
@@ -41,5 +41,5 @@
     "created": "2026-06-29T00:00:00Z",
     "source_path": "src/xkernels/ops/attention/cute/entry.py"
   },
-  "notes": "CUTE DSL (`cutlass.cute`, nvidia-cutlass-dsl 4.5.2) backend for mha_merge_state; fourth native-CUDA card in the library, validated on the ds5 Grace+Blackwell GB10 test bed (docs/ds5-cute-testbed.md). JIT-compiles via nvcc (CUDA_HOME must be set). Registers only if nvidia-cutlass-dsl imports; else degrades to the triton/reference card.\n\nDesign (src/xkernels/ops/attention/cute/merge_state_kernel.py): the [T,H,D] tensors are flattened to [n_rows, D] and [T,H] to [n_rows] (row = t*H+h). One CTA per row, threads tile D. The per-row softmax weights are scalar, computed locally per thread (cheap, memory-bound hides it). Pure-fp32 device kernel (host does bf16<->fp32 plumbing). Natural exp/log (math.exp/math.log) — matches the reference exactly (the triton card uses log2+/LOG2E as an equivalent optimization).\n\nCompile-cache: per-(n_rows,D) cute.compile handle (tensors-only launch), same pattern as mm_fp8_blockscale.cuda. Device guard raises RuntimeError on CPU tensors so verify_parity (device='cpu') records CUDA as a caught backend error instead of segfaulting."
+  "notes": "CUTE DSL (`cutlass.cute`, nvidia-cutlass-dsl 4.5.2) backend for mha_merge_state; fourth native-CUDA card in the library, validated on the ds5 Grace+Blackwell GB10 test bed (docs/usage/ds5-testbed.md). JIT-compiles via nvcc (CUDA_HOME must be set). Registers only if nvidia-cutlass-dsl imports; else degrades to the triton/reference card.\n\nDesign (src/xkernels/ops/attention/cute/merge_state_kernel.py): the [T,H,D] tensors are flattened to [n_rows, D] and [T,H] to [n_rows] (row = t*H+h). One CTA per row, threads tile D. The per-row softmax weights are scalar, computed locally per thread (cheap, memory-bound hides it). Pure-fp32 device kernel (host does bf16<->fp32 plumbing). Natural exp/log (math.exp/math.log) — matches the reference exactly (the triton card uses log2+/LOG2E as an equivalent optimization).\n\nCompile-cache: per-(n_rows,D) cute.compile handle (tensors-only launch), same pattern as mm_fp8_blockscale.cuda. Device guard raises RuntimeError on CPU tensors so verify_parity (device='cpu') records CUDA as a caught backend error instead of segfaulting."
 }

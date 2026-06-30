@@ -1,0 +1,196 @@
+======================================================================
+DOCUMENT DRIFT DETECTION SUMMARY
+======================================================================
+
+Total documented APIs: 39
+Total top-level public APIs: 31
+Total submodule-exported APIs: 111
+Total documented issues: 18
+Total APIs with test coverage: 91
+Total APIs with benchmark coverage: 41
+Total SLURM jobs found: 6
+
+ℹ️  Documented APIs NOT exported in any src/xkernels/__all__ (internal helpers):
+----------------------------------------------------------------------
+  autotune:
+    - meta/docs/library.md
+  contiguous:
+    - README.md
+  dtype:
+    - meta/docs/adding-a-kernel.md
+  get_impl_card:
+    - meta/docs/library.md
+  get_op_spec:
+    - meta/docs/library.md
+  quant:
+    - meta/docs/kernels/gemm.md
+
+ℹ️  Submodule-exported helpers WITHOUT documentation mention (informational):
+----------------------------------------------------------------------
+  add_rmsnorm_kernel
+  add_rmsnorm_ref
+  add_rmsnorm_triton
+  align_block_m
+  all_cards
+  all_outcomes
+  all_skills
+  all_specs
+  assert_close
+  backend_callable
+  card_by_short_name
+  cards_for
+  dequant_fp8_ds_mla
+  dequant_mxfp4
+  dequant_mxfp4_weight
+  dequant_w4a16
+  dsa_indexer_logits_kernel
+  dsa_indexer_logits_ref
+  dsa_indexer_logits_triton
+  dual_rmsnorm_cute
+  ... and 89 more
+
+Test Coverage (documented APIs):
+----------------------------------------------------------------------
+  Documented APIs with tests: 35/39
+    autotune: tests/test_moe_int4_ep.py
+    autotune: tests/test_moe_int4_tuned_config.py
+    autotune: tests/test_moe_int4_w4a16.py
+    autotune: tests/test_moe_mxfp4.py
+    backend_diagnostics: tests/test_dispatch.py
+    contiguous: tests/test_moe_align_block_size.py
+    contiguous: tests/test_moe_int4_ep.py
+    contiguous: tests/test_sparse_mla_attention.py
+    dsa_indexer_logits: tests/test_dsa_indexer_logits.py
+    dsa_indexer_topk: tests/test_dsa_indexer_logits.py
+    dtype: tests/test_comm_residual_rmsnorm.py
+    dtype: tests/test_dsa_indexer_logits.py
+    dtype: tests/test_dual_rmsnorm.py
+    dtype: tests/test_ffn.py
+    dtype: tests/test_ffn_activation.py
+    dtype: tests/test_issue39_perf_pass.py
+    dtype: tests/test_mha_merge_state.py
+    dtype: tests/test_mhc_pre_post.py
+    dtype: tests/test_mhc_prenorm_gemm.py
+    dtype: tests/test_mm_fp8_blockscale.py
+    dtype: tests/test_mm_fp8_blockscale_mfma.py
+    dtype: tests/test_moe_align_block_size.py
+    dtype: tests/test_moe_int4_ep.py
+    dtype: tests/test_moe_int4_w4a16.py
+    dtype: tests/test_moe_mxfp4.py
+    dtype: tests/test_moe_sum_reduce.py
+    dtype: tests/test_mxfp4_paged_gather.py
+    dtype: tests/test_registry.py
+    dtype: tests/test_sparse_mla_attention.py
+    dual_rmsnorm: tests/test_dual_rmsnorm.py
+    dual_rmsnorm: tests/test_registry.py
+    find_impl: tests/test_registry.py
+    flash_mla_sparse_fwd: tests/test_sparse_mla_attention.py
+    flash_mla_with_kvcache: tests/test_sparse_mla_attention.py
+    flat_all_reduce: tests/test_hierarchical_all_reduce.py
+    fused_ffn: tests/test_ffn.py
+    fused_ffn: tests/test_registry.py
+    fused_moe_int4_w4a16: tests/test_moe_int4_ep.py
+    fused_moe_int4_w4a16: tests/test_moe_int4_w4a16.py
+    fused_moe_mxfp4: tests/test_moe_mxfp4.py
+    get_mla_metadata: tests/test_sparse_mla_attention.py
+    hc_prenorm_gemm: tests/test_issue39_perf_pass.py
+    hc_prenorm_gemm: tests/test_mhc_prenorm_gemm.py
+    hc_prenorm_gemm: tests/test_registry.py
+    hierarchical_all_reduce: tests/test_hierarchical_all_reduce.py
+    mha_merge_state: tests/test_mha_merge_state.py
+    mha_merge_state: tests/test_registry.py
+    mhc_post: tests/test_mhc_pre_post.py
+    mhc_pre: tests/test_mhc_pre_post.py
+    mhc_pre: tests/test_registry.py
+    mm_fp8_blockscale: tests/test_mm_fp8_blockscale.py
+    mm_fp8_blockscale: tests/test_mm_fp8_blockscale_mfma.py
+    mm_fp8_blockscale: tests/test_registry.py
+    moe_align_block_size: tests/test_moe_align_block_size.py
+    moe_align_block_size: tests/test_registry.py
+    moe_align_block_size_ep: tests/test_moe_align_block_size.py
+    moe_align_block_size_ep: tests/test_moe_int4_ep.py
+    moe_sum_reduce: tests/test_moe_sum_reduce.py
+    moe_sum_reduce: tests/test_registry.py
+    mxfp4_paged_gather: tests/test_mxfp4_paged_gather.py
+    per_block_quant_fp8: tests/test_mm_fp8_blockscale.py
+    per_block_quant_fp8: tests/test_mm_fp8_blockscale_mfma.py
+    per_token_group_quant_fp8: tests/test_mm_fp8_blockscale.py
+    per_token_group_quant_fp8: tests/test_mm_fp8_blockscale_mfma.py
+    preferred_fp8_dtype: tests/test_mm_fp8_blockscale.py
+    quant: tests/test_mm_fp8_blockscale.py
+    quant: tests/test_mm_fp8_blockscale_mfma.py
+    quant: tests/test_registry.py
+    record_measurement: tests/test_registry.py
+    registry: tests/test_registry.py
+    sparse_mla_attention: tests/test_issue39_perf_pass.py
+    sparse_mla_attention: tests/test_registry.py
+    sparse_mla_attention: tests/test_sparse_mla_attention.py
+    tf32_hc_prenorm_gemm: tests/test_mhc_prenorm_gemm.py
+    verify: tests/test_moe_align_block_size.py
+    verify: tests/test_registry.py
+    verify_parity: tests/test_registry.py
+
+Benchmark Coverage (documented APIs):
+----------------------------------------------------------------------
+  Documented APIs with benchmarks: 21/39
+    autotune: meta/benchmarks/bench_moe_e2e_routing.py
+    autotune: meta/benchmarks/bench_moe_int4_w4a16.py
+    autotune: meta/benchmarks/bench_moe_mxfp4.py
+    build_topology_groups: meta/benchmarks/bench_hierarchical_all_reduce.py
+    dtype: meta/benchmarks/bench_all.py
+    dtype: meta/benchmarks/bench_capture_pynccl.py
+    dtype: meta/benchmarks/bench_dual_rmsnorm.py
+    dtype: meta/benchmarks/bench_ffn.py
+    dtype: meta/benchmarks/bench_hierarchical_all_reduce.py
+    dtype: meta/benchmarks/bench_mha_merge_state.py
+    dtype: meta/benchmarks/bench_mhc_pre_post.py
+    dtype: meta/benchmarks/bench_mhc_prenorm_gemm.py
+    dtype: meta/benchmarks/bench_moe_align_block_size.py
+    dtype: meta/benchmarks/bench_moe_combine.py
+    dtype: meta/benchmarks/bench_moe_e2e_routing.py
+    dtype: meta/benchmarks/bench_moe_int4_w4a16.py
+    dtype: meta/benchmarks/bench_moe_mxfp4.py
+    dtype: meta/benchmarks/bench_moe_sum_reduce.py
+    dtype: meta/benchmarks/bench_mxfp4_gather.py
+    dtype: meta/benchmarks/bench_one.py
+    dtype: meta/benchmarks/bench_sparse_mla.py
+    dual_rmsnorm: meta/benchmarks/bench_all.py
+    dual_rmsnorm: meta/benchmarks/bench_dual_rmsnorm.py
+    dual_rmsnorm: meta/benchmarks/bench_one.py
+    flat_all_reduce: meta/benchmarks/bench_hierarchical_all_reduce.py
+    fused_ffn: meta/benchmarks/bench_all.py
+    fused_ffn: meta/benchmarks/bench_ffn.py
+    fused_moe_int4_w4a16: meta/benchmarks/bench_moe_e2e_routing.py
+    fused_moe_mxfp4: meta/benchmarks/bench_moe_e2e_routing.py
+    fused_moe_mxfp4: meta/benchmarks/bench_moe_mxfp4.py
+    hc_prenorm_gemm: meta/benchmarks/bench_all.py
+    hc_prenorm_gemm: meta/benchmarks/bench_mhc_prenorm_gemm.py
+    hierarchical_all_reduce: meta/benchmarks/bench_all.py
+    hierarchical_all_reduce: meta/benchmarks/bench_hierarchical_all_reduce.py
+    mha_merge_state: meta/benchmarks/bench_all.py
+    mha_merge_state: meta/benchmarks/bench_mha_merge_state.py
+    mhc_post: meta/benchmarks/bench_all.py
+    mhc_post: meta/benchmarks/bench_mhc_pre_post.py
+    mhc_pre: meta/benchmarks/bench_all.py
+    mhc_pre: meta/benchmarks/bench_mhc_pre_post.py
+    mm_fp8_blockscale: meta/benchmarks/bench_fp8_blockscale_gemm.py
+    moe_align_block_size: meta/benchmarks/bench_all.py
+    moe_align_block_size: meta/benchmarks/bench_moe_align_block_size.py
+    moe_align_block_size_ep: meta/benchmarks/bench_moe_e2e_routing.py
+    moe_sum_reduce: meta/benchmarks/bench_all.py
+    moe_sum_reduce: meta/benchmarks/bench_moe_combine.py
+    moe_sum_reduce: meta/benchmarks/bench_moe_sum_reduce.py
+    moe_sum_reduce: meta/benchmarks/bench_one.py
+    mxfp4_paged_gather: meta/benchmarks/bench_mxfp4_gather.py
+    per_block_quant_fp8: meta/benchmarks/bench_fp8_blockscale_gemm.py
+    per_token_group_quant_fp8: meta/benchmarks/bench_fp8_blockscale_gemm.py
+    sparse_mla_attention: meta/benchmarks/bench_all.py
+    sparse_mla_attention: meta/benchmarks/bench_sparse_mla.py
+
+On-Device Test Coverage (documented issues):
+----------------------------------------------------------------------
+  Documented issues with SLURM jobs: 0/18
+
+✅ OVERALL STATUS: CLEAN
+All top-level public APIs are documented. (Internal helper symbols listed above are informational only.)
+======================================================================

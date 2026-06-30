@@ -1,4 +1,4 @@
-"""Skill outcome records + the governance loop (docs/library.md §7.3).
+"""Skill outcome records + the governance loop (meta/docs/library.md §7.3).
 
 Every agent run that uses a skill emits an **outcome record**; these roll up into
 each skill's ``metrics`` (success_rate, median_iterations, regression_count) and

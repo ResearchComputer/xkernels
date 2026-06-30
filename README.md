@@ -43,7 +43,7 @@ and JITs at first call; `verify()` works against the shared CPU reference on any
 NVIDIA GPU, and `find_impl` returns them by `arch.family`.
 
 This is a *portability layer for one vendor*, not a cross-vendor backend: it is
-one implementation among others (per `docs/library.md`), never the only one —
+one implementation among others (per `meta/docs/library.md`), never the only one —
 the Triton and reference backends stay the portable path. Five cards are
 authored and verified on a **DGX Spark (GB10, sm_121)** testbed:
 
@@ -60,12 +60,12 @@ setup (`uv`, `nvidia-cutlass-dsl[cu13]`, CTK 13.0), the per-call launch overhead
 fix (`cute.compile` handle cached per shape, 119× end-to-end), the bf16-native-read
 perf pass (2.0× on `mha_merge_state`), and the roofline survey showing all five
 are memory-bound (AI ≤ 43 << 121) on this hardware — is in
-`docs/ds5-cute-testbed.md`.
+`meta/docs/usage/ds5-testbed.md`.
 
 ## Agent-native surfaces
 
 xkernels is **agent-native**: the primary consumer can be an LLM agent. The
-contract (full design: `docs/library.md`) lives in machine-readable artifacts,
+contract (full design: `meta/docs/library.md`) lives in machine-readable artifacts,
 not prose.
 
 ```python
@@ -76,7 +76,7 @@ find_impl("norm", {"x1": {"dtype": "bf16", "shape": [64, 1536]}}, target_arch="a
 
 # The arch vocabulary covers AMD CDNA2/3 (gfx90a/gfx942) and NVIDIA sm_80/sm_90/
 # sm_100/sm_121. The CUTE DSL `cuda` cards (GB10 testbed) are returned by
-# target_arch="nvidia_sm121". See `docs/ds5-cute-testbed.md`.
+# target_arch="nvidia_sm121". See `meta/docs/usage/ds5-testbed.md`.
 
 # Correctness vs the op's single backend-neutral reference + tolerances.
 verify("dual_rmsnorm.triton@1.0.0", arch="amd_cdna3")
@@ -98,14 +98,14 @@ verify_parity("dual_rmsnorm@1.0.0")
   `find_impl`/`verify`/`verify_parity`/`record_measurement` to any MCP client.
 - **`AGENTS.md`** — the minimal pointer + the hard rule for any coding agent.
 
-See `docs/adding-a-kernel.md` for the card-driven contribution flow.
+See `meta/docs/adding-a-kernel.md` for the card-driven contribution flow.
 
 ## Performance
 
 Speedup of each kernel's optimized backend over the naive PyTorch a practitioner
 would write without it. All numbers are median of Triton `do_bench`, bf16
-unless noted. Reproduce with `python benchmarks/bench_all.py` (single GPU) or
-`sbatch slurm/bench_all_beverin.sbatch`.
+unless noted. Reproduce with `python meta/benchmarks/bench_all.py` (single GPU) or
+`sbatch scripts/slurm/bench_all_beverin.sbatch`.
 
 | Kernel | Shape | Naive PyTorch | Optimized | Speedup MI300A | Speedup MI250X |
 |--------|-------|--------------:|----------:|---------------:|---------------:|
@@ -143,12 +143,12 @@ Notes:
   (bf16): gate_up M=1 → 0.34 ms, M=8 → 1.15 ms, M=16 → 1.36 ms; down M=1 →
   0.12 ms, M=16 → 0.67 ms. This row isolates the GEMM — the block-align it
   consumes is the `moe_align_block_size` row (not timed here). Re-tune with
-  `sbatch slurm/tune_moe_int4_beverin.sbatch`.
+  `sbatch scripts/archive/issues/tune_moe_int4_beverin.sbatch`.
 - **`moe_mxfp4` 15.9× / 14.0×** — V4-Flash MXFP4 MoE (E=256, issue #43) vs a
   per-expert torch loop that dequantizes and matmuls. Speedup grows with batch
   size (≈1× at M=1, ≈16–19× at M≥256) because the kernel amortizes expert
   scheduling and weight unpack across tokens; see
-  `docs/issue-43-mxfp4-moe-gemm.md`.
+  `meta/docs/kernels/moe.md`.
 - **`moe_align_block_size` 33.8× / 24.5×** — the Triton perf backend
   (vLLM/SGLang-style 4-stage histogram + padded prefix-sum + scatter, issue #4)
   is validated bit-for-bit against the reference. The win is large because the
@@ -165,23 +165,23 @@ Notes:
   `F.linear(a.float(), fn.float())` fp32 baseline pays the same dense-GEMM stack
   cliff as `fused_ffn` below. On MI250X the baseline is already fast, so the
   speedup is ~1×. On-device parity rel 3.8e-04; see
-  `docs/issue-36-mhc-prenorm-gemm.md`.
+  `meta/docs/kernels/mhc.md`.
 - **`mhc_pre_post` 35.5× / 3.9×** — DeepSeek-V4 MHC full prenorm/postnorm fusion
   (`mhc_pre` + `mhc_post`, issue #44) vs the torch oracle. The large MI300A
   speedup comes from fusing the RMS prenorm squared-sum, sigmoid gating,
   sinkhorn combination, and the post residual combine into a few Triton kernels.
   On MI250X the kernel is still ~4× faster than the reference; see
-  `docs/issue-44-mhc-pre-post.md`.
+  `meta/docs/kernels/mhc.md`.
 - **`sparse_mla` 26.8× / 12.8×** — sparse MLA decode attention top-k gather +
   softmax/dequant (issue #32) vs a torch reference. The optimized path avoids
   materializing a large `repeat_interleave` multiplier and removes unnecessary
-  `contiguous()` calls; see `docs/issue-32-sparse-mla-attention.md`.
+  `contiguous()` calls; see `meta/docs/kernels/attention.md`.
 - **`fused_ffn` ≈ 1.0×** — the Triton backend fuses only the SwiGLU *activation*;
   the three projection GEMMs dominate and are torch matmuls in both paths, so
   there is little left to win. Measured in fp16 because on this torch
   2.11+rocm7.2 build the **bf16** `torch.matmul` (NN layout) path misses
   MFMA/hipBLASLt and runs ~470× slower than fp16 (0.8 vs 358 TFLOP/s;
-  see `benchmarks/probe_ffn.py` and `docs/issue-17-bf16-dense-gemm.md`). The
+  see `meta/benchmarks/probe_ffn.py` and `meta/docs/kernels/gemm.md`). The
   production `F.linear` (NT layout) bf16 path is fast; the slowdown is specific
   to the NN benchmark shape.
 - **`mm_fp8_blockscale` 5.7×** — the DeepSeek-V4 fp8 block-scale dense GEMM (MLA /
@@ -194,11 +194,11 @@ Notes:
   speedup needs **`float8_e4m3fnuz`** operands — the only fp8 encoding the CDNA3
   MFMA decodes natively (`v_mfma_*_fp8_fp8`); `e4m3fn` upcasts to a slower f16 MFMA,
   so `path="auto"` keeps fn operands on the portable fallback. On-device parity rel
-  2e-6; bench `benchmarks/bench_fp8_blockscale_gemm.py`; see
-  `docs/issue-41-fp8-mfma-blockscale-gemm.md`.
+  2e-6; bench `meta/benchmarks/bench_fp8_blockscale_gemm.py`; see
+  `meta/docs/kernels/gemm.md`.
 - **`hierarchical_all_reduce`** (distributed) does *not* beat a flat all-reduce on
   the 2-node / 4-NIC-per-node MI300A stack — RCCL's flat collective is already
-  topology-aware. Full analysis in `docs/issue-12-hierarchical-all-reduce.md`.
+  topology-aware. Full analysis in `meta/docs/kernels/comm.md`.
 
 ## Layout
 
@@ -212,6 +212,13 @@ Notes:
 - `registry/` — machine-readable artifacts: `ops/` (Op Specs), `impls/` (Impl
   Cards), `shape_sweeps/`, `schema/` (JSON Schemas).
 - `.agents/skills/` — SKILL.md authoring/porting/tuning playbooks (cross-harness standard).
-- `tests/`, `benchmarks/`, `examples/` — harness and demos.
+- `tests/` — unit + integration tests.
+- `meta/` — supporting material: `meta/docs/` (design contract, usage & cluster
+  runbooks, per-kernel-family performance docs), `meta/wiki/` (shared knowledge
+  base: benchmark/profile campaign, roofline, gotchas, CUTE-DSL authoring),
+  `meta/benchmarks/` (per-op sweeps), `meta/examples/` (usage demos).
+- `scripts/` — the rcc cluster toolkit: `scripts/cluster.sh` (push + run/submit on
+  beverin/bristen/ds5), `profile-*` wrappers, and `scripts/slurm/` SLURM jobs.
+  One-shots and exploration probes live under `scripts/archive/`.
 
-See `docs/adding-a-kernel.md` to extend. Design: `docs/library.md`,
+See `meta/docs/adding-a-kernel.md` to extend. Design: `meta/docs/library.md`.

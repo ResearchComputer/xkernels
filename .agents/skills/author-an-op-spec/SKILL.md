@@ -44,8 +44,8 @@ x-kernel-lib:
     # NOTE: unlike the six kernel-layer skills, this skill's gate is satisfiable
     # on a CPU-only box. That is intentional — see the Honest no-GPU branch below.
   references:
-    - "docs/adding-a-kernel.md (the card-driven checklist this skill operationalizes)"
-    - "docs/library.md §1.3.2 (constraint mini-language), §2.4 (publish gate), §5.1 (backend-neutral reference), §10 (CUDA-shaped reference is an anti-goal)"
+    - "meta/docs/adding-a-kernel.md (the card-driven checklist this skill operationalizes)"
+    - "meta/docs/library.md §1.3.2 (constraint mini-language), §2.4 (publish gate), §5.1 (backend-neutral reference), §10 (CUDA-shaped reference is an anti-goal)"
   metrics:
     uses: 0
     success_rate: null
@@ -63,7 +63,7 @@ Every other skill in the library (`tile-a-gemm`, `port-cuda-to-hip`,
 `tune-for-cdna`, `autotune-knob-sweep`, `establish-parity`) lists "Op Spec
 written" or "a backend-neutral reference exists" as a **precondition**. None of
 them tell you how to produce it. Before this skill, the library's execution chain
-had no first link — an agent asked to "add op X" had only `docs/adding-a-kernel.md`
+had no first link — an agent asked to "add op X" had only `meta/docs/adding-a-kernel.md`
 (a doc, not a procedure-with-pitfalls) and had to re-derive the numerics
 judgment calls from scratch each time. This skill is that first link, and it is
 deliberately the one skill that pays off even on a CPU-only box: its validation

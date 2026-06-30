@@ -39,7 +39,7 @@ x-kernel-lib:
       - "verify_parity still agrees (an occupancy fix must not change numerics — if it did, you changed the math, not just the scheduling)"
       - "perf.ms improved on the failing shape (measurable in-harness via ms; the occupancy/stall improvement is re-measured externally since the harness doesn't emit it yet)"
   references:
-    - "docs/library.md §10 (stall_reasons/occupancy normalized to a common vocabulary — aspirational; harness emits only ms today), §11 (op-specific perf model is an open question)"
+    - "meta/docs/library.md §10 (stall_reasons/occupancy normalized to a common vocabulary — aspirational; harness emits only ms today), §11 (op-specific perf model is an open question)"
     - "src/xkernels/ops/moe/triton/moe_int4_kernel.py (waves_per_eu tuning — the AMD occupancy knob), src/xkernels/ops/gemm/triton/configs.py (num_warps = wavefronts on AMD)"
     - ".agents/skills/tune-for-cdna/SKILL.md (the broader CDNA perf skill this branches into on AMD)"
   metrics:

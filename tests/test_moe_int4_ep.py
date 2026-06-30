@@ -102,7 +102,7 @@ def _ep_params():
     # buckets are all M<=16 (align_block_m=16): the test pins a single autotune
     # config with BLOCK_SIZE_M=16 (_pin_single_config), which is only valid where
     # align_block_m(M)==16, so M>32 prefill shapes are excluded here (the unpinned
-    # prefill path is measured end-to-end in benchmarks/bench_moe_e2e_routing.py).
+    # prefill path is measured end-to-end in meta/benchmarks/bench_moe_e2e_routing.py).
     return [
         (1, 48, 256, 512, 8, 4),    # decode, Kimi-ish E/top_k, ep=4
         (2, 48, 256, 512, 8, 4),    # decode

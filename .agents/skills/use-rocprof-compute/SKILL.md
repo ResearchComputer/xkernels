@@ -23,7 +23,7 @@ x-kernel-lib:
       - "a beverin MI300A allocation (the container has no GPU on the login node)"
       - "the one-time scratch install has been run (see Setup) — Omniperf is NOT on PyPI"
   inputs_required:
-    - "impl_card_id or a kernel name in benchmarks/probe_omniperf.py"
+    - "impl_card_id or a kernel name in meta/benchmarks/probe_omniperf.py"
     - "which question to answer: compute-vs-memory (roofline), occupancy/stalls (SQ block), or bandwidth/caches (TCC/LDS blocks)"
   tools:
     - verify
@@ -101,7 +101,7 @@ Layout on scratch:
 /capstor/scratch/cscs/xyao/rocprof-compute-pylibs  # deps, pandas<3
 /capstor/scratch/cscs/xyao/rocprof-compute-libs    # libdw.so.1, libelf.so.1, ...
 ```
-Reinstall: `scripts/run-on-beverin.sh srun --environment=tokenspeed-rocm-aiter-myofi --partition=mi300 --gpus-per-node=1 --time=00:25:00 bash -c 'cd /capstor/scratch/cscs/xyao/xkernels && bash scripts/setup-rocprof-compute-beverin.sh'` then `rcc run -- bash scripts/stage-rocprof-compute-libs-beverin.sh`.
+Reinstall: `scripts/cluster.sh run --host beverin srun --environment=tokenspeed-rocm-aiter-myofi --partition=mi300 --gpus-per-node=1 --time=00:25:00 bash -c 'cd /capstor/scratch/cscs/xyao/xkernels && bash scripts/setup-rocprof-compute-beverin.sh'` then `rcc run -- bash scripts/stage-rocprof-compute-libs-beverin.sh`.
 
 ## Activate (the driver does this; shown for manual use)
 
@@ -135,15 +135,15 @@ RCP=(python3 "$ROCPC_SRC/src/rocprof-compute")
 2. **Run it** via the driver (one command: stage-libs mirror + activate + profile + analyze):
    ```bash
    # default: roofline + full metric set on dual_rmsnorm, submitted via sbatch
-   KERNEL=dual_rmsnorm MODE=roof scripts/bench-on-beverin.sh slurm/profile_omniperf_beverin.sbatch
+   KERNEL=dual_rmsnorm MODE=roof scripts/cluster.sh submit --host beverin scripts/slurm/profile_omniperf_beverin.sbatch
    # interactive (only if mi300 has a free node; else it drops mid-queue)
-   scripts/run-on-beverin.sh \
+   scripts/cluster.sh run --host beverin \
      srun --environment=tokenspeed-rocm-aiter-myofi --partition=mi300 --gpus-per-node=1 --time=00:25:00 \
      bash -c 'cd /capstor/scratch/cscs/xyao/xkernels && bash scripts/profile-rocprof-compute-beverin.sh dual_rmsnorm sq'
    ```
    Outputs land in `.omniperf-workloads/<kernel>_<mode>/` (raw `pmc_perf.csv`,
    `roofline.csv`, `empirRoof_*.pdf`) and `<name>.analyze.txt` (the metric
-   tables). To profile a kernel not in `benchmarks/probe_omniperf.py`, add a
+   tables). To profile a kernel not in `meta/benchmarks/probe_omniperf.py`, add a
    builder there first (warm-up + fixed iteration count → steady-state dispatch).
    (Note: `profile -p` IS the output dir — `-n` is only a label — so the driver
    uses one dir per `(kernel,mode)`.)

@@ -27,7 +27,7 @@ export PYTHONPATH="$REPO/src:${PYTHONPATH:-}"
 NSYS="$(command -v nsys || true)"
 [[ -n "$NSYS" ]] || NSYS="$(compgen -G /opt/nvidia/nsight-systems*/bin/nsys | head -1 || true)"
 [[ -n "$NSYS" && -x "$NSYS" ]] || NSYS="/usr/local/cuda/bin/nsys"
-PROBE="$REPO/benchmarks/probe_ncu.py"
+PROBE="$REPO/meta/benchmarks/probe_ncu.py"
 
 echo "[nsys] $NSYS  kernel=$KERNEL  -> $OUT"
 # --stats=true prints the CUDA GPU/kernel/API + memory summary tables to stdout.

@@ -104,7 +104,7 @@ def hc_prenorm_gemm_out_triton(a, fn, gemm_out_mul, gemm_out_sqrsum, *, n_splits
     # config (env-overridable for the on-device sweep). The default reproduces
     # the #36 launch (BLOCK_M=BLOCK_K=64), so behavior is unchanged by default.
     # The split-K partition is by k-block range, so any BLOCK_K is correct (the
-    # downstream only sums over splits — see configs.py / docs/issue-36).
+    # downstream only sums over splits — see configs.py / meta/docs/kernels/mhc.md).
     cfg = resolve_mhc_gemm_config()
     BLOCK_M = int(cfg["BLOCK_M"])
     BLOCK_K = int(cfg["BLOCK_K"])

@@ -8,7 +8,7 @@
 #
 #   bash scripts/profile-rocprof-compute-beverin.sh <kernel> [roof|sq|full]
 #
-#   kernel : benchmarks/probe_omniperf.py name (dual_rmsnorm, moe_sum_reduce,
+#   kernel : meta/benchmarks/probe_omniperf.py name (dual_rmsnorm, moe_sum_reduce,
 #            fused_ffn, mha_merge_state)
 #   mode   : roof  = roofline + default metric set (DEFAULT; answers
 #                    compute-vs-memory-bound + how far from the line)
@@ -17,7 +17,7 @@
 #
 # Outputs: .omniperf-workloads/<kernel>_<mode>/ (raw + pmc_perf.csv, roofline.csv,
 # empirRoof_*.pdf) and <name>.analyze.txt (the metric tables). Submit via
-# slurm/profile_omniperf_beverin.sbatch on the contended mi300 partition.
+# scripts/slurm/profile_omniperf_beverin.sbatch on the contended mi300 partition.
 set -euo pipefail
 
 KERNEL="${1:-dual_rmsnorm}"
@@ -57,7 +57,7 @@ OUT="$WL/$NAME"
 mkdir -p "$OUT"
 # The workload subprocess needs its own PYTHONPATH to find xkernels.
 WORKLOAD=(env "PYTHONPATH=$PYTHONPATH" "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
-          python3 "$REPO/benchmarks/probe_omniperf.py" "$KERNEL")
+          python3 "$REPO/meta/benchmarks/probe_omniperf.py" "$KERNEL")
 
 echo "[omniperf] profile $KERNEL mode=$MODE -> $OUT"
 "${RCP[@]}" profile -n "$NAME" "${PROF_FLAGS[@]}" -p "$OUT" -- "${WORKLOAD[@]}" 2>&1 | tail -15

@@ -21,7 +21,7 @@
         "shape": {"M": 128, "top_k": 8, "H": 7168},
         "dtype": "bf16",
         "knobs": {"read_dtype": "bf16-native (promote-on-load)"},
-        "source": "scripts/ds5_moe_sum_perf.py + ncu on ds5 GB10 sm_121, CTK 13.0, post compile-cache. END-TO-END incl launch.",
+        "source": "scripts/archive/ds5-probes/ds5_moe_sum_perf.py + ncu on ds5 GB10 sm_121, CTK 13.0, post compile-cache. END-TO-END incl launch.",
         "tflops": null,
         "achieved_bw_pct": 24.0,
         "ms": 0.2522
@@ -39,5 +39,5 @@
     "created": "2026-06-29T00:00:00Z",
     "source_path": "src/xkernels/ops/moe/cute/entry.py"
   },
-  "notes": "CUTE DSL (`cutlass.cute`, nvidia-cutlass-dsl 4.5.2) backend for moe_sum_reduce; third native-CUDA card in the library, validated on the ds5 Grace+Blackwell GB10 test bed (docs/ds5-cute-testbed.md). JIT-compiles via nvcc (CUDA_HOME must be set). Registers only if nvidia-cutlass-dsl imports; else degrades to the triton/reference card.\n\nDesign (src/xkernels/ops/moe/cute/sum_reduce_kernel.py): the reduction axis (top_k=8 in the sweep) is TINY, so this is a per-thread sum over k, NOT a block-wide reduction (unlike dual_rmsnorm). One CTA per token row; 128 threads tile H; each thread sums top_k weighted y values in fp32 (Kahan) and scales by routed_scaling_factor. Pure-fp32 device kernel (host does bf16<->fp32 plumbing).\n\nCompile-cache: per-(M,H) cute.compile handle (tensors-only launch), same pattern as mm_fp8_blockscale.cuda. Device guard raises RuntimeError on CPU tensors so verify_parity (device='cpu') records CUDA as a caught backend error instead of segfaulting."
+  "notes": "CUTE DSL (`cutlass.cute`, nvidia-cutlass-dsl 4.5.2) backend for moe_sum_reduce; third native-CUDA card in the library, validated on the ds5 Grace+Blackwell GB10 test bed (docs/usage/ds5-testbed.md). JIT-compiles via nvcc (CUDA_HOME must be set). Registers only if nvidia-cutlass-dsl imports; else degrades to the triton/reference card.\n\nDesign (src/xkernels/ops/moe/cute/sum_reduce_kernel.py): the reduction axis (top_k=8 in the sweep) is TINY, so this is a per-thread sum over k, NOT a block-wide reduction (unlike dual_rmsnorm). One CTA per token row; 128 threads tile H; each thread sums top_k weighted y values in fp32 (Kahan) and scales by routed_scaling_factor. Pure-fp32 device kernel (host does bf16<->fp32 plumbing).\n\nCompile-cache: per-(M,H) cute.compile handle (tensors-only launch), same pattern as mm_fp8_blockscale.cuda. Device guard raises RuntimeError on CPU tensors so verify_parity (device='cpu') records CUDA as a caught backend error instead of segfaulting."
 }

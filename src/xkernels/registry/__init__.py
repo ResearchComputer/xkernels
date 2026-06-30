@@ -1,6 +1,6 @@
 """Agent-facing registry of Op Specs, Implementation Cards, and shape sweeps.
 
-Public surface (see docs/library.md §2, §8):
+Public surface (see meta/docs/library.md §2, §8):
     - load / all_specs / all_cards / get_spec / get_card / cards_for
     - reference_callable / backend_callable  (metadata -> existing dispatch)
     - load_shape_sweep

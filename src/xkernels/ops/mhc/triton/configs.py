@@ -22,7 +22,7 @@ Triton backends, so the same configs stay portable / interpreter-safe.
 Selection is deliberately conservative:
 
 * ``XKERNELS_MHC_GEMM_CONFIG`` (env, JSON dict) overrides everything — this is
-  the knob the on-device sweep (``benchmarks/tune_mhc_prenorm_gemm.py``) drives
+  the knob the on-device sweep (``meta/benchmarks/tune_mhc_prenorm_gemm.py``) drives
   to characterize candidates without editing code.
 * Otherwise the **default** config is returned, which reproduces the #36 launch
   (``BLOCK_M=BLOCK_K=64``) so behavior is unchanged until a measured winner is

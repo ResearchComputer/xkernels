@@ -1,4 +1,4 @@
-"""MCP server exposing the agent-native surfaces as tools (docs/library.md §8.1).
+"""MCP server exposing the agent-native surfaces as tools (meta/docs/library.md §8.1).
 
 This is the highest-leverage interop move: any MCP-speaking coding agent (Claude
 Code, Cursor, Codex, Cline, …) can call ``verify`` / ``verify_parity`` and
@@ -29,7 +29,7 @@ def _tools() -> list[dict[str, Any]]:
             "name": "find_impl",
             "description": (
                 "Ranked retrieval of kernel implementations over the contract "
-                "(docs/library.md §3). Returns candidates with `applicable` + "
+                "(meta/docs/library.md §3). Returns candidates with `applicable` + "
                 "`reject_reasons`. Two-stage: filter Op Specs by decidable "
                 "constraints, then Impl Cards by arch."
             ),

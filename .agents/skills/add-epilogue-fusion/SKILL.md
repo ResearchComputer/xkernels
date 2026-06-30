@@ -44,7 +44,7 @@ x-kernel-lib:
     - "src/xkernels/ops/comm/triton/add_rmsnorm_kernel.py (residual-add + RMSNorm epilogue, case b: two outputs)"
     - "src/xkernels/ops/ffn/triton/ffn_kernel.py (fused SwiGLU silu(g)*u inside FFN, case a)"
     - "src/xkernels/ops/mhc/triton/pre_post_kernel.py (sigmoid heads + sinkhorn + residual combine, case b)"
-    - "docs/library.md §10 (one-mega-kernel-with-a-thousand-flags anti-goal: fuse narrowly, don't flag-bomb)"
+    - "meta/docs/library.md §10 (one-mega-kernel-with-a-thousand-flags anti-goal: fuse narrowly, don't flag-bomb)"
   metrics:
     uses: 0
     success_rate: null

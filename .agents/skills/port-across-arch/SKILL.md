@@ -42,7 +42,7 @@ x-kernel-lib:
   references:
     - "registry/schema/impl_card.schema.json (arch.family enum: nvidia_sm80, nvidia_sm90, amd_cdna2, amd_cdna3)"
     - "src/xkernels/ops/gemm/triton/configs.py (per-arch autotune config selection: decode vs prefill tiles, MFMA shapes)"
-    - "docs/library.md §10 (portability in the contract, not the source; never hardcode arch constants), §9 (cross-arch parity is part of the milestone acceptance)"
+    - "meta/docs/library.md §10 (portability in the contract, not the source; never hardcode arch constants), §9 (cross-arch parity is part of the milestone acceptance)"
     - ".agents/skills/autotune-knob-sweep/SKILL.md (re-tune + record the new-arch winner)"
   metrics:
     uses: 0

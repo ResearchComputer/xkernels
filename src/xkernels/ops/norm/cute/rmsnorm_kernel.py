@@ -25,7 +25,8 @@ feature dim ``d`` (coalesced: consecutive lanes read consecutive columns):
 The 2-pass design re-reads ``x`` once from DRAM (no SMEM x-cache). That is honest
 for a memory-bound normalize; an SMEM x-cache (read-once) is a documented perf
 follow-up, not a correctness bar. The reduction primitives were all confirmed on
-sm_121 by ``scripts/ds5_dsl_rowsum_probe.py`` + ``ds5_dsl_math_probe2.py``.
+sm_121 by ``scripts/archive/ds5-probes/ds5_dsl_rowsum_probe.py`` and
+``scripts/archive/ds5-probes/ds5_dsl_math_probe2.py``.
 """
 from __future__ import annotations
 

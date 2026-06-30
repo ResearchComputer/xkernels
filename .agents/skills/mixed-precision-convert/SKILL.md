@@ -41,8 +41,8 @@ x-kernel-lib:
   references:
     - "src/xkernels/ops/gemm/reference.py (fp8 dequant -> fp32 matmul; dot_bf16 knob; e4m3fn vs e4m3fnuz)"
     - "src/xkernels/ops/moe/w4a16.py + reference.py (uint4b8 dequant via group scale, fp32 grouped-GEMM accumulate)"
-    - "docs/library.md §5.4 (fp16/bf16 accumulation order differs across vendors -> cross_backend_rtol is looser), §10 (CUDA-shaped reference anti-goal)"
-    - "docs/issue-38-fp8-blockscale-gemm.md (mixed-precision acceptance bars)"
+    - "meta/docs/library.md §5.4 (fp16/bf16 accumulation order differs across vendors -> cross_backend_rtol is looser), §10 (CUDA-shaped reference anti-goal)"
+    - "meta/docs/kernels/gemm.md (mixed-precision acceptance bars — the fp8 block-scale portable/mfma paths)"
   metrics:
     uses: 0
     success_rate: null

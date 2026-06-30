@@ -1,6 +1,6 @@
 """Deterministic verification harness — the agent's correctness + parity surface.
 
-Implements docs/library.md §5. ``verify`` checks one Implementation Card against
+Implements meta/docs/library.md §5. ``verify`` checks one Implementation Card against
 its Op Spec's single backend-neutral reference and tolerances; ``verify_parity``
 checks that >=2 backends agree with *each other* within ``cross_backend_rtol``.
 
@@ -129,7 +129,7 @@ def _within_tolerance(
     absolute cap, which false-fails any non-bit-identical backend at moderate
     magnitude (e.g. 1 bf16-ULP at |e|=2 is 0.0156 > any reasonable atol) — and
     was inconsistent with ``verify_parity`` (which is rel-only). See
-    docs/ds5-cute-testbed.md follow-up (a) for the dual_rmsnorm case that forced
+    meta/docs/usage/ds5-testbed.md follow-up (a) for the dual_rmsnorm case that forced
     this fix.
     """
     for a, e in zip(actual, expected, strict=True):

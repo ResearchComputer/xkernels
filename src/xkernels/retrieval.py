@@ -1,4 +1,4 @@
-"""Structured retrieval over contract fields — docs/library.md §3.
+"""Structured retrieval over contract fields — meta/docs/library.md §3.
 
 Two-stage to mirror the Op Spec / Impl Card split:
   1. Op stage:   filter Op Specs by canonical_op + decidable constraints + fusions.

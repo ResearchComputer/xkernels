@@ -34,7 +34,7 @@ from .ops.moe import (
 )
 from .ops.norm import dual_rmsnorm
 
-# --- agent-native surfaces (docs/library.md) ----------------------------------
+# --- agent-native surfaces (meta/docs/library.md) ----------------------------------
 # These are lazily-evaluating; importing the package does not parse the registry.
 from .retrieval import find_impl
 from .verify import verify, verify_parity

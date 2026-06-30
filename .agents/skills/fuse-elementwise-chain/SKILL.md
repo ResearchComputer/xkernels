@@ -41,7 +41,7 @@ x-kernel-lib:
   references:
     - "src/xkernels/ops/ffn/triton/ffn_kernel.py (fused SwiGLU silu(g)*u — a 2-op pointwise chain as one kernel)"
     - "src/xkernels/ops/mhc/pre_post_reference.py (sigmoid pre/post heads — pointwise chains)"
-    - "docs/library.md §10 (mega-kernel anti-goal: fuse a SPECIFIC chain, don't build a universal pointwise JIT)"
+    - "meta/docs/library.md §10 (mega-kernel anti-goal: fuse a SPECIFIC chain, don't build a universal pointwise JIT)"
   metrics:
     uses: 0
     success_rate: null

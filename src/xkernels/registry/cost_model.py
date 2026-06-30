@@ -12,7 +12,7 @@ rather than in the JSON spec, so the contract stays free of perf plumbing.
 
 Each ``cost_model(op_id, point)`` returns ``(flops, bytes)`` for ONE sweep
 point, using the same dtype-aware byte arithmetic the roofline survey
-(``scripts/ds5_roofline_survey.py``) validated against measured GB10 numbers.
+(``scripts/archive/ds5-probes/ds5_roofline_survey.py``) validated against measured GB10 numbers.
 ``_measure_perf`` divides flops/bytes by the measured ``ms`` to fill
 ``tflops`` and ``achieved_bw_pct`` against the target arch's peak ceiling.
 
@@ -31,7 +31,7 @@ from .dtypes import dtype_bytes
 # --- arch peak ceilings -------------------------------------------------------
 # Peak fp32 CUDA-core / scalar FLOPS (TFLOPS) and DRAM copy BW (GB/s, R+W).
 # These are the ROOFLINE ceilings (the realistic kernel bounds), not marketing
-# peaks. GB10 is MEASURED (scripts/ds5_roofline_survey.py); the rest are the
+# peaks. GB10 is MEASURED (scripts/archive/ds5-probes/ds5_roofline_survey.py); the rest are the
 # documented scalar ceilings the library targets. Tensor-core ceilings are op-
 # specific (dtype + MMA shape) and intentionally NOT collapsed into one number
 # here — a cost model that needs them declares its own peak.
@@ -66,7 +66,7 @@ def arch_peaks(arch: str) -> dict[str, float]:
 # Each model takes a sweep ``point`` (symbolic dims + dtype) and returns
 # (flops, bytes_moved). The byte arithmetic is dtype-aware (bf16=2, fp32=4, ...)
 # and matches the kernels' actual read/write footprints. Lifted verbatim from
-# the validated roofline survey (scripts/ds5_roofline_survey.py).
+# the validated roofline survey (scripts/archive/ds5-probes/ds5_roofline_survey.py).
 
 def _mm_fp8_blockscale(p: dict[str, Any]) -> tuple[int, int]:
     # GEMM: 2*M*N*K flops. Kernel sees fp32 A[M,K],B[K,N],C[M,N] after host dequant

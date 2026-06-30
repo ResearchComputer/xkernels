@@ -21,7 +21,7 @@ pytest.importorskip("triton")
 _INTERP = os.environ.get("TRITON_INTERPRET", "0") == "1"
 _GPU_OK = _INTERP or __import__("torch").cuda.is_available()
 
-# probe_ffn lives in benchmarks/, which isn't an installed package.
+# probe_ffn lives in meta/benchmarks/, which isn't an installed package.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from benchmarks import probe_ffn as P  # noqa: E402
 

@@ -5,7 +5,7 @@ the open [SKILL.md](https://github.com/kapilt/skill) format (a folder with a
 `SKILL.md`: YAML frontmatter + markdown body). Consumable by any
 skills-compatible agent (Claude Code, Codex, Gemini CLI, Cursor, Cline, …).
 
-Per `docs/library.md` §7: **cards are nouns (what exists); skills are verbs (how
+Per `meta/docs/library.md` §7: **cards are nouns (what exists); skills are verbs (how
 to make/improve them).** Every skill is narrow on purpose (§7.2) — broad skills
 mis-fire.
 

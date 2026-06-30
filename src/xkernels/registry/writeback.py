@@ -1,4 +1,4 @@
-"""Compounding write-back (docs/library.md §6.2).
+"""Compounding write-back (meta/docs/library.md §6.2).
 
 A successful ``(op, arch, shape, dtype) -> knobs -> perf`` tuple is appended to
 the matching card's ``perf.measured``. Next time, retrieval/autotune skips the
