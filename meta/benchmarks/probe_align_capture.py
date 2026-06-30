@@ -4,7 +4,8 @@
 
 Captures the sync-free align into a graph, replays it, and checks the replayed
 output matches eager. Contrasts truncate=True (which keeps the .item() sync and
-is not capturable). GPU-only; run on gfx942 (scripts/archive/issues/probe_align_capture_beverin.sbatch).
+is not capturable). GPU-only; run on gfx942
+(scripts/archive/issues/probe_align_capture_beverin.sbatch).
 """
 from __future__ import annotations
 

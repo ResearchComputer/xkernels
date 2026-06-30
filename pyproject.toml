@@ -28,6 +28,10 @@ xkernels = ["ops/**/*.cu", "ops/**/*.cpp", "ops/**/*.h", "ops/**/*.json"]
 line-length = 100
 target-version = "py310"
 src = ["src", "tests", "meta/benchmarks"]
+# Archived exploratory one-shots (ds5 CUTE-DSL probe corpus, dated campaigns,
+# per-issue SLURM jobs) are kept for reproducibility and cited by the CUDA
+# cards by path — they are not production code, so they stay out of the gate.
+extend-exclude = ["scripts/archive"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

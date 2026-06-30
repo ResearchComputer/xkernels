@@ -7,7 +7,8 @@ Launch with torchrun (local CPU/gloo smoke) or SLURM srun (real RCCL on MI300A):
     # local logical 8-rank smoke (2 nodes x 4), gloo/CPU, fp32:
     torchrun --nproc-per-node=8 meta/benchmarks/bench_hierarchical_all_reduce.py --ranks-per-node 4
 
-    # on beverin via srun (see scripts/archive/issues/bench_allreduce_beverin.sbatch), nccl/RCCL, bf16
+    # on beverin via srun (see
+    # scripts/archive/issues/bench_allreduce_beverin.sbatch), nccl/RCCL, bf16
 
 Reads rank/world from torchrun (RANK/WORLD_SIZE/LOCAL_RANK) or SLURM
 (SLURM_PROCID/SLURM_NTASKS/SLURM_LOCALID). Backend is nccl when CUDA/ROCm is
