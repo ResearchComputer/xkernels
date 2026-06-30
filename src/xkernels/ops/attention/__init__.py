@@ -45,6 +45,13 @@ with backend_registration_guard(
     with triton_import_ctx():
         from .triton import merge_state_kernel  # noqa: F401
 
+# Import the CUTE DSL (native CUDA) backend for mha_merge_state (optional).
+# NVIDIA-only; gated on `nvidia-cutlass-dsl` (the `cute` extra).
+with backend_registration_guard(
+    "mha_merge_state", Backend.CUDA, source="xkernels.ops.attention.cute.entry"
+):  # pragma: no cover - requires nvidia-cutlass-dsl + NVIDIA GPU
+    from .cute import entry  # noqa: F401  (registers CUDA: CUTE fp32 path)
+
 with backend_registration_guard(
     "sparse_mla_attention",
     Backend.TRITON,

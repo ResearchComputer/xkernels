@@ -50,6 +50,13 @@ with backend_registration_guard(
     with triton_import_ctx():
         from .triton import sum_reduce_kernel  # noqa: F401
 
+# Import the CUTE DSL (native CUDA) backend for moe_sum_reduce (optional).
+# NVIDIA-only; gated on `nvidia-cutlass-dsl` (the `cute` extra).
+with backend_registration_guard(
+    "moe_sum_reduce", Backend.CUDA, source="xkernels.ops.moe.cute.entry"
+):  # pragma: no cover - requires nvidia-cutlass-dsl + NVIDIA GPU
+    from .cute import entry  # noqa: F401  (registers CUDA: CUTE fp32 path)
+
 with backend_registration_guard(
     "moe_align_block_size", Backend.TRITON, source="xkernels.ops.moe.triton.align_kernel"
 ):  # pragma: no cover - requires triton

@@ -14,6 +14,7 @@ dependencies = ["torch>=2.1"]
 
 [project.optional-dependencies]
 triton = ["triton>=3.0"]
+cute = ["nvidia-cutlass-dsl[cu13]"]  # NVIDIA CUTE DSL (CUTLASS Python). sm_80+; heavy, NVIDIA-only — opt-in extra. NOTE: the package is `nvidia-cutlass-dsl` (installs the `cutlass` module -> `cutlass.cute`); PyPI `cutlass` is an unrelated squatter and `nvidia-cutlass` only ships the pycute layout lib.
 bench = ["pandas", "matplotlib"]
 dev = ["pytest>=7", "ruff>=0.4", "pre-commit", "jsonschema>=4", "pyyaml>=6"]
 mcp = ["mcp>=1.0"]

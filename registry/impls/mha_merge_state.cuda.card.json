@@ -1,0 +1,45 @@
+{
+  "id": "mha_merge_state.cuda@1.0.0",
+  "implements": "mha_merge_state@1.0.0",
+  "backend": "cuda",
+  "arch": {
+    "family": "nvidia_sm121",
+    "requires": [],
+    "wave_size": 32,
+    "scratch": {
+      "kind": "registers",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "CUTE DSL fp32 online-softmax merge on Grace+Blackwell GB10 (sm_121). Memory-bound: one CTA per (t,h) row (n_rows = T*H), 128 threads tile the head dim D (thread-stride, coalesced — out_a[t,h,:] is contiguous in D). Per-row weights (wa=exp(lse_a-m), wb=exp(lse_b-m), denom, m) are scalar, so each thread computes them locally (3 transcendentals, hidden behind the memory-bound D reads — no SMEM broadcast needed). Thread 0 writes the scalar lse[row]=m+log(denom); every thread writes its own out[row,d]. Host upcasts out_a/out_b to fp32 (bit-identical to the reference's out_a.float()) and casts out back to out_a.dtype (lse stays fp32). Uses natural exp/log (math.exp/math.log) matching the reference.",
+    "roofline": "memory_bound",
+    "measured": [
+      {
+        "arch": "nvidia_sm121",
+        "shape": {"T": 64, "H": 128, "D": 128},
+        "dtype": "bf16",
+        "knobs": {"read_dtype": "bf16-native (promote-on-load)"},
+        "source": "scripts/ds5_merge_perf.py + ncu on ds5 GB10 sm_121, CTK 13.0, post compile-cache. END-TO-END incl launch.",
+        "tflops": null,
+        "achieved_bw_pct": 55.6,
+        "ms": 0.0421
+      }
+    ]
+  },
+  "uses_primitives": [
+    "softmax.online_merge_fp32",
+    "math.exp",
+    "math.log"
+  ],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "hybrid",
+    "skill_used": ["tile-a-gemm"],
+    "derived_from": "mha_merge_state.triton@1.0.0",
+    "created": "2026-06-29T00:00:00Z",
+    "source_path": "src/xkernels/ops/attention/cute/entry.py"
+  },
+  "notes": "CUTE DSL (`cutlass.cute`, nvidia-cutlass-dsl 4.5.2) backend for mha_merge_state; fourth native-CUDA card in the library, validated on the ds5 Grace+Blackwell GB10 test bed (docs/ds5-cute-testbed.md). JIT-compiles via nvcc (CUDA_HOME must be set). Registers only if nvidia-cutlass-dsl imports; else degrades to the triton/reference card.\n\nDesign (src/xkernels/ops/attention/cute/merge_state_kernel.py): the [T,H,D] tensors are flattened to [n_rows, D] and [T,H] to [n_rows] (row = t*H+h). One CTA per row, threads tile D. The per-row softmax weights are scalar, computed locally per thread (cheap, memory-bound hides it). Pure-fp32 device kernel (host does bf16<->fp32 plumbing). Natural exp/log (math.exp/math.log) — matches the reference exactly (the triton card uses log2+/LOG2E as an equivalent optimization).\n\nCompile-cache: per-(n_rows,D) cute.compile handle (tensors-only launch), same pattern as mm_fp8_blockscale.cuda. Device guard raises RuntimeError on CPU tensors so verify_parity (device='cpu') records CUDA as a caught backend error instead of segfaulting."
+}

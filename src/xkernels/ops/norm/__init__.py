@@ -21,4 +21,13 @@ with backend_registration_guard(
     with triton_import_ctx():
         from .triton import dual_rmsnorm_kernel  # noqa: F401
 
+# Import the CUTE DSL (native CUDA) backend for its registration side effect
+# (optional). NVIDIA-only; gated on `nvidia-cutlass-dsl` (the `cute` extra). On a
+# box without the DSL (CI, AMD) the guard records the failure and the op is
+# still served by the triton/reference card.
+with backend_registration_guard(
+    "dual_rmsnorm", Backend.CUDA, source="xkernels.ops.norm.cute.entry"
+):  # pragma: no cover - requires nvidia-cutlass-dsl + NVIDIA GPU
+    from .cute import entry  # noqa: F401  (registers CUDA: CUTE fp32 path)
+
 __all__ = ["dual_rmsnorm"]

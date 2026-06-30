@@ -28,6 +28,13 @@ with backend_registration_guard(
     with triton_import_ctx():
         from .triton import prenorm_gemm_kernel  # noqa: F401
 
+# Import the CUTE DSL (native CUDA) backend for hc_prenorm_gemm (optional).
+# NVIDIA-only; gated on `nvidia-cutlass-dsl` (the `cute` extra).
+with backend_registration_guard(
+    "hc_prenorm_gemm", Backend.CUDA, source="xkernels.ops.mhc.cute.entry"
+):  # pragma: no cover - requires nvidia-cutlass-dsl + NVIDIA GPU
+    from .cute import entry  # noqa: F401  (registers CUDA: CUTE fp32 path)
+
 with backend_registration_guard(
     ("mhc_pre", "mhc_post"),
     Backend.TRITON,

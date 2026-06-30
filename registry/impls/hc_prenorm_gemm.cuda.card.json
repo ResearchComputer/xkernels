@@ -1,0 +1,45 @@
+{
+  "id": "hc_prenorm_gemm.cuda@1.0.0",
+  "implements": "hc_prenorm_gemm@1.0.0",
+  "backend": "cuda",
+  "arch": {
+    "family": "nvidia_sm121",
+    "requires": [],
+    "wave_size": 32,
+    "scratch": {
+      "kind": "registers",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "CUTE DSL fp32 fused GEMM + per-row squared-sum on Grace+Blackwell GB10 (sm_121). Fuses the GEMM (a @ fn.T) and the RMS-prenorm squared-sum ((a**2).sum(-1)) because they share the SAME K-reduction axis. One CTA per output row t (grid = T blocks); 128 threads tile the output columns n (thread-stride). Skinny GEMM (sweep: T<=37, N<=24, K<=256): the largest axis K is a per-thread serial Kahan reduction — no block-wide K-reduce / SMEM tiling needed at this size. The per-row squared-sum is computed by thread 0 (O(K), cheap); every thread writes its own GEMM column (distinct n -> no write race). Coalescing: fn arrives [N,K] row-major so fn[n,k] for varying n is K-strided (uncoalesced); the host transposes to fn_t [K,N] so fn_t[k,n] for varying n at fixed k is contiguous (coalesced). Split-K: writes the full result to split 0, leaves splits 1..n_splits-1 as zeros (the reference's trivial partition — sum-invariant). Host upcasts a to fp32 (bit-identical to the reference's a.float()); outputs stay fp32 (the op's contract). Kahan-compensated K-reductions on both the GEMM and the squared-sum.",
+    "roofline": "memory_bound",
+    "measured": [
+      {
+        "arch": "nvidia_sm121",
+        "shape": {"T": 37, "K": 128, "N": 16},
+        "dtype": "bf16",
+        "knobs": {},
+        "source": "scripts/ds5_prenorm_perf.py (xkernels benchmark/do_bench) on ds5 GB10 sm_121, CTK 13.0, post compile-cache. END-TO-END incl host upcast + fn transpose + launch. Sweep-largest point. Achieved BW is far below peak because the sweep problem is tiny (~76K FMAs, ~190KB moved) — the kernel is launch/overhead-bound at these sizes, not bandwidth-bound (the asymptotic memory_bound regime applies at larger T*K*N).",
+        "tflops": null,
+        "achieved_bw_pct": 0.2,
+        "ms": 0.0402
+      }
+    ]
+  },
+  "uses_primitives": [
+    "gemm.fp32_kahan_skinny",
+    "reduce.rowsq_fp32_kahan",
+    "fusion.shared_k_axis"
+  ],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "hybrid",
+    "skill_used": ["tile-a-gemm", "add-epilogue-fusion"],
+    "derived_from": "hc_prenorm_gemm.triton@1.0.0",
+    "created": "2026-06-29T00:00:00Z",
+    "source_path": "src/xkernels/ops/mhc/cute/entry.py"
+  },
+  "notes": "CUTE DSL (`cutlass.cute`, nvidia-cutlass-dsl 4.5.2) backend for hc_prenorm_gemm; fifth native-CUDA card in the library, validated on the ds5 Grace+Blackwell GB10 test bed (docs/ds5-cute-testbed.md). JIT-compiles via nvcc (CUDA_HOME must be set). Registers only if nvidia-cutlass-dsl imports; else degrades to the triton/reference card.\n\nThis is the first FUSED epilogue in the CUTE family: the squared-sum is not a separate kernel launch but a thread-0 side-reduction fused into the same row-CTA that computes the GEMM (add-epilogue-fusion skill, case (a) — same Op Spec, the fusion does not change the op's outputs). The K axis is shared, so streaming k once serves both reductions.\n\nDesign (src/xkernels/ops/mhc/cute/prenorm_gemm_kernel.py): one CTA per row t, threads tile N. Thread 0 computes the per-row squared-sum (Kahan); every active thread (tid < N) computes its GEMM column (Kahan). No SMEM, no sync. Coalescing fix (host transposes fn [N,K] -> [K,N]) mirrors the mm_fp8_blockscale B-transpose. Split-K trivial partition (full result in split 0, zeros elsewhere) matches the reference exactly.\n\nCompile-cache: per-(T,K,N) cute.compile handle (tensors-only launch), same pattern as the other CUTE cards. Device guard raises RuntimeError on CPU tensors so verify_parity (device='cpu') records CUDA as a caught backend error instead of segfaulting."
+}
