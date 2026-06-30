@@ -27,32 +27,24 @@ from __future__ import annotations
 
 import cutlass
 import cutlass.cute as cute
-import cutlass.cute as cute
+import torch
 from cutlass._mlir.dialects import nvvm
 from cutlass.cute.runtime import from_dlpack
 from cutlass.cute.typing import Tensor
 from cutlass.cutlass_dsl import T
+
+from ..._cute_backend.launch import _cached_handle, _require_cuda
 
 _TILE_M = 8
 _TILE_N = 16
 _BLOCK_THREADS = 128  # = _TILE_M * _TILE_N, exactly one output element per thread
 
 # Compile-once / launch-many handle cache, keyed by the constexpr (M, N, K).
-#
-# WHY: the @cute.jit __call__ path (_fp32_matmul(...)) rebuilds the MLIR execution
-# engine on EVERY call (~9.3 ms) even on cache hit — it re-runs compile_and_cache ->
-# compiler_provider.jit(module) per dispatch. ncu measures the actual GPU dispatch
-# at ~90 us, so the GPU sits idle ~99% of the time. cute.compile() returns a
-# reusable CudaDialectJitCompiledFunction handle whose __call__ does only the cheap
-# generate_execution_args + run_compiled_program (~40 us). Measured 223x end-to-end
-# speedup (9307 us -> 41.6 us/call) at identical numerics (scripts/ds5_c_solved_test.py).
-#
-# GOTCHA (load-bearing): the handle specializes on the constexpr (M,N,K) at COMPILE
-# time, so it must be launched with ONLY the tensor args — re-passing the constexpr
-# corrupts the TVM-FFI execution-args ABI and SEGFAULTS in the native launch
-# (scripts/ds5_c_final_probe.py: handle(gA,gB,gOut) OK; handle(...,M,N,K) segfault).
-# Hence the handle is cached per (M,N,K) shape and always called with 3 args.
-_COMPILED_HANDLE_CACHE: "dict[tuple[int, int, int], object]" = {}
+# The load-bearing rationale (why not @cute.jit __call__; why tensors-only
+# launch) lives ONCE in ``ops/_cute_backend/launch.py`` — every CUTE card
+# shares it. This card is where the ~223x end-to-end speedup was first measured
+# (9307 us -> 41.6 us/call at identical numerics).
+_COMPILED_HANDLE_CACHE: dict[tuple[int, int, int], object] = {}
 
 
 @cute.kernel
@@ -127,29 +119,17 @@ def _fp32_matmul(
     )
 
 
-def fp32_matmul_cute(a: "torch.Tensor", b: "torch.Tensor") -> "torch.Tensor":  # type: ignore[name-defined]
+def fp32_matmul_cute(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """fp32 GEMM ``out [M,N] = a [M,K] @ b [N,K].T`` via a JIT CUTE DSL kernel.
 
     Uses the compile-once / launch-many path: the first call per (M,N,K) shape pays
     a ~120 ms one-time JIT to build a reusable ``cute.compile`` handle; every
     subsequent call launches in ~40 us (vs ~9.3 ms for the @cute.jit __call__ path).
     """
-    import torch
-
     M, K = a.shape
     N = b.shape[0]
     assert b.shape == (N, K), f"b must be [N,K]=[{N},{K}], got {tuple(b.shape)}"
-    # GPU-only: this is a CUDA (CUTE DSL) kernel. verify_parity() hardcodes
-    # device='cpu', so it will reach here with CPU tensors; the cute.compile handle's
-    # native launch segfaults on a host pointer (SIGSEGV, not catchable). Raise a
-    # clean RuntimeError instead so the harness records it as a backend error rather
-    # than crashing the process. The genuine cross-backend agreement is measured on
-    # the GPU (see docs/ds5-cute-testbed.md parity caveat).
-    if not getattr(a, "is_cuda", False):
-        raise RuntimeError(
-            "CUTE DSL kernel requires CUDA tensors; got device='cpu'. "
-            "verify_parity() hardcodes device='cpu' and cannot exercise a GPU-only card."
-        )
+    _require_cuda(a)
     out = torch.empty((M, N), device=a.device, dtype=torch.float32)
 
     # Transpose B to (K,N) row-major so the K-reduction reads a CONTIGUOUS column
@@ -164,15 +144,9 @@ def fp32_matmul_cute(a: "torch.Tensor", b: "torch.Tensor") -> "torch.Tensor":  #
     gOut = from_dlpack(out)     # (M, N)
 
     key = (M, N, K)
-    handle = _COMPILED_HANDLE_CACHE.get(key)
-    if handle is None:
-        # First call for this shape: warmup via the @cute.jit path (preprocesses the
-        # AST + builds the MLIR module), then compile-once into a reusable handle.
-        _fp32_matmul(gA, gB, gOut, M, N, K)
-        torch.cuda.synchronize()
-        handle = cute.compile(_fp32_matmul, gA, gB, gOut, M, N, K)
-        _COMPILED_HANDLE_CACHE[key] = handle
-
-    # Fast launch — tensors only, NO constexpr (baked in at compile; see cache note).
-    handle(gA, gB, gOut)
+    handle = _cached_handle(
+        _COMPILED_HANDLE_CACHE, key, _fp32_matmul,
+        (gA, gB, gOut), (M, N, K),
+    )
+    handle(gA, gB, gOut)  # fast launch — tensors only (constexpr baked in)
     return out

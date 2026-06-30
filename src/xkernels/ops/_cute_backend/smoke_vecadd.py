@@ -21,19 +21,18 @@ Run on ds5::
 """
 from __future__ import annotations
 
-import torch
-
 import cutlass
 import cutlass.cute as cute
+import torch
+from cutlass._mlir.dialects import nvvm
 from cutlass.cute import nvgpu
 from cutlass.cute.algorithm import copy
 from cutlass.cute.atom import make_copy_atom
 from cutlass.cute.core import composition, get, rank, size, zipped_divide
 from cutlass.cute.runtime import from_dlpack
 from cutlass.cute.tensor import make_identity_tensor, make_rmem_tensor
-from cutlass.cute.typing import Float32, Tensor
+from cutlass.cute.typing import Tensor
 from cutlass.cutlass_dsl import T
-from cutlass._mlir.dialects import nvvm
 
 # Elements each thread processes per kernel launch (a small, vectorizable tile).
 _ELEM_PER_THREAD = 4

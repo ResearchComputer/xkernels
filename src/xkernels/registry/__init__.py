@@ -7,6 +7,7 @@ Public surface (see docs/library.md §2, §8):
 """
 from __future__ import annotations
 
+from .archs import ALL_ARCHS, AMD_ARCHS, NVIDIA_ARCHS, vendor_of
 from .constraints import (
     UndecidableConstraintError,
     evaluate,
@@ -46,9 +47,12 @@ from .skills import (
 from .writeback import measurement_view, record_measurement
 
 __all__ = [
+    "AMD_ARCHS",
+    "ALL_ARCHS",
     "ArchSpec",
     "BACKEND_AGNOSTIC",
     "ImplCard",
+    "NVIDIA_ARCHS",
     "Numerics",
     "OpSpec",
     "RegistryError",
@@ -88,4 +92,5 @@ __all__ = [
     "skills_for_backend",
     "validate_decidable",
     "validate_skill_id",
+    "vendor_of",
 ]

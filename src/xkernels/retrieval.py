@@ -15,20 +15,11 @@ from __future__ import annotations
 from typing import Any
 
 from .registry import all_specs, cards_for
+from .registry.archs import vendor_of as _vendor_of
 from .registry.constraints import UndecidableConstraintError, evaluate
 from .registry.models import ImplCard, OpSpec
 
 # --- arch / feature matching --------------------------------------------------
-
-_AMD, _NVIDIA = {"amd_cdna2", "amd_cdna3"}, {"nvidia_sm80", "nvidia_sm90", "nvidia_sm100", "nvidia_sm121"}
-
-
-def _vendor_of(arch: str) -> str:
-    if arch in _AMD:
-        return "amd"
-    if arch in _NVIDIA:
-        return "nvidia"
-    return "any"
 
 
 def _arch_reject_reasons(card: ImplCard, target_arch: str, features: set[str]) -> list[str]:

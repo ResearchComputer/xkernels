@@ -18,6 +18,7 @@ from typing import Any
 import torch
 
 from .registry import backend_callable, get_card, get_spec, load_shape_sweep, reference_callable
+from .registry.archs import vendor_of as _vendor_of
 from .registry.input_gen import generate_inputs
 from .registry.models import ImplCard, OpSpec
 from .utils.benchmarking import benchmark
@@ -26,10 +27,27 @@ DEFAULT_SEED = 1729
 
 
 def _as_device(arch: str, fallback: str = "cpu") -> str:
-    """Map an arch id to a torch device. GPU archs -> 'cuda' if available."""
+    """Map an arch id to a torch device. GPU archs -> 'cuda' if available.
+
+    Honest about vendor mismatch: ``verify(card, arch='amd_cdna3')`` on an
+    NVIDIA box still runs (everything is torch under the hood) but emits a
+    warning, so the arch label never silently becomes a lie and an agent can
+    tell its requested target wasn't honored.
+    """
     if arch in ("any", ""):
         return fallback
     if torch.cuda.is_available():
+        requested = _vendor_of(arch)
+        if requested in ("amd", "nvidia"):
+            detected = "nvidia"  # torch.cuda.is_available() is NVIDIA/ROCm-hipify
+            if requested != detected and requested == "amd":
+                import warnings
+                warnings.warn(
+                    f"arch {arch!r} is an AMD target but the available CUDA "
+                    f"device is NVIDIA; running anyway (everything is torch). "
+                    f"The arch label reflects the REQUESTED target, not the host.",
+                    stacklevel=2,
+                )
         return "cuda"
     return fallback
 
@@ -265,6 +283,8 @@ def _measure_perf(
     card: ImplCard, op: OpSpec, point: dict, seed: int, device: str,
     knobs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    from .registry.cost_model import arch_peaks, cost_model
+
     inputs = generate_inputs(op.id, point, seed, device)
     fn = backend_callable(op.id, card.backend.name)
     if knobs:
@@ -272,9 +292,41 @@ def _measure_perf(
     else:
         call = lambda: fn(**inputs)  # noqa: E731
     ms = benchmark(call)
-    note = ("ms measured via do_bench; tflops/bw need an op-specific "
-            "FLOP/byte model (open question §11)")
-    return {"ms": ms, "tflops": None, "achieved_bw_pct": None, "note": note}
+
+    # Fill the two DERIVED metrics (tflops, achieved_bw_pct) when an analytical
+    # cost model is registered for this op — the roofline signal an agent needs
+    # to branch on memory- vs compute-bound WITHOUT leaving for an external
+    # profiler. Without a model (or with a zero-ceiling arch like 'any'), the
+    # metrics stay None honestly rather than being fabricated.
+    tflops: float | None = None
+    achieved_bw_pct: float | None = None
+    note = "ms measured; no FLOP/byte model for this op (derived metrics None)"
+    model = cost_model(op.id, point)
+    if model is not None:
+        flops, bytes_rw = model
+        peaks = arch_peaks(_arch_of(op, card))
+        peak_flops = peaks["fp32_tflops"]
+        peak_bw = peaks["dram_bw_gbs"]
+        if ms > 0 and flops > 0 and peak_flops > 0:
+            tflops = round(flops / (ms * 1e-3) / 1e12, 3)
+        if ms > 0 and bytes_rw > 0 and peak_bw > 0:
+            achieved_bw_pct = round(bytes_rw / (ms * 1e-3) / 1e9 / peak_bw * 100, 2)
+        note = (
+            f"ms measured; tflops/bw derived from the op cost model "
+            f"(flops={flops}, bytes={bytes_rw}) against arch "
+            f"{_arch_of(op, card)!r} peaks (fp32={peak_flops}TF, BW={peak_bw}GB/s)."
+        )
+    return {"ms": ms, "tflops": tflops, "achieved_bw_pct": achieved_bw_pct, "note": note}
+
+
+def _arch_of(op: OpSpec, card: ImplCard) -> str:
+    """The arch to grade perf against: the card's family if concrete, else 'any'.
+
+    A reference card (family 'any') has no meaningful peak ceiling, so its
+    derived metrics stay None — only concrete-arch cards get a roofline grade.
+    """
+    fam = card.arch.family
+    return fam if fam != "any" else "any"
 
 
 def verify_parity(
@@ -283,12 +335,31 @@ def verify_parity(
     *,
     shapes: str | list[dict] | None = None,
     seed: int = DEFAULT_SEED,
+    device: str | None = None,
 ) -> dict[str, Any]:
     """Cross-backend parity gate (§5.3). For an op with >=2 cards, check that the
     backends agree with *each other* within ``cross_backend_rtol``.
 
-    Returns {agree, max_pairwise_rel_err, diverging: [...], per_backend: {...}}.
-    A card that fails parity cannot publish (§2.4).
+    Args:
+        op_id: the Op Spec id.
+        archs: optional arch hint used to pick the device when ``device`` is
+            None. The first arch whose vendor matches an available GPU wins;
+            defaults to CPU when none do (back-compat).
+        shapes: a sweep id (str) or explicit point list; defaults to the op's
+            mandatory ``shape_sweep``.
+        seed: deterministic input seed.
+        device: override the device (``'cpu'`` | ``'cuda'``). When None it is
+            derived from ``archs``: any GPU-capable arch -> ``'cuda'`` if
+            available, else ``'cpu'``. This lets GPU-only cards (e.g. CUTE DSL)
+            actually run in parity instead of being recorded as backend errors.
+
+    Returns {agree, max_pairwise_rel_err, diverging, per_backend_runnable,
+    n_runnable, inconclusive, errors}.
+
+    ``agree`` is True only when >=2 backends actually ran and all pairs passed.
+    When fewer than 2 ran, ``agree`` is None and ``inconclusive`` is True — a
+    single runnable backend trivially agrees with itself and must NOT be
+    reported as a passed parity gate (the honesty §10 demands).
     """
     from .registry import cards_for
 
@@ -296,7 +367,8 @@ def verify_parity(
     bucket = cards_for(op_id)
     sweep_id = shapes if shapes is not None else op.shape_sweep
     points = _resolve_shapes(sweep_id)
-    device = "cpu"
+    if device is None:
+        device = _parity_device(archs)
 
     # Collect per-backend, per-point outputs.
     outputs: dict[str, list[list[torch.Tensor]]] = {}
@@ -322,16 +394,38 @@ def verify_parity(
                 if rel > op.numerics.cross_backend_rtol:
                     diverging.append({"pair": [a, b], "point": points[idx], "rel_err": rel})
 
+    n_runnable = len(backends)
+    inconclusive = n_runnable < 2
+    # agree is meaningful only with >=2 runnable backends; else None (not True).
+    agree: bool | None = None if inconclusive else (not diverging)
     return {
         "op_id": op_id,
         "cross_backend_rtol": op.numerics.cross_backend_rtol,
-        "agree": not diverging,
+        "device": device,
+        "agree": agree,
+        "inconclusive": inconclusive,
+        "n_runnable": n_runnable,
         "max_pairwise_rel_err": max_pairwise,
         "diverging": diverging,
         "per_backend_runnable": {k: (k in outputs) for k in bucket},
         "errors": errors,
         "n_points": len(points),
     }
+
+
+def _parity_device(archs: list[str] | None) -> str:
+    """Pick a parity device from an optional arch list.
+
+    Any GPU-capable arch -> 'cuda' if a CUDA device is available, else 'cpu'.
+    The default (no archs, or vendor-agnostic archs) stays 'cpu' so the
+    back-compat invariant holds: ``verify_parity`` on a CPU-only box behaves
+    exactly as before.
+    """
+    if not archs:
+        return "cpu"
+    if any(_vendor_of(a) in ("amd", "nvidia") for a in archs) and torch.cuda.is_available():
+        return "cuda"
+    return "cpu"
 
 
 def _run_id(card: ImplCard, arch: str, seed: int, sweep_id: str | list) -> str:

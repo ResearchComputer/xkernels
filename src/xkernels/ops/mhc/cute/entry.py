@@ -7,8 +7,6 @@ Signature matches the triton/reference entry:
 """
 from __future__ import annotations
 
-import torch
-
 from ...._backends import Backend, detect_vendor
 from ...._dispatch import register
 from .prenorm_gemm_kernel import hc_prenorm_gemm_cute

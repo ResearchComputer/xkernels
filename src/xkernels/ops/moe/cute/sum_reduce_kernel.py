@@ -25,16 +25,20 @@ from __future__ import annotations
 
 import cutlass
 import cutlass.cute as cute
+import torch
 from cutlass._mlir.dialects import nvvm
 from cutlass.cute.runtime import from_dlpack
 from cutlass.cute.typing import Tensor
 from cutlass.cutlass_dsl import T
 
+from ..._cute_backend.launch import _cached_handle, _require_cuda
+
 _BLOCK_THREADS = 128
 
-# Compile-once / launch-many handle cache, keyed by the constexpr (M, H). See
-# mm_fp8_blockscale_kernel._COMPILED_HANDLE_CACHE for the full rationale.
-_COMPILED_HANDLE_CACHE: "dict[tuple[int, int], object]" = {}
+# Compile-once / launch-many handle cache, keyed by (M, H, dtype). The
+# load-bearing rationale (why not @cute.jit __call__; why tensors-only launch)
+# lives ONCE in ``ops/_cute_backend/launch.py`` — every CUTE card shares it.
+_COMPILED_HANDLE_CACHE: dict[tuple[int, int, str], object] = {}
 
 
 @cute.kernel
@@ -98,27 +102,15 @@ def _moe_sum_reduce(
 
 
 def moe_sum_reduce_cute(
-    y: "torch.Tensor", w: "torch.Tensor", routed_scaling_factor: float = 1.0  # type: ignore[name-defined]
-) -> "torch.Tensor":  # type: ignore[name-defined]
+    y: torch.Tensor, w: torch.Tensor, routed_scaling_factor: float = 1.0
+) -> torch.Tensor:
     """fp32 weighted top-k reduction via a JIT CUTE DSL kernel.
 
     ``y`` is upcast to fp32 on the host (bit-identical to the reference); the
     kernel runs pure fp32; the caller casts the result back to ``y.dtype``.
     Uses the compile-once / launch-many path keyed by ``(M, H)``.
     """
-    import torch
-
-    if not getattr(y, "is_cuda", False):
-        # GPU-only: verify_parity() hardcodes device='cpu'; raising here lets the
-        # harness record CUDA as a caught backend error instead of segfaulting.
-        raise RuntimeError(
-            "CUTE DSL kernel requires CUDA tensors; got device='cpu'. "
-            "verify_parity() hardcodes device='cpu' and cannot exercise a GPU-only card."
-        )
-    yf = y.to(torch.float32)
-    wf = w.to(torch.float32)
-    M, top_k, H = yf.shape
-    out = torch.empty((M, H), device=yf.device, dtype=torch.float32)
+    _require_cuda(y)
 
     # Perf: read y NATIVELY as bf16 in the kernel (no host upcast) — halves the
     # memory traffic for this memory-bound op (14.7MB vs 29MB) and kills the
@@ -134,15 +126,9 @@ def moe_sum_reduce_cute(
     gOut = from_dlpack(out)
 
     key = (M, H, str(yc.dtype))
-    handle = _COMPILED_HANDLE_CACHE.get(key)
-    if handle is None:
-        _moe_sum_reduce(gY, gW, gOut, M, top_k, H, routed_scaling_factor)
-        torch.cuda.synchronize()
-        handle = cute.compile(
-            _moe_sum_reduce, gY, gW, gOut, M, top_k, H, routed_scaling_factor
-        )
-        _COMPILED_HANDLE_CACHE[key] = handle
-
-    # Fast launch — tensors only (constexpr baked in at compile; see cache note).
-    handle(gY, gW, gOut)
+    handle = _cached_handle(
+        _COMPILED_HANDLE_CACHE, key, _moe_sum_reduce,
+        (gY, gW, gOut), (M, top_k, H, routed_scaling_factor),
+    )
+    handle(gY, gW, gOut)  # fast launch — tensors only (constexpr baked in)
     return out

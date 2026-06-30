@@ -218,8 +218,30 @@ def test_verify_parity_structure():
     assert p["cross_backend_rtol"] == get_spec("dual_rmsnorm@1.0.0").numerics.cross_backend_rtol
     import torch
     if not torch.cuda.is_available():
-        # triton not runnable on CPU -> only reference runs; parity trivially "agree"
+        # On a CPU box the GPU backends (triton/cuda) can't run, so only the
+        # reference is runnable -> parity is INCONCLUSIVE (agree=None), not a
+        # vacuous pass. This is the honesty the old `agree=True` violated.
         assert p["per_backend_runnable"]["REFERENCE"] is True
+        assert p["n_runnable"] == 1
+        assert p["inconclusive"] is True
+        assert p["agree"] is None  # NOT True: a backend agreeing with itself isn't parity
+
+
+def test_verify_parity_inconclusive_with_single_runnable_backend():
+    """A parity result with <2 runnable backends must be inconclusive, not pass.
+
+    Before the device fix, verify_parity() hardcoded device='cpu' and every
+    GPU-only card raised in the guard, so all 5 CUTE cards reported
+    `agree=True` with only REFERENCE runnable — i.e. they agreed with
+    themselves. That was a vacuous pass; this test pins the honest behaviour.
+    """
+    p = verify_parity("mha_merge_state@1.0.0", device="cpu")
+    # cuda card raises in its guard on CPU; triton needs a GPU -> only reference
+    assert p["n_runnable"] <= 1
+    assert p["inconclusive"] is True
+    assert p["agree"] is None
+    assert "CUDA" in p["per_backend_runnable"]  # the cuda card IS in the bucket
+    assert p["per_backend_runnable"]["CUDA"] is False  # but not runnable on cpu
 
 
 # --- write-back invariants + round-trip --------------------------------------
@@ -292,6 +314,71 @@ def test_op_spec_schema_rejects_missing_numerics():
     import jsonschema
     with pytest.raises(jsonschema.ValidationError):
         validate_op_spec(bad)
+
+
+def test_arch_vocab_matches_schema():
+    """The Python arch set (registry.archs) MUST match the JSON-schema enum.
+
+    Keeping two copies is unavoidable (JSON Schema can't import Python), so this
+    test is the anti-drift guard: the next arch addition is one line in the
+    schema enum + one line in ``archs.py``, and any mismatch fails here.
+    """
+    from xkernels.registry import ALL_ARCHS, impl_card_schema
+    schema_archs = set(
+        v for v in impl_card_schema()["properties"]["arch"]["properties"]["family"]["enum"]
+        if v != "any"
+    )
+    assert schema_archs == ALL_ARCHS, (
+        f"arch vocab drifted: schema={sorted(schema_archs)} "
+        f"python={sorted(ALL_ARCHS)}"
+    )
+
+
+def test_vendor_of_partitions_all_archs():
+    """Every concrete arch resolves to a vendor (no arch is 'any' or orphan)."""
+    from xkernels.registry import AMD_ARCHS, NVIDIA_ARCHS, vendor_of
+    for a in AMD_ARCHS:
+        assert vendor_of(a) == "amd"
+    for a in NVIDIA_ARCHS:
+        assert vendor_of(a) == "nvidia"
+    assert AMD_ARCHS.isdisjoint(NVIDIA_ARCHS)
+
+
+def test_cost_model_matches_roofline_arithmetic_intensity():
+    """The analytical FLOP/byte models reproduce the roofline survey's AIs.
+
+    These AIs are what verify(measure_perf=True) now divides against the measured
+    ms to fill tflops / achieved_bw_pct — so the models MUST match the byte
+    arithmetic the survey validated on GB10. A drift here would mislead every
+    diagnose-* skill that reads the perf block.
+    """
+    from xkernels.registry.cost_model import cost_model, has_model
+    cases = {
+        # (op_id, point, expected_AI_from_roofline_survey)
+        "mm_fp8_blockscale@1.0.0": ({"M": 128, "N": 512, "K": 512, "dtype": "fp32"}, 42.7),
+        "moe_sum_reduce@1.0.0": ({"M": 128, "top_k": 8, "H": 7168, "dtype": "bf16"}, 2.0),
+        "mha_merge_state@1.0.0": ({"T": 64, "H": 128, "D": 128, "dtype": "bf16"}, 1.0),
+        "hc_prenorm_gemm@1.0.0": ({"T": 37, "K": 128, "N": 16, "dtype": "bf16"}, 7.7),
+    }
+    for op_id, (point, expected_ai) in cases.items():
+        assert has_model(op_id), f"no cost model for {op_id}"
+        flops, bytes_rw = cost_model(op_id, point)
+        ai = flops / bytes_rw
+        assert abs(ai - expected_ai) < 0.15, (
+            f"{op_id} AI drifted: got {ai:.2f}, survey said {expected_ai}"
+        )
+
+
+def test_cost_model_dtype_aware_byte_count():
+    """bf16 vs fp32 must halve the byte count for the read-bound op."""
+    from xkernels.registry.cost_model import cost_model
+    _, bytes_bf16 = cost_model("moe_sum_reduce@1.0.0",
+                               {"M": 128, "top_k": 8, "H": 7168, "dtype": "bf16"})
+    _, bytes_fp32 = cost_model("moe_sum_reduce@1.0.0",
+                               {"M": 128, "top_k": 8, "H": 7168, "dtype": "fp32"})
+    # the fp32 path moves ~2x the y-bytes (out is fp32 in both); assert bf16 is
+    # strictly cheaper, which is the whole point of the bf16-native-read lever.
+    assert bytes_bf16 < bytes_fp32
 
 
 # --- skill outcome store (§7.3) ---------------------------------------------

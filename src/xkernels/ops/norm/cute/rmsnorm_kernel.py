@@ -31,22 +31,24 @@ from __future__ import annotations
 
 import cutlass
 import cutlass.cute as cute
+import torch
 from cutlass._mlir.dialects import math, nvvm
 from cutlass.cute.arch import alloc_smem, sync_threads, warp_reduction_sum
 from cutlass.cute.runtime import from_dlpack
 from cutlass.cute.typing import Tensor
 from cutlass.cutlass_dsl import T
 
+from ..._cute_backend.launch import _cached_handle, _require_cuda
+
 _BLOCK_THREADS = 128
 _NUM_WARPS = _BLOCK_THREADS // 32  # = 4
 
-# Compile-once / launch-many handle cache, keyed by the constexpr (T, D). See
-# mm_fp8_blockscale_kernel._COMPILED_HANDLE_CACHE for the full rationale: the
-# @cute.jit __call__ path rebuilds the MLIR exec engine every call (~9 ms),
-# while a cute.compile() handle replays in ~40 us. The handle specializes on the
-# constexpr (T, D) at compile time, so it is launched with ONLY the tensor args
-# (re-passing the constexpr corrupts the TVM-FFI ABI and segfaults).
-_COMPILED_HANDLE_CACHE: "dict[tuple[int, int], object]" = {}
+# Compile-once / launch-many handle cache, keyed by (T, D, eps). The
+# load-bearing rationale (why not @cute.jit __call__; why tensors-only launch)
+# lives ONCE in ``ops/_cute_backend/launch.py`` — every CUTE card shares it.
+# eps is in the key because it is a constexpr too: a key without it would
+# silently reuse a handle compiled for a different eps.
+_COMPILED_HANDLE_CACHE: dict[tuple[int, int, float], object] = {}
 
 
 @cute.kernel
@@ -128,23 +130,14 @@ def _rmsnorm(
     )
 
 
-def rmsnorm_cute(x: "torch.Tensor", w: "torch.Tensor", eps: float = 1e-6) -> "torch.Tensor":  # type: ignore[name-defined]
+def rmsnorm_cute(x: torch.Tensor, w: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     """fp32 RMSNorm ``out = x * rsqrt(mean(x^2) + eps) * w`` via a JIT CUTE kernel.
 
     Inputs are upcast to fp32 on the host (bit-identical to the reference); the
     kernel runs pure fp32; the result is cast back to ``x.dtype`` by the caller.
-    Uses the compile-once / launch-many path keyed by ``(T, D)``.
+    Uses the compile-once / launch-many path keyed by ``(T, D, eps)``.
     """
-    import torch
-
-    if not getattr(x, "is_cuda", False):
-        # GPU-only: verify_parity() hardcodes device='cpu'; raising here lets the
-        # harness record CUDA as a caught backend error instead of segfaulting on
-        # the native launch. See mm_fp8_blockscale_kernel.fp32_matmul_cute.
-        raise RuntimeError(
-            "CUTE DSL kernel requires CUDA tensors; got device='cpu'. "
-            "verify_parity() hardcodes device='cpu' and cannot exercise a GPU-only card."
-        )
+    _require_cuda(x)
     xf = x.to(torch.float32)
     wf = w.to(torch.float32)
     out = torch.empty_like(xf)
@@ -154,14 +147,10 @@ def rmsnorm_cute(x: "torch.Tensor", w: "torch.Tensor", eps: float = 1e-6) -> "to
     gW = from_dlpack(wf)
     gOut = from_dlpack(out)
 
-    key = (T_, D)
-    handle = _COMPILED_HANDLE_CACHE.get(key)
-    if handle is None:
-        _rmsnorm(gX, gW, gOut, T_, D, eps)
-        torch.cuda.synchronize()
-        handle = cute.compile(_rmsnorm, gX, gW, gOut, T_, D, eps)
-        _COMPILED_HANDLE_CACHE[key] = handle
-
-    # Fast launch — tensors only (constexpr baked in at compile; see cache note).
-    handle(gX, gW, gOut)
+    key = (T_, D, eps)
+    handle = _cached_handle(
+        _COMPILED_HANDLE_CACHE, key, _rmsnorm,
+        (gX, gW, gOut), (T_, D, eps),
+    )
+    handle(gX, gW, gOut)  # fast launch — tensors only (constexpr baked in)
     return out

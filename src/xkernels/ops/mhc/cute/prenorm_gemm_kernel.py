@@ -37,16 +37,21 @@ from __future__ import annotations
 
 import cutlass
 import cutlass.cute as cute
+import torch
 from cutlass._mlir.dialects import nvvm
 from cutlass.cute.runtime import from_dlpack
 from cutlass.cute.typing import Tensor
 from cutlass.cutlass_dsl import T
 
+from ..._cute_backend.launch import _cached_handle, _require_cuda
+
 _BLOCK_THREADS = 128
 
 # Compile-once / launch-many handle cache, keyed by the constexpr (T, K, N).
-# See mm_fp8_blockscale_kernel._COMPILED_HANDLE_CACHE for the full rationale.
-_COMPILED_HANDLE_CACHE: "dict[tuple[int, int, int], object]" = {}
+# The load-bearing rationale (why not @cute.jit __call__; why tensors-only
+# launch) lives ONCE in ``ops/_cute_backend/launch.py`` — every CUTE card
+# shares it.
+_COMPILED_HANDLE_CACHE: dict[tuple[int, int, int], object] = {}
 
 
 @cute.kernel
@@ -117,8 +122,8 @@ def _prenorm_gemm(
 
 
 def hc_prenorm_gemm_cute(
-    a: "torch.Tensor", fn: "torch.Tensor", *, n_splits: int  # type: ignore[name-defined]
-) -> "tuple[torch.Tensor, torch.Tensor]":  # type: ignore[name-defined]
+    a: torch.Tensor, fn: torch.Tensor, *, n_splits: int
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Fused GEMM + per-row squared-sum via a JIT CUTE DSL kernel (pure fp32).
 
     ``a`` is upcast to fp32 on the host (bit-identical to the reference); the
@@ -127,15 +132,7 @@ def hc_prenorm_gemm_cute(
     as zeros — the reference's trivial split-K partition (sum-invariant). Uses
     the compile-once / launch-many path keyed by ``(T, K, N)``.
     """
-    import torch
-
-    if not getattr(a, "is_cuda", False):
-        # GPU-only: verify_parity() hardcodes device='cpu'; raising here lets the
-        # harness record CUDA as a caught backend error instead of segfaulting.
-        raise RuntimeError(
-            "CUTE DSL kernel requires CUDA tensors; got device='cpu'. "
-            "verify_parity() hardcodes device='cpu' and cannot exercise a GPU-only card."
-        )
+    _require_cuda(a)
     T, K = a.shape
     N = fn.shape[0]
     af = a.to(torch.float32).contiguous()
@@ -154,13 +151,9 @@ def hc_prenorm_gemm_cute(
     gSqr = from_dlpack(gemm_out_sqrsum)
 
     key = (T, K, N)
-    handle = _COMPILED_HANDLE_CACHE.get(key)
-    if handle is None:
-        _prenorm_gemm(gA, gFnT, gMul, gSqr, T, K, N)
-        torch.cuda.synchronize()
-        handle = cute.compile(_prenorm_gemm, gA, gFnT, gMul, gSqr, T, K, N)
-        _COMPILED_HANDLE_CACHE[key] = handle
-
-    # Fast launch — tensors only (constexpr baked in at compile; see cache note).
-    handle(gA, gFnT, gMul, gSqr)
+    handle = _cached_handle(
+        _COMPILED_HANDLE_CACHE, key, _prenorm_gemm,
+        (gA, gFnT, gMul, gSqr), (T, K, N),
+    )
+    handle(gA, gFnT, gMul, gSqr)  # fast launch — tensors only (constexpr baked in)
     return gemm_out_mul, gemm_out_sqrsum

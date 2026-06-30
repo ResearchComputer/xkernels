@@ -29,16 +29,21 @@ from __future__ import annotations
 
 import cutlass
 import cutlass.cute as cute
+import torch
 from cutlass._mlir.dialects import math, nvvm
 from cutlass.cute.runtime import from_dlpack
 from cutlass.cute.typing import Tensor
 from cutlass.cutlass_dsl import T
 
+from ..._cute_backend.launch import _cached_handle, _require_cuda
+
 _BLOCK_THREADS = 128
 
-# Compile-once / launch-many handle cache, keyed by the constexpr (n_rows, D).
-# See mm_fp8_blockscale_kernel._COMPILED_HANDLE_CACHE for the full rationale.
-_COMPILED_HANDLE_CACHE: "dict[tuple[int, int], object]" = {}
+# Compile-once / launch-many handle cache, keyed by (n_rows, D, dtype). The
+# load-bearing rationale (why not @cute.jit __call__; why tensors-only launch)
+# lives ONCE in ``ops/_cute_backend/launch.py`` — every CUTE card shares it.
+# dtype is in the key because this card reads out_a/out_b NATIVELY as bf16.
+_COMPILED_HANDLE_CACHE: dict[tuple[int, int, str], object] = {}
 
 
 @cute.kernel
@@ -101,8 +106,8 @@ def _merge_state(
 
 
 def merge_state_cute(
-    out_a: "torch.Tensor", lse_a: "torch.Tensor", out_b: "torch.Tensor", lse_b: "torch.Tensor"  # type: ignore[name-defined]
-) -> "tuple[torch.Tensor, torch.Tensor]":  # type: ignore[name-defined]
+    out_a: torch.Tensor, lse_a: torch.Tensor, out_b: torch.Tensor, lse_b: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Online-softmax merge via a JIT CUTE DSL kernel (pure fp32).
 
     ``out_a``/``out_b`` are upcast to fp32 on the host (bit-identical to the
@@ -110,15 +115,7 @@ def merge_state_cute(
     by the caller (``lse`` stays fp32). Uses the compile-once / launch-many path
     keyed by ``(n_rows, D)``.
     """
-    import torch
-
-    if not getattr(out_a, "is_cuda", False):
-        # GPU-only: verify_parity() hardcodes device='cpu'; raising here lets the
-        # harness record CUDA as a caught backend error instead of segfaulting.
-        raise RuntimeError(
-            "CUTE DSL kernel requires CUDA tensors; got device='cpu'. "
-            "verify_parity() hardcodes device='cpu' and cannot exercise a GPU-only card."
-        )
+    _require_cuda(out_a)
     # Perf: read out_a/out_b NATIVELY as bf16 (no host upcast) — halves the
     # memory traffic for this memory-bound op (AI=1.3). The kernel's arithmetic
     # (fp32 weights wa/wb/inv * bf16 inputs oa/ob) promotes to fp32 on load, so
@@ -145,14 +142,10 @@ def merge_state_cute(
     gLse = from_dlpack(lse)
 
     key = (n_rows, D, str(oa_c.dtype))
-    handle = _COMPILED_HANDLE_CACHE.get(key)
-    if handle is None:
-        _merge_state(gOutA, gLseA, gOutB, gLseB, gOut, gLse, n_rows, D)
-        torch.cuda.synchronize()
-        handle = cute.compile(_merge_state, gOutA, gLseA, gOutB, gLseB, gOut, gLse, n_rows, D)
-        _COMPILED_HANDLE_CACHE[key] = handle
-
-    # Fast launch — tensors only (constexpr baked in at compile; see cache note).
-    handle(gOutA, gLseA, gOutB, gLseB, gOut, gLse)
+    handle = _cached_handle(
+        _COMPILED_HANDLE_CACHE, key, _merge_state,
+        (gOutA, gLseA, gOutB, gLseB, gOut, gLse), (n_rows, D),
+    )
+    handle(gOutA, gLseA, gOutB, gLseB, gOut, gLse)  # tensors only
     # Restore the original [T, H, D] / [T, H] shapes.
     return out.view_as(out_a), lse.view_as(lse_a)
