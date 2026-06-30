@@ -17,7 +17,6 @@ import torch
 from xkernels import moe_align_block_size
 from xkernels._backends import Backend
 from xkernels._dispatch import registered_backends
-from xkernels.ops.moe.triton.align_kernel import moe_align_block_size_ep_triton
 from xkernels.ops.moe.w4a16 import (
     moe_align_block_size_ep,
     moe_align_block_size_ref,
@@ -222,6 +221,7 @@ def test_ep_triton_local_assignments_match_reference(M, top_k, num_experts, bloc
     for the collapsed non-local slots."""
     if not _HAS_TRITON:
         pytest.skip("triton backend not registered")
+    from xkernels.ops.moe.triton.align_kernel import moe_align_block_size_ep_triton
     dev = _device()
     g = torch.Generator(device=dev).manual_seed(0)
     topk_ids = torch.randint(0, num_experts, (M, top_k), generator=g, dtype=torch.int32, device=dev)
@@ -267,6 +267,7 @@ def test_ep_triton_union_covers_every_slot_once(M, top_k, num_experts, block_siz
     exactly once (each computed on precisely the rank that owns its expert)."""
     if not _HAS_TRITON:
         pytest.skip("triton backend not registered")
+    from xkernels.ops.moe.triton.align_kernel import moe_align_block_size_ep_triton
     dev = _device()
     g = torch.Generator(device=dev).manual_seed(1)
     topk_ids = torch.randint(0, num_experts, (M, top_k), generator=g, dtype=torch.int32, device=dev)
@@ -292,6 +293,7 @@ def test_ep_triton_grid_scales_with_local_expert_count(num_experts, block_size, 
     ~ep_size grid inflation), so decode EP does not regress vs the reference."""
     if not _HAS_TRITON:
         pytest.skip("triton backend not registered")
+    from xkernels.ops.moe.triton.align_kernel import moe_align_block_size_ep_triton
     dev = _device()
     g = torch.Generator(device=dev).manual_seed(0)
     topk_ids = torch.randint(0, num_experts, (1, 8), generator=g, dtype=torch.int32, device=dev)
