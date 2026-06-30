@@ -1,9 +1,12 @@
-# xkernels wiki — benchmark & profile campaign (2026-06-26)
+# xkernels wiki
 
-A full pass over **every kernel** in `registry/impls/*.triton.card.json` (10 ops
-× 2 cards) on both vendor clusters: **beverin (AMD MI300A, gfx942)** and
-**bristen (NVIDIA A100, sm_80)**. This wiki records the numbers, the roofline
-diagnoses, and — most usefully — the facts that cost real debugging time.
+The project's knowledge base of **facts that cost real debugging time** —
+numbers, roofline diagnoses, and reverse-engineered API surfaces, recorded so
+the next agent (or human) doesn't re-derive them. It grew out of the
+**benchmark & profile campaign (2026-06-26)** — a full pass over every kernel in
+`registry/impls/*.triton.card.json` (10 ops × 2 cards) on both vendor clusters,
+**beverin (AMD MI300A, gfx942)** and **bristen (NVIDIA A100, sm_80)** — and now
+also holds the authoring reference for the CUTE DSL `cuda` backend (page 5).
 
 > **TL;DR.** All 10 ops benchmark on MI300A (6–204× over naive PyTorch; fp8 MFMA
 > hits 363 TFLOP/s). On A100, **6/9 portable ops run**; 3 are blocked by a
@@ -14,6 +17,8 @@ diagnoses, and — most usefully — the facts that cost real debugging time.
 
 ## Pages
 
+**The benchmark & profile campaign (2026-06-26):**
+
 1. **[01-methodology.md](01-methodology.md)** — clusters, harness, field
    definitions, reproduce cheatsheet.
 2. **[02-benchmarks.md](02-benchmarks.md)** — full speedup tables, both arches +
@@ -22,6 +27,15 @@ diagnoses, and — most usefully — the facts that cost real debugging time.
    kernel, occupancy, and which fix skill each profile routes to.
 4. **[04-gotchas.md](04-gotchas.md)** — the experiences (Triton SIGSEGV,
    `waves_per_eu`, bf16 GEMM pathology, fp8 `fnuz`, DCGM pause, rocprof install).
+
+**Authoring reference (2026-06-29, CUTE DSL `cuda` backend on ds5/GB10):**
+
+5. **[05-cutedsl-authoring.md](05-cutedsl-authoring.md)** — how to write a
+   `cutlass.cute` (CUTE DSL) kernel: the three-function structure, the
+   `cute.compile` compile-cache (the 119× launch-overhead fix), the math/
+   reduction primitive calling conventions, the bf16-native-read perf lever,
+   and the negative results. The API surface was reverse-engineered by grep
+   + GPU probe (no tutorial docs exist) — this page is the map.
 
 ## Headline numbers
 
