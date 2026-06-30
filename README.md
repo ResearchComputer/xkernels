@@ -32,6 +32,36 @@ out = fused_moe_int4_w4a16(A, packed, scale, topk_ids, topk_w, group_size=32)
 
 Override globally with `XKERNELS_BACKEND=reference|triton|cuda|hip`.
 
+### Native CUDA via the CUTE DSL (GB10 / sm_121)
+
+The `cuda` backend is implemented with NVIDIA's **CUTE Python DSL**
+(`nvidia-cutlass-dsl[cu13]`, which installs the `cutlass.cute` package). CUTE
+DSL cards are first-class `backend: "cuda"` Impl Cards under the existing Op
+Specs — they slot into the same `find_impl` / `verify` / `verify_parity`
+contract with **zero contract changes**. The DSL compiles to PTX via MLIR/NVVM
+and JITs at first call; `verify()` works against the shared CPU reference on any
+NVIDIA GPU, and `find_impl` returns them by `arch.family`.
+
+This is a *portability layer for one vendor*, not a cross-vendor backend: it is
+one implementation among others (per `docs/library.md`), never the only one —
+the Triton and reference backends stay the portable path. Five cards are
+authored and verified on a **DGX Spark (GB10, sm_121)** testbed:
+
+| Card | Op class | Arch | ms (bf16) |
+|------|----------|------|----------|
+| `mm_fp8_blockscale.cuda@1.0.0` | GEMM (dequant on host, fp32 Kahan K-reduce) | sm_121 | 0.080 |
+| `dual_rmsnorm.cuda@1.0.0` | per-row RMSNorm reduction | sm_121 | 0.061 |
+| `moe_sum_reduce.cuda@1.0.0` | weighted top-k reduction | sm_121 | 0.252 |
+| `mha_merge_state.cuda@1.0.0` | online-softmax merge | sm_121 | 0.042 |
+| `hc_prenorm_gemm.cuda@1.0.0` | fused GEMM + RMS-prenorm squared-sum | sm_121 | 0.040 |
+
+All five pass `verify` + `verify_parity`. The testbed runbook — environment
+setup (`uv`, `nvidia-cutlass-dsl[cu13]`, CTK 13.0), the per-call launch overhead
+fix (`cute.compile` handle cached per shape, 119× end-to-end), the bf16-native-read
+perf pass (2.0× on `mha_merge_state`), and the roofline survey showing all five
+are memory-bound (AI ≤ 43 << 121) on this hardware — is in
+`docs/ds5-cute-testbed.md`.
+
 ## Agent-native surfaces
 
 xkernels is **agent-native**: the primary consumer can be an LLM agent. The
@@ -43,6 +73,10 @@ from xkernels import find_impl, verify, verify_parity
 
 # Structured retrieval over the contract (not text search). Ranked + reject_reasons.
 find_impl("norm", {"x1": {"dtype": "bf16", "shape": [64, 1536]}}, target_arch="amd_cdna3")
+
+# The arch vocabulary covers AMD CDNA2/3 (gfx90a/gfx942) and NVIDIA sm_80/sm_90/
+# sm_100/sm_121. The CUTE DSL `cuda` cards (GB10 testbed) are returned by
+# target_arch="nvidia_sm121". See `docs/ds5-cute-testbed.md`.
 
 # Correctness vs the op's single backend-neutral reference + tolerances.
 verify("dual_rmsnorm.triton@1.0.0", arch="amd_cdna3")

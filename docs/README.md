@@ -10,6 +10,7 @@ This directory contains documentation for the xkernels project, organized by iss
 
 ### Core Features
 - **[adding-a-kernel.md](./adding-a-kernel.md)** - Guide for adding new kernels to the codebase
+- **[ds5-cute-testbed.md](./ds5-cute-testbed.md)** - DGX Spark (GB10 / sm_121) testbed for the CUTE DSL `cuda` backend: `uv` env, `nvidia-cutlass-dsl[cu13]`, the 5 verified cards, the compile-cache + bf16-read perf passes, and the roofline survey
 - **[benchmarking-on-beverin.md](./benchmarking-on-beverin.md)** - How to benchmark/test on the beverin MI300A cluster via `rcc`
 - **[benchmarking-on-bristen.md](./benchmarking-on-bristen.md)** - How to benchmark on the bristen NVIDIA A100 cluster (NGC container via pyxis)
 - **[profiling-on-beverin.md](./profiling-on-beverin.md)** - Profiling on beverin (MI300A) with the ROCm Compute Profiler
@@ -38,6 +39,7 @@ This directory contains documentation for the xkernels project, organized by iss
 docs/
 ├── DRIFT_CHECK_REPORT.txt            # Auto-generated code vs documentation consistency analysis
 ├── adding-a-kernel.md                # Developer guide for adding new kernels
+├── ds5-cute-testbed.md               # GB10 (sm_121) CUTE DSL cuda-backend testbed + 5 verified cards
 ├── issue-12-hierarchical-all-reduce.md
 ├── issue-17-bf16-dense-gemm.md
 ├── issue-20-fused-combine.md

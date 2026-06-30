@@ -83,7 +83,7 @@ id: string                      # e.g. "fused_rmsnorm_matmul.cuda@1.4.0" / ".hip
 implements: op_id               # the Op Spec it must satisfy
 backend: enum                   # cuda | hip | triton | sycl | ...
 arch:
-  family: enum                 # nvidia_sm90 | nvidia_sm80 | amd_cdna3 | amd_cdna2 | ...
+  family: enum                 # nvidia_sm121 | nvidia_sm100 | nvidia_sm90 | nvidia_sm80 | amd_cdna3 | amd_cdna2 | any
   requires: [enum]             # tensor_cores | tma | cluster   (nvidia)
                                # matrix_cores | mfma            (amd)
   wave_size: int               # 32 (NVIDIA warp) | 64 (AMD wavefront) — affects tiling/reductions
@@ -194,6 +194,13 @@ Verification **ships with the library** and is **deterministic**. Correctness is
 ### 5.1 Defined once on the Op Spec (shared across backends)
 - A **reference implementation** that is *backend-neutral* (NumPy/PyTorch on CPU or either GPU) — never written in CUDA or HIP, so it can't favor a backend.
 - **Numerical tolerances** (`rtol`, `atol`, accumulation notes) and `cross_backend_rtol`.
+  Correctness uses the **standard combined per-element criterion**
+  `|a − e| ≤ atol + rtol·|e|` (as NumPy/PyTorch/pytest do): an element passes
+  if it is within the *absolute* OR the *relative* slack, whichever is looser.
+  This matters for bf16/fp32 mixed precision — a single bf16 ULP at moderate
+  magnitude (e.g. 1 ULP ≈ 0.016 at |out|=2) exceeds any sane `atol` but is
+  fine relative to `rtol`; the combined form passes it, the naive
+  `abs≤atol AND rel≤rtol` form would false-fail it.
 - A **shape sweep manifest**: shapes/dtypes that must pass before publish, including edge cases (non-power-of-2, tiny M, huge K, boundary divisibility, and shapes that stress the 32- vs 64-lane boundary).
 
 ### 5.2 Harness interface (structured I/O)
