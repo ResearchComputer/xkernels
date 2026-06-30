@@ -19,8 +19,10 @@ Usage (bristen, one process per kernel):
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
-import benchmarks.bench_all as B
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import bench_all as B  # noqa: E402  # sibling in meta/benchmarks/
 
 # CLI name -> bench_all function (matches bench_all.main()'s loop order).
 FNS = {

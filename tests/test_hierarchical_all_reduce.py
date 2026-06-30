@@ -16,7 +16,8 @@ from pathlib import Path
 
 import pytest
 
-_BENCH = Path(__file__).resolve().parents[1] / "benchmarks" / "bench_hierarchical_all_reduce.py"
+_ROOT = Path(__file__).resolve().parents[1]
+_BENCH = _ROOT / "meta" / "benchmarks" / "bench_hierarchical_all_reduce.py"
 
 
 @pytest.mark.skipif(shutil.which("torchrun") is None, reason="torchrun not installed")
