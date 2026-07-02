@@ -51,6 +51,50 @@ rcc --profile ds5 push                 # sync the project tree (ignores .venv/.g
 rcc --profile ds5 run -s '<snippet>'   # NOTE: use -s for shell snippets; plain `run --` execs argv literally
 ```
 
+## Running verify / tests / benchmarks — rcc + docker (the canonical path)
+
+`verify()`, `verify_parity()`, `verify(..., measure_perf=True)`, pytest, and the
+`meta/benchmarks/*` scripts are **device calls** — they need the GB10. Run them
+**inside the NGC container via rcc's `--docker` target** (this is the canonical
+path for verify/test/bench; the `.venv` recipe further down is the fallback for
+CUTE-DSL stand-up). The container config lives in `.rcc/config.toml`
+(`[profiles.ds5.docker]`: image `nvcr.io/nvidia/pytorch:26.01-py3`, mounts the
+remote tree at `/workspace`, sets `PYTHONPATH=/workspace/src` + a persistent
+`TRITON_CACHE_DIR`, `--privileged` for GB10 CUDA init):
+
+```bash
+rcc --profile ds5 push                      # sync the tree → /local/home/xiayao/xkernels
+rcc --profile ds5 run --docker -s 'python - <<PY
+from xkernels import verify, verify_parity
+r = verify("dual_rmsnorm.triton@1.0.0", arch="nvidia_sm121", measure_perf=True)
+print("passed=", r["correctness"]["passed"], "max_rel=", r["correctness"]["max_rel_err"], "ms=", r["perf"]["ms"])
+print("parity agree=", verify_parity("dual_rmsnorm@1.0.0", archs=["nvidia_sm121"])["agree"])
+PY'
+```
+
+- **`--docker`** runs inside the profile's container; **`-s`** passes a shell
+  snippet (heredocs / pipes / quotes ok) — plain `--` execs a literal argv. The
+  container auto-sets `PYTHONPATH=/workspace/src`, so `import xkernels` resolves
+  to the just-pushed tree with **no venv activate** needed.
+- **arch string is `nvidia_sm121`** (GB10). ds5 is **NVIDIA only** — the
+  AMD/CDNA3 (gfx942) ceiling is a separate GPU-gated follow-up on **beverin**
+  (`scripts/cluster.sh run --host beverin -- ...`). The portable Triton kernel is
+  arch-agnostic, so a ds5 PASS is the same code that will run on gfx942.
+- **Backend registration is by import side-effect.** `import xkernels` auto-wires
+  the package ops (e.g. `dual_rmsnorm.triton`). **DSL-emitted ops not yet imported
+  by `ops/<x>/__init__.py` need an explicit `register_dsl(spec_of(<vkl_body>),
+  "triton")`** before `verify`, or it raises `KeyError: backend 'TRITON' not
+  registered` (the standalone `rmsnorm` is the current example — copy
+  `scripts/ds5_rmsnorm_gpu_gate.py`).
+- **`perf.tflops` / `achieved_bw_pct` are `None`** from `verify` (only `ms` is
+  measured). Compute them from the profiler (`use-nsight-compute`, bristen) and
+  feed `record_measurement(...)`.
+- **Tests / benchmarks** take the same path:
+  `rcc --profile ds5 run --docker -s 'python -m pytest tests/test_<x>.py -q'`
+  and `rcc --profile ds5 run --docker -s 'python -u meta/benchmarks/bench_all.py'`.
+- **Detached / long runs:** add `--detach` (survives disconnects; manage with
+  `rcc --profile ds5 bg ps|logs|attach|wait`).
+
 ## Stand-up (one-time, reproducible)
 
 ```bash

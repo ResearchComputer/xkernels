@@ -184,6 +184,15 @@ gate is the reference card passing `verify`, which needs no GPU.
     cross-backend numeric gate). Record this op in the skill's
     `provenance.skill_used` once one of them lands a measured card.
 
+    **Running those GPU gates — ds5 via rcc + docker.** The downstream skills'
+    `verify` / `verify_parity` / `measure_perf` calls run on the GB10 (`arch=
+    "nvidia_sm121"`) inside the NGC container: `rcc --profile ds5 push && rcc
+    --profile ds5 run --docker -s '<python snippet>'` (`-s` for shell snippets /
+    heredocs; `--docker` sets `PYTHONPATH=/workspace/src`). AMD/gfx942 →
+    `scripts/cluster.sh run --host beverin`. DSL ops not yet imported by
+    `ops/<x>/__init__.py` need `register_dsl(spec_of(<body>),"triton")` first.
+    Full recipe + stand-up: `meta/docs/usage/ds5-testbed.md`.
+
 ## The honest no-GPU branch (read this if there is no GPU)
 
 A box with torch but no CUDA can still satisfy **every must_pass above** by

@@ -55,6 +55,16 @@ x-kernel-lib:
 > achieved_bw_pct=)`, which accepts both even though `verify()` doesn't populate
 > them yet.
 
+> **Run it on beverin (gfx942).** `verify(<hip_card>, amd_cdna3,
+> measure_perf=True)` and the `rocprof` profile both run on beverin:
+> ```bash
+> scripts/cluster.sh run --host beverin -- python -c "from xkernels import verify; r=verify('<card>@1.0.0', arch='amd_cdna3', measure_perf=True); print(r['correctness']['passed'], r['perf']['ms'])"
+> ```
+> Any NVIDIA/CUDA parity side runs on ds5 in the NGC container (`arch=
+> "nvidia_sm121"`): `rcc --profile ds5 run --docker -s '...'` (recipe + stand-up:
+> `meta/docs/usage/ds5-testbed.md`). beverin runbook: `meta/docs/usage/clusters.md`;
+> the rocprof/occupancy profile via `use-rocprof-compute`.
+
 ## Procedure
 
 Separate from `port-cuda-to-hip` on purpose: functional port and performance

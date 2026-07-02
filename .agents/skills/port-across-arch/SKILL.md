@@ -55,6 +55,19 @@ x-kernel-lib:
     supersedes: []
 ---
 
+> **Run it on the TARGET arch — ds5/docker (NVIDIA) or beverin (AMD).**
+> `verify` / `verify_parity` are device calls; run them on the arch you port TO:
+> ```bash
+> # NVIDIA target (sm_121): the GB10 in the NGC container
+> rcc --profile ds5 push
+> rcc --profile ds5 run --docker -s 'python -c "from xkernels import verify; print(verify(\"<new_card>@1.0.0\", arch=\"nvidia_sm121\")[\"correctness\"][\"passed\"])"'
+> # AMD target (gfx942): beverin
+> scripts/cluster.sh run --host beverin -- python -c "from xkernels import verify; print(verify('<new_card>@1.0.0', arch='amd_cdna3')['correctness']['passed'])"
+> ```
+> `-s` = shell snippet; ds5 `--docker` sets `PYTHONPATH=/workspace/src`. DSL ops
+> not yet imported by `ops/<x>/__init__.py` need `register_dsl(spec_of(<body>),
+> "triton")` first. Full recipe + stand-up: `meta/docs/usage/ds5-testbed.md`.
+
 ## Procedure
 
 1. **Confirm same-vendor + same-backend.** This skill is within a vendor

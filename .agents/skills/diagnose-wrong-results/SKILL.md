@@ -75,6 +75,25 @@ x-kernel-lib:
 > cross-dispatch state. A kernel that is interpreter-green and GPU-red is the
 > canonical trigger for this skill.
 
+> **Run it on ds5 (rcc + docker) — the repro + trichotomy host.** This skill
+> reproduces a GPU failure in a **standalone seeded script** (step 1) and runs
+> the crash-localization trichotomy (step 3). Both run on the GB10 (`arch=
+> "nvidia_sm121"`) inside the NGC container:
+> ```bash
+> rcc --profile ds5 push
+> rcc --profile ds5 run --docker -s 'python repro.py'        # the standalone repro
+> rcc --profile ds5 run --docker --env CUDA_LAUNCH_BLOCKING=1 -s 'python repro.py'   # serialize
+> rcc --profile ds5 run --docker -s 'compute-sanitizer --tool memcheck python repro.py'  # sanitizer
+> ```
+> `-s` = shell snippet; `--docker` uses the profile container (`PYTHONPATH=
+> /workspace/src` set); `--env KEY=VAL` injects env on the remote (repeatable).
+> `compute-sanitizer` ships in the NGC image at `$CUDA_HOME/bin`. To reproduce
+> via `verify` instead of a hand script, remember DSL ops not yet imported by
+> `ops/<x>/__init__.py` need `register_dsl(spec_of(<body>),"triton")` first.
+> AMD/HIP crashes repro on beverin (`scripts/cluster.sh run --host beverin`, with
+> `HIP_LAUNCH_BLOCKING=1` / `rocgdb`). Full recipe + stand-up:
+> `meta/docs/usage/ds5-testbed.md`.
+
 ## Procedure
 
 1. **Reproduce in a standalone seeded script, NOT in pytest.** This is step zero

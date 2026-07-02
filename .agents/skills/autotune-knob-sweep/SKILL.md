@@ -64,6 +64,25 @@ x-kernel-lib:
 > records the roofline-gate verdict. Prefer it for DSL-emitted cards; the raw
 > per-point `verify(knobs=...)` loop below is the general (hand-card) path.
 
+> **Run it on a GPU — ds5 via rcc + docker.** Every `verify(..., knobs=...,
+> measure_perf=True)` call below is a device call. Sync and run them inside the
+> NGC container on the GB10 (`arch="nvidia_sm121"`):
+> ```bash
+> rcc --profile ds5 push
+> rcc --profile ds5 run --docker -s 'python - <<PY
+> from xkernels import verify
+> r = verify("<card>@1.0.0", arch="nvidia_sm121", knobs={...}, measure_perf=True)
+> print(r["correctness"]["passed"], r["perf"]["ms"], r["artifacts"]["run_id"])
+> PY'
+> ```
+> `-s` = shell snippet (heredocs/pipes ok); `--docker` uses the profile container
+> (`PYTHONPATH=/workspace/src` set, no venv needed). DSL ops not yet imported by
+> `ops/<x>/__init__.py` need `register_dsl(spec_of(<body>),"triton")` first or
+> `verify` raises `backend 'TRITON' not registered`. AMD/gfx942 →
+> `scripts/cluster.sh run --host beverin`. Full recipe + stand-up:
+> `meta/docs/usage/ds5-testbed.md`. The `run_id` printed is the `source` for
+> `record_measurement(...)` (step 5).
+
 ## Procedure
 
 1. `get_impl_card(impl_card_id)`. Read `specialization_knobs` — this is the

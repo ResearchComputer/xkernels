@@ -55,6 +55,20 @@ x-kernel-lib:
 > `record_measurement(..., tflops=, achieved_bw_pct=)`, which accepts both even
 > though `verify()` doesn't populate them yet.
 
+> **Run `verify` on ds5 (rcc + docker); profile on bristen/beverin.** The
+> `verify(arch, measure_perf=True)` call below (correctness + `ms` + the achieved-
+> bandwidth numerator) runs in the NGC container on the GB10 (`arch=
+> "nvidia_sm121"`):
+> ```bash
+> rcc --profile ds5 push
+> rcc --profile ds5 run --docker -s 'python -c "from xkernels import verify; r=verify(\"<card>@1.0.0\", arch=\"nvidia_sm121\", measure_perf=True); print(r[\"correctness\"][\"passed\"], r[\"perf\"][\"ms\"])"'
+> ```
+> `-s` = shell snippet; `--docker` sets `PYTHONPATH=/workspace/src`. The bandwidth
+> diagnosis itself needs the external profiler (`use-nsight-compute` bristen /
+> `use-rocprof-compute` beverin). AMD/gfx942 verify → `scripts/cluster.sh run
+> --host beverin`. DSL ops not yet imported by `ops/<x>/__init__.py` need
+> `register_dsl` first. Full recipe: `meta/docs/usage/ds5-testbed.md`.
+
 ## Procedure
 
 1. `verify(impl_card_id, arch, measure_perf=True)`. Read `perf.ms` and

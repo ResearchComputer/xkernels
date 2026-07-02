@@ -66,6 +66,20 @@ x-kernel-lib:
 > in-harness signal, and it cannot distinguish occupancy from bandwidth from
 > compute — hence the external profile.
 
+> **Run `verify` on ds5 (rcc + docker); profile on bristen/beverin.** The
+> `verify(arch, measure_perf=True)` half (correctness + `ms`) runs in the NGC
+> container on the GB10 (`arch="nvidia_sm121"`):
+> ```bash
+> rcc --profile ds5 push
+> rcc --profile ds5 run --docker -s 'python -c "from xkernels import verify; r=verify(\"<card>@1.0.0\", arch=\"nvidia_sm121\", measure_perf=True); print(r[\"correctness\"][\"passed\"], r[\"perf\"][\"ms\"])"'
+> ```
+> `-s` = shell snippet; `--docker` sets `PYTHONPATH=/workspace/src`. The occupancy
+> half of THIS skill still needs the external profiler — `use-nsight-compute`
+> (bristen) / `use-rocprof-compute` (beverin). AMD/gfx942 verify →
+> `scripts/cluster.sh run --host beverin`. DSL ops not yet imported by
+> `ops/<x>/__init__.py` need `register_dsl` first. Full recipe:
+> `meta/docs/usage/ds5-testbed.md`.
+
 ## Procedure
 
 1. **Get the profile from an EXTERNAL profiler** (the harness can't give you one

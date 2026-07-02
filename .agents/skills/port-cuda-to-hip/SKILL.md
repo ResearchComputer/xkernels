@@ -41,6 +41,18 @@ x-kernel-lib:
     supersedes: []
 ---
 
+> **Run it on a GPU — the HIP card on beverin (gfx942); the NVIDIA parity side
+> on ds5/docker.** `verify(<new_hip_card>, amd_cdna3)` and `verify_parity` are
+> device calls. The AMD card runs on beverin:
+> ```bash
+> scripts/cluster.sh run --host beverin -- python -c "from xkernels import verify; print(verify('<hip_card>@1.0.0', arch='amd_cdna3')['correctness']['passed'])"
+> ```
+> The NVIDIA half of `verify_parity` (the source CUDA card) runs on ds5 in the NGC
+> container (`arch="nvidia_sm121"`): `rcc --profile ds5 run --docker -s '...'`.
+> ds5/docker recipe + stand-up: `meta/docs/usage/ds5-testbed.md`; beverin runbook:
+> `meta/docs/usage/clusters.md`. (`port-cuda-to-hip` is the functional port;
+> AMD perf is `tune-for-cdna`.)
+
 ## Procedure
 
 This is the **functional port** — it produces "it runs correctly on AMD", NOT

@@ -68,6 +68,19 @@ x-kernel-lib:
 > `record_measurement(..., tflops=, achieved_bw_pct=)`, which accepts both even
 > though `verify()` doesn't populate them yet.
 
+> **Run it on a GPU — ds5/docker (NVIDIA tensor cores) or beverin (AMD MFMA).**
+> `verify` / `verify_parity` are device calls; run them on the matrix-engine arch:
+> ```bash
+> # NVIDIA (sm_121): the GB10 in the NGC container
+> rcc --profile ds5 push
+> rcc --profile ds5 run --docker -s 'python -c "from xkernels import verify; print(verify(\"<card>@1.0.0\", arch=\"nvidia_sm121\")[\"correctness\"][\"passed\"])"'
+> # AMD (gfx942, MFMA): beverin
+> scripts/cluster.sh run --host beverin -- python -c "from xkernels import verify; print(verify('<card>@1.0.0', arch='amd_cdna3')['correctness']['passed'])"
+> ```
+> `-s` = shell snippet; ds5 `--docker` sets `PYTHONPATH=/workspace/src`. DSL ops
+> not yet imported by `ops/<x>/__init__.py` need `register_dsl(spec_of(<body>),
+> "triton")` first. Full recipe + stand-up: `meta/docs/usage/ds5-testbed.md`.
+
 ## Procedure
 
 1. **Confirm the matrix engine is the missing piece.** From an external profile

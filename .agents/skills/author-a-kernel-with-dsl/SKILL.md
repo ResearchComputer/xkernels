@@ -210,7 +210,7 @@ to a row in the table, the DSL path is faster.
    from xkernels.vkl import register_dsl
    from xkernels import verify
    register_dsl(spec, backend="triton")          # registers dispatch + input gen
-   r = verify("<op>.triton@1.0.0", arch="nvidia_sm90")
+   r = verify("<op>.triton@1.0.0", arch="nvidia_sm121")
    assert r["compiled"] and r["correctness"]["passed"]
    ```
    `register_dsl` wires BOTH the dispatch callable AND the input generator (from
@@ -218,10 +218,30 @@ to a row in the table, the DSL path is faster.
    of `input_gen.py`. The generated Triton kernel is checked against the
    auto-reference — the structural "reference matches kernel" property, measured.
 
+   **Run it on ds5 (rcc + docker).** The above is a device call — execute it on
+   the GB10 test bed (`arch="nvidia_sm121"`) via rcc's Docker target:
+   ```bash
+   rcc --profile ds5 push
+   rcc --profile ds5 run --docker -s 'python - <<PY
+   from xkernels.vkl import register_dsl, spec_of
+   from xkernels.vkl.examples import <your_module> as m   # the file holding @kernel
+   from xkernels import verify, verify_parity
+   register_dsl(spec_of(m.<your_kernel>), "triton")
+   r = verify("<op>.triton@1.0.0", arch="nvidia_sm121", measure_perf=True)
+   print(r["correctness"]["passed"], r["correctness"]["max_rel_err"], r["perf"]["ms"])
+   print("parity", verify_parity("<op>@1.0.0", archs=["nvidia_sm121"])["agree"])
+   PY'
+   ```
+   `--docker` runs in the NGC container (`PYTHONPATH=/workspace/src` auto-set —
+   no venv needed); `-s` takes a shell snippet (heredocs/pipes ok). ds5 is NVIDIA
+   only; the AMD/gfx942 ceiling runs on beverin
+   (`scripts/cluster.sh run --host beverin`). Stand-up + internals:
+   `meta/docs/usage/ds5-testbed.md`.
+
 9. **Autotune (GPU).** The `Target.knobs` you declared is the search space:
    ```python
    from xkernels.vkl import autotune
-   res = autotune("<op>.triton@1.0.0", arch="nvidia_sm90",
+   res = autotune("<op>.triton@1.0.0", arch="nvidia_sm121",
                   point={"dtype":"bf16","M":4096,"N":4096,"K":4096})
    ```
    `autotune` enumerates the configs, gates each through the scratch-budget

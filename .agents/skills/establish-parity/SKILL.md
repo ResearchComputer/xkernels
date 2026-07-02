@@ -39,6 +39,25 @@ x-kernel-lib:
     supersedes: []
 ---
 
+> **Run it on a GPU — ds5 via rcc + docker.** `verify_parity` / `verify` are
+> device calls (they compile + run each backend card). Sync and run them inside
+> the NGC container on the GB10 (`arch="nvidia_sm121"`):
+> ```bash
+> rcc --profile ds5 push
+> rcc --profile ds5 run --docker -s 'python - <<PY
+> from xkernels import verify, verify_parity
+> print(verify_parity("<op>@1.0.0", archs=["nvidia_sm121"]))
+> print(verify("<card>@1.0.0", arch="nvidia_sm121")["correctness"])
+> PY'
+> ```
+> `-s` = shell snippet (heredocs/pipes ok); `--docker` uses the profile container
+> (`PYTHONPATH=/workspace/src` set, no venv needed). DSL ops not yet imported by
+> `ops/<x>/__init__.py` need `register_dsl(spec_of(<body>),"triton")` first or
+> `verify` raises `backend 'TRITON' not registered`. For an AMD card in the pair,
+> run its `verify` on beverin (`scripts/cluster.sh run --host beverin`) and
+> compare the two `max_rel_err`s locally. Full recipe + stand-up:
+> `meta/docs/usage/ds5-testbed.md`.
+
 ## Procedure
 
 1. Call `verify_parity(op_id)`. Read `agree`, `max_pairwise_rel_err`, and the
