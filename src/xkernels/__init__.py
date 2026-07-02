@@ -38,7 +38,7 @@ from .ops.moe import (
     moe_align_block_size,
     moe_sum_reduce,
 )
-from .ops.norm import dual_rmsnorm
+from .ops.norm import dual_rmsnorm, rmsnorm
 
 # --- agent-native surfaces (meta/docs/library.md) ----------------------------------
 # These are lazily-evaluating; importing the package does not parse the registry.
@@ -69,6 +69,7 @@ __all__ = [
     "flash_mla_with_kvcache",
     "get_mla_metadata",
     "dual_rmsnorm",
+    "rmsnorm",
     "build_topology_groups",
     "flat_all_reduce",
     "hierarchical_all_reduce",

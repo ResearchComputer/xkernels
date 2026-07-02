@@ -5,7 +5,7 @@ two independent RMSNorms over differently-sized feature dims in a single launch.
 """
 from ..._backends import Backend
 from ..._dispatch import backend_registration_guard
-from .interface import dual_rmsnorm
+from .interface import dual_rmsnorm, rmsnorm
 
 # Import the Triton backend for its registration side effect. Optional.
 # The import is routed through the optional ``_triton_compat`` redirect so the kernel
@@ -21,6 +21,20 @@ with backend_registration_guard(
     with triton_import_ctx():
         from .triton import dual_rmsnorm_kernel  # noqa: F401
 
+# Register the DSL-generated Triton backend for the standalone ``rmsnorm``
+# (issue #66) for its dispatch side effect. Unlike the hand-written
+# ``dual_rmsnorm_kernel`` above (which imports ``triton`` at top level, so it
+# routes through ``triton_import_ctx``), the DSL path builds only a lazy host
+# launcher at import time -- no triton import happens until the kernel is
+# actually called -- so no import-context redirect is needed here (same pattern
+# as ``ops.activation`` for the #67 gated activations).
+with backend_registration_guard(
+    "rmsnorm",
+    Backend.TRITON,
+    source="xkernels.ops.norm.triton.rmsnorm_kernel",
+):  # pragma: no cover - hardware dependent
+    from .triton import rmsnorm_kernel  # noqa: F401
+
 # Import the CUTE DSL (native CUDA) backend for its registration side effect
 # (optional). NVIDIA-only; gated on `nvidia-cutlass-dsl` (the `cute` extra). On a
 # box without the DSL (CI, AMD) the guard records the failure and the op is
@@ -30,4 +44,4 @@ with backend_registration_guard(
 ):  # pragma: no cover - requires nvidia-cutlass-dsl + NVIDIA GPU
     from .cute import entry  # noqa: F401  (registers CUDA: CUTE fp32 path)
 
-__all__ = ["dual_rmsnorm"]
+__all__ = ["dual_rmsnorm", "rmsnorm"]

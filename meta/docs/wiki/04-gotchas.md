@@ -241,3 +241,46 @@ standalone script (no pin) and main (no M=128 bucket) were both correct.
 prefill bucket was dropped from the INT4 EP test; decode buckets (M<=16,
 `align_block_m=16`) are pin-compatible. The unpinned prefill path is validated
 separately in `meta/benchmarks/bench_moe_e2e_routing.py`.
+
+## 13. Backends register by import side-effect; DSL ops must be wired into `ops/<x>/__init__.py` (the `rmsnorm` lesson)
+
+**Symptom.** A card with a real Triton kernel + measured `perf.measured` (e.g.
+`rmsnorm.triton@1.0.0`, which had 5 GB10 entries recorded) raised
+`KeyError: "backend 'TRITON' not registered for kernel 'rmsnorm'; have
+['REFERENCE']"` from `verify("rmsnorm.triton@1.0.0")` — even though the same card
+PASSED when the standalone `scripts/ds5_rmsnorm_gpu_gate.py` ran it. The op was
+also unreachable as `xkernels.rmsnorm(...)` (no such export).
+
+**Cause.** Dispatch backends register by **import side-effect**, not by scanning
+the registry. `import xkernels` runs each `ops/<family>/__init__.py`, which is
+where each backend module is imported under a `backend_registration_guard`. The
+`rmsnorm` card landed via the DSL emit path (commit `fc3834e`) and its perf was
+recorded by a one-shot script that called `register_dsl(spec_of(rmsnorm),
+"triton")` itself — but **nobody added the `ops/norm` import wiring** that makes
+`register_dsl` fire on a plain `import xkernels`. So the card was real and
+verified-in-a-script yet invisible to the package surface (issue #66 was closed
+against an unreachable op). The `silu_and_mul`/`gelu_and_mul` ops (#67) did NOT
+hit this because their landing commit (`de1f6bc`) wired `ops/activation` end to
+end — that is the template.
+
+**Fix (and the reusable rule).** A DSL-emitted op is not done at "card emitted";
+it is done when **three** wiring pieces exist, mirroring `ops/activation`:
+1. `ops/<family>/triton/<op>_kernel.py` — a one-liner module that calls
+   `register_dsl(spec_of(<body>), backend="triton")` (the generated kernel is
+   lazy, so this is GPU- and triton-import-safe at import time);
+2. that module imported under a `backend_registration_guard(..., TRITON, ...)` in
+   `ops/<family>/__init__.py` (DSL backends skip the `triton_import_ctx` the
+   hand-written kernels need);
+3. a `dispatch(...)` interface function in `ops/<family>/interface.py` + the name
+   re-exported from `xkernels/__init__.py`.
+The closure check is a one-liner on ds5 — `import xkernels; verify("<op>.triton@
+<ver>", arch="nvidia_sm121")` must PASS **with no manual `register_dsl`** (see
+`meta/docs/usage/ds5-testbed.md` for the rcc+docker recipe). The same gap
+currently lurks for `apply_rope` (#68) and the fp8 quant helpers (#57) — their
+DSL cards are emitted but `measured=[]` and unwired, which is why those issues
+stayed open.
+
+**Fix shipped (2026-07-02).** `ops/norm/triton/rmsnorm_kernel.py` +
+`ops/norm/interface.rmsnorm` + the `__init__` exports; `verify` passes through
+plain `import` (compiled=True, max_rel 3.1e-7), `xkernels.rmsnorm(x, w)` is
+bit-exact vs the reference, parity agrees, 134 tests pass.
