@@ -15,7 +15,73 @@
   "perf": {
     "regime": "memory-bound row-wise reduce; one kernel/one pass. Portable Triton runs on amd_cdna3 (gfx942); a native LDS/MFMA-tuned override for the MI300X ceiling is the GPU-gated tune-for-cdna follow-up (Phase 2.1).",
     "roofline": "memory_bound",
-    "measured": []
+    "measured": [
+      {
+        "arch": "nvidia_sm121",
+        "shape": {
+          "T": 64,
+          "d": 128
+        },
+        "dtype": "fp32",
+        "knobs": {},
+        "source": "run:9c2b81faca5b",
+        "tflops": 0.0053,
+        "achieved_bw_pct": 5.9,
+        "ms": 0.004611555538657639
+      },
+      {
+        "arch": "nvidia_sm121",
+        "shape": {
+          "T": 64,
+          "d": 128
+        },
+        "dtype": "bf16",
+        "knobs": {},
+        "source": "run:9c2b81faca5b",
+        "tflops": 0.0043,
+        "achieved_bw_pct": 2.4,
+        "ms": 0.00571377772010035
+      },
+      {
+        "arch": "nvidia_sm121",
+        "shape": {
+          "T": 1,
+          "d": 4096
+        },
+        "dtype": "bf16",
+        "knobs": {},
+        "source": "run:9c2b81faca5b",
+        "tflops": 0.0026,
+        "achieved_bw_pct": 2.2,
+        "ms": 0.004692705854883089
+      },
+      {
+        "arch": "nvidia_sm121",
+        "shape": {
+          "T": 37,
+          "d": 97
+        },
+        "dtype": "bf16",
+        "knobs": {},
+        "source": "run:9c2b81faca5b",
+        "tflops": 0.0026,
+        "achieved_bw_pct": 1.5,
+        "ms": 0.004073777772848391
+      },
+      {
+        "arch": "nvidia_sm121",
+        "shape": {
+          "T": 128,
+          "d": 4096
+        },
+        "dtype": "fp32",
+        "knobs": {},
+        "source": "run:9c2b81faca5b",
+        "tflops": 0.0476,
+        "achieved_bw_pct": 52.5,
+        "ms": 0.03303288875354661
+      }
+    ]
   },
   "uses_primitives": [],
   "supersedes": [],
