@@ -1,0 +1,48 @@
+{
+  "id": "paged_attention.triton@1.0.0",
+  "implements": "paged_attention@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": {
+      "kind": "registers",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "One program per (request, qo_head): load the query head vector into registers, stream the request's paged KV in BLOCK_N=64 chunks with the flash (online) softmax. The page indirection (j -> block_table[b, j//block_size], j%block_size) lives INSIDE the chunk loop. GQA is free (each program owns one qo head, reading exactly its mapped kv head h//group). Memory-bound on the paged KV read at decode (1 q-token/request x large KV history); no causal mask (the new token attends to all past positions). num_warps=4, num_stages=2.",
+    "roofline": "memory_bound",
+    "measured": [
+      {
+        "arch": "nvidia_sm121",
+        "shape": {
+          "dtype": "bf16",
+          "B": 64,
+          "H_q": 32,
+          "H_kv": 8,
+          "D": 128,
+          "block_size": 1,
+          "max_seq_len": 512
+        },
+        "dtype": "bf16",
+        "knobs": {},
+        "source": "run:92cfef0d1ad5",
+        "ms": 0.38687847341809956
+      }
+    ]
+  },
+  "uses_primitives": [
+    "reduce.flash_softmax",
+    "gather.paged_kv"
+  ],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-07-02T00:00:00Z",
+    "source_path": "src/xkernels/ops/attention/triton/paged_attention_kernel.py"
+  },
+  "notes": "The vLLM paged_attention / flashinfer BatchDecodeWithPagedKVCache shape. BLOCK_D=next_pow2(D) (64 or 128 for common head dims) and GROUP=H_q//H_kv are tl.constexpr derived from dispatch args (cached) -- NOT user specialization_knobs. BLOCK_N=64 is the flash-chunk size; the flash reduction is exact for any chunk size so this is a pure perf knob (autotune follow-up). Portable (pure tl.dot-free manual FMA + tl.exp, no vendor intrinsics); the AMD gfx942 card is the port-across-arch follow-up (the issue's primary target). PREFILL (varlen) is a SEPARATE op (paged_attention_prefill) -- a follow-up with a different q shape and a varlen flash kernel."
+}

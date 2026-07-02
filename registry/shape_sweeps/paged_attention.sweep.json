@@ -1,0 +1,13 @@
+{
+  "default_dtype": "bf16",
+  "points": [
+    { "dtype": "bf16", "B": 4,  "H_q": 32, "H_kv": 8,  "D": 128, "block_size": 1,  "max_seq_len": 37  },
+    { "dtype": "bf16", "B": 1,  "H_q": 32, "H_kv": 8,  "D": 128, "block_size": 1,  "max_seq_len": 16  },
+    { "dtype": "bf16", "B": 16, "H_q": 32, "H_kv": 8,  "D": 128, "block_size": 16, "max_seq_len": 256 },
+    { "dtype": "bf16", "B": 8,  "H_q": 64, "H_kv": 8,  "D": 64,  "block_size": 1,  "max_seq_len": 128 },
+    { "dtype": "fp16", "B": 8,  "H_q": 32, "H_kv": 8,  "D": 128, "block_size": 1,  "max_seq_len": 64  },
+    { "dtype": "fp32", "B": 4,  "H_q": 16, "H_kv": 4,  "D": 64,  "block_size": 1,  "max_seq_len": 48  },
+    { "dtype": "bf16", "B": 8,  "H_q": 8,  "H_kv": 8,  "D": 64,  "block_size": 1,  "max_seq_len": 32  },
+    { "dtype": "bf16", "B": 4,  "H_q": 32, "H_kv": 1,  "D": 128, "block_size": 1,  "max_seq_len": 48  }
+  ]
+}

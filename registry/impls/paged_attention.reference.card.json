@@ -1,0 +1,18 @@
+{
+  "id": "paged_attention.reference@1.0.0",
+  "implements": "paged_attention@1.0.0",
+  "backend": "reference",
+  "arch": { "family": "any", "wave_size": 0, "scratch": { "kind": "none", "bytes": 0 } },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "pure-torch oracle: per-request Python loop -- gather the request's valid KV pages, fp32 GQA attention (einsum + softmax + einsum), cast back on store. Written for clarity; the per-request KV-gather materialization it does on every call is exactly the decode bottleneck the Triton card removes.",
+    "roofline": "latency_bound"
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-07-02T00:00:00Z",
+    "source_path": "src/xkernels/ops/attention/paged_attention.py"
+  }
+}

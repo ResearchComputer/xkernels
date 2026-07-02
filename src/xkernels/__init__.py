@@ -16,6 +16,7 @@ from .ops.attention import (
     flash_mla_with_kvcache,
     get_mla_metadata,
     mha_merge_state,
+    paged_attention,
     sparse_mla_attention,
 )
 from .ops.comm import (
@@ -75,6 +76,7 @@ __all__ = [
     "dsa_indexer_topk",
     "sparse_mla_attention",
     "apply_rope",
+    "paged_attention",
     "flash_mla_sparse_fwd",
     "flash_mla_with_kvcache",
     "get_mla_metadata",

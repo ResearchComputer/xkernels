@@ -215,6 +215,40 @@ def _top_k_sampling_from_probs(point: dict[str, Any], seed: int, device: str) ->
     return {"probs": probs, "uniform_samples": uniform, "top_k": int(point["top_k"])}
 
 
+def _paged_attention(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
+    # Batched paged GQA decode (issue #71). One query token per request; each
+    # request's KV lives in a paged pool, addressed by block_table + seq_lens.
+    # The reference's page-gather and the device kernel's page-indirection read
+    # the SAME pool/block_table/seq_lens, so they share bits by construction
+    # (no quant/dequant path to synchronize).
+    dt = to_torch_dtype(point["dtype"])
+    B = int(point["B"])
+    H_q = int(point["H_q"])
+    H_kv = int(point["H_kv"])
+    D = int(point["D"])
+    block_size = int(point["block_size"])
+    max_seq_len = int(point["max_seq_len"])
+    max_blocks = (max_seq_len + block_size - 1) // block_size
+    # Give each request its OWN disjoint page range (no cross-request sharing
+    # needed for a correctness sweep; simplifies the layout).
+    num_blocks = B * max_blocks
+    g = torch.Generator(device=device).manual_seed(int(seed))
+    q = torch.randn(B, H_q, D, generator=g, device=device, dtype=dt)
+    k_cache = torch.randn(num_blocks, block_size, H_kv, D, generator=g, device=device, dtype=dt)
+    v_cache = torch.randn(num_blocks, block_size, H_kv, D, generator=g, device=device, dtype=dt)
+    # block_table[b, m] = b*max_blocks + m  (disjoint, ascending)
+    bt = torch.arange(num_blocks, device=device, dtype=torch.int32).reshape(B, max_blocks)
+    # seq_lens: each request attends to a random length in [1, max_seq_len] -- a
+    # ragged batch. >=1 so the softmax denominator is always > 0 (the sl<=0 edge
+    # is a separate unit test, not a sweep point).
+    sl = torch.randint(1, max_seq_len + 1, (B,), generator=g, device=device, dtype=torch.int32)
+    scale = float(D ** -0.5)
+    return {
+        "q": q, "k_cache": k_cache, "v_cache": v_cache,
+        "block_table": bt, "seq_lens": sl, "scale": scale,
+    }
+
+
 _GENERATORS: dict[str, Callable[[dict, int, str], dict[str, Any]]] = {
     "fused_ffn@1.0.0": _ffn,
     "dual_rmsnorm@1.0.0": _dual_rmsnorm,
@@ -230,6 +264,7 @@ _GENERATORS: dict[str, Callable[[dict, int, str], dict[str, Any]]] = {
     "topk_softmax@1.0.0": _topk_softmax,
     "sampling_from_probs@1.0.0": _sampling_from_probs,
     "top_k_sampling_from_probs@1.0.0": _top_k_sampling_from_probs,
+    "paged_attention@1.0.0": _paged_attention,
 }
 
 

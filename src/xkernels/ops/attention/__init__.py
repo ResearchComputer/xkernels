@@ -19,6 +19,7 @@ from .interface import (
     flash_mla_with_kvcache,
     get_mla_metadata,
     mha_merge_state,
+    paged_attention,
     sparse_mla_attention,
 )
 
@@ -73,6 +74,17 @@ with backend_registration_guard(
 ):  # pragma: no cover - requires triton
     from .triton import rope_kernel  # noqa: F401
 
+# Batched paged GQA decode (issue #71) -- the throughput-critical decode kernel.
+with backend_registration_guard(
+    "paged_attention",
+    Backend.TRITON,
+    source="xkernels.ops.attention.triton.paged_attention_kernel",
+):  # pragma: no cover - requires triton
+    from ..._triton_compat import triton_import_ctx
+
+    with triton_import_ctx():
+        from .triton import paged_attention_kernel  # noqa: F401
+
 __all__ = [
     "mha_merge_state",
     "dsa_indexer_logits",
@@ -82,4 +94,5 @@ __all__ = [
     "flash_mla_with_kvcache",
     "get_mla_metadata",
     "apply_rope",
+    "paged_attention",
 ]
