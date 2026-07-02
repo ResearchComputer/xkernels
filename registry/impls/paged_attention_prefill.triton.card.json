@@ -1,0 +1,51 @@
+{
+  "id": "paged_attention_prefill.triton@1.0.0",
+  "implements": "paged_attention_prefill@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": {
+      "kind": "none",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "v1 PER-TOKEN flash (BLOCK_M=1): one program per (global q-token, qo_head). Load the query head into registers, stream the seq's causal paged KV range [0, (nk-nq)+p+1) in BLOCK_N=64 chunks with flash online softmax. The page indirection (j -> block_table[s, j//block_size], j%block_size) lives INSIDE the chunk loop. GQA free (each program owns one qo head). Each token's seq is resolved from a host-computed seq_ids tensor (torch.searchsorted) -- one device gather, no per-program scan. HONEST PERF GAP vs BLOCK_M-tiled flash: this loads each kv position once per attending q-token = O(L^2/2) kv loads/seq with NO q-reuse tiling (the naive flash cost, not the amortized cost). It IS correct and fuses the packed batch into one launch (killing the per-token Python loop + per-token KV-gather materialization of the SDPA fallback -- the issue's unblock target), but for LONG prefills (4k+ tokens) the BLOCK_M-tiled varlen flash kernel is the documented perf follow-up. For SHORT/chunked prefill (the common decode-interleaved case) the per-token cost is fine. num_warps=4, num_stages=2.",
+    "roofline": "compute_bound",
+    "measured": [
+      {
+        "arch": "nvidia_sm121",
+        "shape": {
+          "dtype": "bf16",
+          "num_seqs": 3,
+          "max_seq_len_q": 512,
+          "max_seq_len_k": 512,
+          "H_q": 32,
+          "H_kv": 8,
+          "D": 128,
+          "block_size": 1,
+          "prefix_frac": 0.0
+        },
+        "dtype": "bf16",
+        "knobs": {},
+        "source": "run:beb35f7578e9",
+        "ms": 2.276984636600201
+      }
+    ]
+  },
+  "uses_primitives": [
+    "reduce.flash_softmax",
+    "gather.paged_kv",
+    "mask.causal"
+  ],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-07-02T00:00:00Z",
+    "source_path": "src/xkernels/ops/attention/triton/paged_attention_prefill_kernel.py"
+  },
+  "notes": "The flashinfer BatchPrefillWithPagedKVCache shape (the make-or-break serving kernel for dense GQA on AMD per issue #71, whose primary target is amd_cdna3 / gfx942). BLOCK_D=next_pow2(D) and GROUP=H_q//H_kv are tl.constexpr derived from dispatch args (cached) -- NOT user specialization_knobs. BLOCK_N=64 is the flash-chunk size (exact reduction for any size; autotune follow-up). Portable (pure tl.dot-free manual FMA + tl.exp, no vendor intrinsics); the AMD gfx942 card is the port-across-arch step (the issue's primary target -- the contract needs no change). Causal extend semantics: the p-th new token attends to kv [0, (nk-nq)+p+1); since causal_end<=nk the causal mask doubles as the valid-kv mask. PERF FOLLOW-UPS (in priority order): (1) BLOCK_M-tiled varlen flash to amortize each kv load across a q-tile -- the real flash attention speedup for long prefill; (2) the seq_ids workspace reuse (#52); (3) split-kv (the mha_merge_state #3 path) for very long context."
+}

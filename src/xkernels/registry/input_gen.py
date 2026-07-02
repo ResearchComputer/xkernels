@@ -249,6 +249,54 @@ def _paged_attention(point: dict[str, Any], seed: int, device: str) -> dict[str,
     }
 
 
+def _paged_attention_prefill(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
+    # Varlen paged GQA PREFILL/EXTEND (issue #71 prefill half). A packed batch of
+    # num_seqs variable-length sequences; q is [num_tokens, H_q, D]. Each seq's KV
+    # lives in a paged pool (page_size = block_size), addressed by its own
+    # block_table row. cu_seqlens_q / cu_seqlens_k are the cumulative q/kv counts.
+    # The reference and device kernel read the SAME pool/block_table/cu_seqlens,
+    # so they share bits by construction (no quant/dequant path to sync).
+    dt = to_torch_dtype(point["dtype"])
+    num_seqs = int(point["num_seqs"])
+    max_seq_q = int(point["max_seq_len_q"])   # max new q-tokens per seq
+    max_seq_k = int(point["max_seq_len_k"])   # max total kv per seq (>= new q)
+    H_q = int(point["H_q"])
+    H_kv = int(point["H_kv"])
+    D = int(point["D"])
+    block_size = int(point["block_size"])
+    prefix_frac = float(point.get("prefix_frac", 0.0))  # 0 => pure prefill
+
+    g = torch.Generator(device=device).manual_seed(int(seed))
+    # Per-seq q lengths in [1, max_seq_q]; per-seq kv lengths in [nq, max_seq_k]
+    # (kv >= q for causal extend; when prefix_frac>0, shift kv higher).
+    nq_per = torch.randint(1, max_seq_q + 1, (num_seqs,), generator=g, device=device)
+    nk_min = (nq_per.float() * (1.0 + prefix_frac)).ceil().to(torch.int32)
+    nk_max = max_seq_k
+    nk_per = nk_min.clone()
+    # give a random spread up to nk_max, staying >= nq_per
+    for s in range(num_seqs):
+        hi = max(int(nk_per[s]), int(nq_per[s]))
+        nk_per[s] = max(hi, int(torch.randint(hi, nk_max + 1, (1,), generator=g, device=device).item()))
+    cu_q = torch.zeros(num_seqs + 1, dtype=torch.int32, device=device)
+    cu_q[1:] = torch.cumsum(nq_per, dim=0).to(torch.int32)
+    cu_k = torch.zeros(num_seqs + 1, dtype=torch.int32, device=device)
+    cu_k[1:] = torch.cumsum(nk_per, dim=0).to(torch.int32)
+    num_tokens = int(cu_q[-1].item())
+    max_blocks = (max_seq_k + block_size - 1) // block_size
+    num_blocks = num_seqs * max_blocks
+    q = torch.randn(num_tokens, H_q, D, generator=g, device=device, dtype=dt)
+    k_cache = torch.randn(num_blocks, block_size, H_kv, D, generator=g, device=device, dtype=dt)
+    v_cache = torch.randn(num_blocks, block_size, H_kv, D, generator=g, device=device, dtype=dt)
+    # disjoint ascending page ids per seq (seq s owns [s*max_blocks, (s+1)*max_blocks))
+    bt = torch.arange(num_blocks, device=device, dtype=torch.int32).reshape(num_seqs, max_blocks)
+    scale = float(D ** -0.5)
+    return {
+        "q": q, "k_cache": k_cache, "v_cache": v_cache,
+        "block_table": bt, "cu_seqlens_q": cu_q, "cu_seqlens_k": cu_k,
+        "scale": scale,
+    }
+
+
 _GENERATORS: dict[str, Callable[[dict, int, str], dict[str, Any]]] = {
     "fused_ffn@1.0.0": _ffn,
     "dual_rmsnorm@1.0.0": _dual_rmsnorm,
@@ -265,6 +313,7 @@ _GENERATORS: dict[str, Callable[[dict, int, str], dict[str, Any]]] = {
     "sampling_from_probs@1.0.0": _sampling_from_probs,
     "top_k_sampling_from_probs@1.0.0": _top_k_sampling_from_probs,
     "paged_attention@1.0.0": _paged_attention,
+    "paged_attention_prefill@1.0.0": _paged_attention_prefill,
 }
 
 

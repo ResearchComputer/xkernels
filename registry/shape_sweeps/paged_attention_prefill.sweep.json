@@ -1,0 +1,12 @@
+{
+  "id": "paged_attention_prefill",
+  "points": [
+    { "dtype": "fp32", "num_seqs": 4, "max_seq_len_q": 64, "max_seq_len_k": 64, "H_q": 16, "H_kv": 4, "D": 64,  "block_size": 1, "prefix_frac": 0.0 },
+    { "dtype": "bf16", "num_seqs": 8, "max_seq_len_q": 64, "max_seq_len_k": 64, "H_q": 32, "H_kv": 8, "D": 128, "block_size": 1, "prefix_frac": 0.0 },
+    { "dtype": "fp16", "num_seqs": 4, "max_seq_len_q": 32, "max_seq_len_k": 32, "H_q": 32, "H_kv": 8, "D": 128, "block_size": 1, "prefix_frac": 0.0 },
+    { "dtype": "bf16", "num_seqs": 4, "max_seq_len_q": 128, "max_seq_len_k": 128, "H_q": 32, "H_kv": 8, "D": 128, "block_size": 16, "prefix_frac": 0.0 },
+    { "dtype": "bf16", "num_seqs": 2, "max_seq_len_q": 256, "max_seq_len_k": 256, "H_q": 64, "H_kv": 8, "D": 64,  "block_size": 1, "prefix_frac": 0.0 },
+    { "dtype": "bf16", "num_seqs": 8, "max_seq_len_q": 64, "max_seq_len_k": 256, "H_q": 32, "H_kv": 8, "D": 128, "block_size": 1, "prefix_frac": 1.0 },
+    { "dtype": "bf16", "num_seqs": 4, "max_seq_len_q": 32, "max_seq_len_k": 32, "H_q": 32, "H_kv": 1, "D": 128, "block_size": 1, "prefix_frac": 0.0 }
+  ]
+}

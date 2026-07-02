@@ -20,6 +20,7 @@ from .interface import (
     get_mla_metadata,
     mha_merge_state,
     paged_attention,
+    paged_attention_prefill,
     sparse_mla_attention,
 )
 
@@ -85,6 +86,18 @@ with backend_registration_guard(
     with triton_import_ctx():
         from .triton import paged_attention_kernel  # noqa: F401
 
+# Varlen paged GQA prefill/extend (issue #71 prefill half) -- the flashinfer
+# BatchPrefillWithPagedKVCache shape.
+with backend_registration_guard(
+    "paged_attention_prefill",
+    Backend.TRITON,
+    source="xkernels.ops.attention.triton.paged_attention_prefill_kernel",
+):  # pragma: no cover - requires triton
+    from ..._triton_compat import triton_import_ctx
+
+    with triton_import_ctx():
+        from .triton import paged_attention_prefill_kernel  # noqa: F401
+
 __all__ = [
     "mha_merge_state",
     "dsa_indexer_logits",
@@ -95,4 +108,5 @@ __all__ = [
     "get_mla_metadata",
     "apply_rope",
     "paged_attention",
+    "paged_attention_prefill",
 ]

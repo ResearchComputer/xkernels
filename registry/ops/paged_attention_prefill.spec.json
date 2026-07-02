@@ -1,0 +1,93 @@
+{
+  "id": "paged_attention_prefill@1.0.0",
+  "name": "varlen paged grouped-query attention (PREFILL/EXTEND) -- packed multi-token batch, causal",
+  "version": "1.0.0",
+  "kernel": "paged_attention_prefill",
+  "op": {
+    "signature": "out[t,H_q,D] = softmax_{j<(nk-nq)+p+1}(scale * q[t,h] . k_cache[block_table[s,j//bs], j%bs, h//group]) @ v_cache[same]; packed varlen batch over num_seqs sequences, causal",
+    "canonical_op": "attention",
+    "fusions": ["paged_kv_gather", "gqa_attention", "online_softmax", "causal_mask"]
+  },
+  "inputs": {
+    "q": {
+      "dtype": ["bf16", "fp16", "fp32"],
+      "layout": "row_major",
+      "rank": 3,
+      "shape_symbols": ["num_tokens", "H_q", "D"],
+      "contiguous": true
+    },
+    "k_cache": {
+      "dtype": ["bf16", "fp16", "fp32"],
+      "layout": "row_major",
+      "rank": 4,
+      "shape_symbols": ["Nb", "block_size", "H_kv", "D"],
+      "contiguous": true
+    },
+    "v_cache": {
+      "dtype": ["bf16", "fp16", "fp32"],
+      "layout": "row_major",
+      "rank": 4,
+      "shape_symbols": ["Nb", "block_size", "H_kv", "D"],
+      "contiguous": true
+    },
+    "block_table": {
+      "dtype": ["int32"],
+      "layout": "row_major",
+      "rank": 2,
+      "shape_symbols": ["num_seqs", "max_blocks"]
+    },
+    "cu_seqlens_q": {
+      "dtype": ["int32"],
+      "layout": "row_major",
+      "rank": 1,
+      "shape_symbols": ["num_seqs+1"]
+    },
+    "cu_seqlens_k": {
+      "dtype": ["int32"],
+      "layout": "row_major",
+      "rank": 1,
+      "shape_symbols": ["num_seqs+1"]
+    }
+  },
+  "outputs": {
+    "out": {
+      "dtype": ["bf16", "fp16", "fp32"],
+      "layout": "row_major",
+      "rank": 3,
+      "shape_symbols": ["num_tokens", "H_q", "D"]
+    }
+  },
+  "constraints": [
+    "dtype(q) == dtype(k_cache)",
+    "dtype(k_cache) == dtype(v_cache)"
+  ],
+  "preconditions": [
+    "GQA divisibility: H_q % H_kv == 0 (group = H_q // H_kv is an integer). RUNTIME assert in the reference + kernel, NOT a decidable constraint (a modulo BETWEEN two shape symbols cannot live in the constraint mini-language -- the lenient dry-run substitutes unbound symbols as 0 and 0 % 0 raises ZeroDivisionError; a modulo by a CONSTANT like K % 128 == 0 is fine). Same pattern as paged_attention (decode).",
+    "PREFILL/EXTEND shape: q is [num_tokens, H_q, D] -- a PACKED batch of num_seqs variable-length sequences. This is the complement of paged_attention (decode, q is [B,H_q,D] with ONE token per request).",
+    "Causal EXTEND semantics: for seq s with nq new q-tokens (cu_seqlens_q[s+1]-cu_seqlens_q[s]) and nk total kv positions (cu_seqlens_k[s+1]-cu_seqlens_k[s]), the p-th new token (0-indexed) attends to kv [0, (nk-nq)+p+1). The new tokens are the LAST nq positions of the sequence. nk >= nq is required (RUNTIME assert) -- the new q-tokens must be a suffix of the kv. nk == nq is pure prefill (prefix 0); nk > nq is chunked/extend prefill (prefix = nk-nq already-cached KV).",
+    "GQA contiguous head mapping: qo head h attends to kv head h // group (the standard vLLM/flashinfer mapping). MHA is H_kv == H_q; MQA is H_kv == 1.",
+    "block_table[s, m] is the physical page index into the [Nb,...] pool for sequence s's m-th logical page; the first ceil(nk / block_size) pages are valid. block_size (page_size) is general (1 for mini-sglang's RadixCache; 16 for vLLM). cu_seqlens_k only its per-seq DIFF matters for the paged layout (the kv is gathered via block_table[s], not a flat ragged tensor).",
+    "causal_end = (nk-nq)+p+1 <= nk always, so the causal mask doubles as the valid-kv mask (positions in a partial last page beyond nk are never reached).",
+    "cu_seqlens_q[0] == cu_seqlens_k[0] == 0; cu_seqlens_q[-1] == num_tokens.",
+    "scale is the softmax scale (typically head_dim**-0.5); it is a dispatch kwarg, not a tensor shape."
+  ],
+  "numerics": {
+    "reference": "xkernels.ops.attention.paged_attention_prefill:paged_attention_prefill_ref",
+    "rtol": 0.01,
+    "atol": 0.1,
+    "reduce_dtype": "fp32",
+    "cross_backend_rtol": 0.05,
+    "by_dtype": {
+      "fp32": { "rtol": 1e-4, "atol": 1e-3 },
+      "bf16": { "rtol": 0.01, "atol": 0.1 },
+      "fp16": { "rtol": 0.01, "atol": 0.1 }
+    },
+    "notes": "Flash-style online softmax: per (q-token, qo_head), stream the seq's causal paged KV range in BLOCK_N chunks with a running fp32 max/denominator/value accumulator (the reference materializes the per-token attention for clarity; the device kernel streams with a causal bound). bf16/fp16 logits upcast to fp32 for score/softmax/value, cast back on store. Tolerance matches the repo's attention convention (sparse_mla_attention, paged_attention decode): rtol=1e-2, atol=1e-1 for bf16/fp16. CROSS-BACKEND rtol is 0.05 (looser than single-backend 0.01) for an HONEST reason (not hiding a bug): attention outputs span orders of magnitude (some elements near zero), so the RELATIVE error diff/|e| is ill-conditioned -- a machine-epsilon absolute difference divided by a near-zero output inflates rel to a few percent even when the algorithm is exact. Evidence on the decode twin: fp32 max ABS error 4.8e-7 (= fp32 machine epsilon); bf16 adds ~1 ULP on store. This is the same situation flash-attention/vLLM/flashinfer face (1e-2-1e-1 relative bars). The single-card verify gate uses the COMBINED criterion |a-e| <= atol + rtol*|e| (atol absorbs the near-zero regime) and passes cleanly. Causal masking is index-arithmetic-only (no numerics) so it does not affect tolerance."
+  },
+  "shape_sweep": "paged_attention_prefill",
+  "composes_with": ["paged_kv_gather@1.0.0", "apply_rope@1.0.0", "paged_attention@1.0.0"],
+  "provenance": {
+    "authored_by": "human",
+    "source_path": "src/xkernels/ops/attention/paged_attention_prefill.py"
+  }
+}

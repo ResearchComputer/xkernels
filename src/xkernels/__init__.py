@@ -17,6 +17,7 @@ from .ops.attention import (
     get_mla_metadata,
     mha_merge_state,
     paged_attention,
+    paged_attention_prefill,
     sparse_mla_attention,
 )
 from .ops.comm import (
@@ -77,6 +78,7 @@ __all__ = [
     "sparse_mla_attention",
     "apply_rope",
     "paged_attention",
+    "paged_attention_prefill",
     "flash_mla_sparse_fwd",
     "flash_mla_with_kvcache",
     "get_mla_metadata",
