@@ -27,10 +27,12 @@ on first call, so importing this module is safe without a GPU and without
 from __future__ import annotations
 
 from ....vkl import register_dsl, spec_of
-from ....vkl.examples import rope
+from ....vkl.examples import apply_rope
 
 # Bind the DSL-authored apply_rope body to its generated Triton launcher.
 # ``register_dsl`` also (re)asserts the seeded input generator + graph-node
 # wiring; both are idempotent / first-writer-wins with the ``@kernel``
-# decorator's own auto-wire.
-register_dsl(spec_of(rope), backend="triton")
+# decorator's own auto-wire. (NB: import the ``apply_rope`` FUNCTION, not the
+# ``rope`` module -- ``vkl.examples`` re-exports the function, not the module
+# name, so ``spec_of`` needs the decorated callable.)
+register_dsl(spec_of(apply_rope), backend="triton")
