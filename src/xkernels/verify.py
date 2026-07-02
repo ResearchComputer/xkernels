@@ -389,10 +389,26 @@ def verify_parity(
         for j in range(i + 1, len(backends)):
             a, b = backends[i], backends[j]
             for idx, (oa, ob) in enumerate(zip(outputs[a], outputs[b], strict=True)):
-                _, rel = _errors(oa, ob)
+                dtype_short = points[idx].get("dtype", "fp32")
+                # Cross-backend tolerance model = the SAME combined criterion
+                # single-card verify uses: |a-b| <= atol + rtol*|b|, with the
+                # op's per-dtype atol as the near-zero floor and
+                # cross_backend_rtol as rtol. Pure rel-only (the old form) is
+                # ill-conditioned for outputs that span orders of magnitude --
+                # attention/softmax produce legitimate near-zero elements whose
+                # |a-b|/|b| explodes even when both backends agree to machine
+                # precision (proven: a paged-attention fp32 pair with abs gap
+                # 8.3e-7 reported rel 2.75 from a ~3e-7 element). Using the op's
+                # OWN atol keeps each op judged by its declared tolerance model
+                # and is consistent with single-card verify -- see the
+                # _within_tolerance docstring, which flags this exact
+                # inconsistency. Exact ops (atol=0) reduce to rel-only, unchanged.
+                _rtol, atol = op.numerics.tolerance_for(dtype_short)
+                abs_err, rel = _errors(oa, ob)
                 max_pairwise = max(max_pairwise, rel)
-                if rel > op.numerics.cross_backend_rtol:
-                    diverging.append({"pair": [a, b], "point": points[idx], "rel_err": rel})
+                if not _within_tolerance(oa, ob, op.numerics.cross_backend_rtol, atol):
+                    diverging.append({"pair": [a, b], "point": points[idx],
+                                      "abs_err": abs_err, "rel_err": rel})
 
     n_runnable = len(backends)
     inconclusive = n_runnable < 2

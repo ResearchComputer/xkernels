@@ -361,3 +361,19 @@ no-ops).
 4. **`verify_parity` defaults to CPU** (`device` derived from `archs`); pass
    `archs=["nvidia_sm121"]` (or `device="cuda"`) or the TRITON backend is
    "not runnable" and parity is inconclusive (`agree=None`), not a pass.
+5. **`verify_parity` uses the COMBINED criterion** `|a-b| <= atol + rtol*|b|`
+   (the op's per-dtype `atol` + `cross_backend_rtol`), NOT pure rel-only.
+   Rel-only (`|a-b|/|b|` with `|b|` clamped at only `1e-8`) is
+   **mathematically the wrong metric for outputs that span orders of
+   magnitude** — attention/softmax produce legitimate near-zero elements whose
+   relative error explodes even when both backends agree to machine precision.
+   Proven case (`paged_attention_prefill` #71): a fp32 reference-vs-triton pair
+   with max ABS gap `8.3e-7` (= fp32 machine epsilon) reported max REL `2.75`
+   from a single output element of magnitude ~`3e-7` that is genuinely ~0 in
+   BOTH backends. The combined criterion's `atol` floor (0.1 for attention)
+   absorbs that near-zero regime exactly, so parity passes — consistent with
+   single-card `verify`, which already uses the combined form (`_within_tolerance`).
+   Exact ops (`atol=0`) reduce to rel-only, so their behavior is unchanged. This
+   is provably a superset of rel-only (no op can go PASS→FAIL; it only converts
+   near-zero false-FAILs to honest PASSes). See `_within_tolerance`'s docstring,
+   which flags the rel-only parity inconsistency this resolves.
