@@ -19,6 +19,29 @@ remote_dir = "/capstor/scratch/cscs/xyao/xkernels"
 host = "ds5"
 remote_dir = "/local/home/xiayao/xkernels"
 
+[profiles.ds5.env]
+TRITON_CACHE_DIR = "/local/home/xiayao/xkernels/.cache/triton"
+
+[profiles.ds5.docker]
+image = "nvcr.io/nvidia/pytorch:26.01-py3"
+workdir = "/workspace"
+gpus = "all"
+shm_size = "16g"
+network = "host"
+# ds5's Docker daemon exposes /dev/nvidia* with --gpus, but CUDA init on GB10
+# currently succeeds only with privileged containers.
+args = ["--privileged", "--ipc=host", "--ulimit", "memlock=-1", "--ulimit", "stack=67108864"]
+
+[[profiles.ds5.docker.mounts]]
+source = "{remote_dir}"
+target = "/workspace"
+mode = "rw"
+
+[profiles.ds5.docker.env]
+PYTHONPATH = "/workspace/src"
+TRITON_CACHE_DIR = "/workspace/.cache/triton"
+XDG_CACHE_HOME = "/workspace/.cache"
+
 # sgs-gpu07: ETH Systems group node, 4x NVIDIA H100 NVL (sm_90), CUDA 13.0,
 # Python 3.12 venv (torch 2.5.1+cu124, triton 3.1.0). No SLURM; venv at .venv/.
 # Run via `rcc --profile sgs-gpu07 run -- .venv/bin/python ...`.

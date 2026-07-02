@@ -1027,9 +1027,18 @@ class _TritonGenRowwise:
         if node.op not in ("sum", "max"):
             raise NotImplementedError(f"rowwise reduce op {node.op!r}")
         x = self._arg(node.x.name)
+        ref = self._ref(node.x.name)
+        axis = _norm_axis(node.axis, len(ref.subscript))
+        sym = ref.subscript[axis]
+        info = self.symbols[sym]
+        identity = "0.0" if node.op == "sum" else "-float('inf')"
+        xm = self.fresh("m")
+        self.lines.append(
+            f"    {xm} = tl.where({info['cols']} < {info['dim']}, {x}, {identity})"
+        )
         v = self.fresh("s")
         op = "tl.sum" if node.op == "sum" else "tl.max"
-        self.lines.append(f"    {v} = {op}({x}, axis=0)")
+        self.lines.append(f"    {v} = {op}({xm}, axis=0)")
         self.vars[node.out.name] = v
 
     def _emit_store(self, node: Store) -> None:
@@ -1536,7 +1545,13 @@ def _get_kernel(body: MathBody, out_dtype: str, *, pattern: str):
 
 
 def _symbol_values(body: MathBody, inputs: dict[str, torch.Tensor]) -> dict[str, int]:
-    """Map each decl subscript symbol to its concrete dim value (from inputs)."""
+    """Map each decl subscript symbol to its concrete dim value.
+
+    Input shapes are the primary binding source. Some valid addressing kernels
+    produce an output dimension that is a static slice of an input dimension
+    (for example packed ``[M, 2K] -> [M, K]`` activation gates), so output-only
+    symbols are filled from the concrete shape of the value stored to that output.
+    """
     vals: dict[str, int] = {}
     for name, ref in body.in_decls.items():
         t = inputs.get(name)
@@ -1544,7 +1559,94 @@ def _symbol_values(body: MathBody, inputs: dict[str, torch.Tensor]) -> dict[str,
             continue
         for axis, sym in enumerate(ref.subscript):
             vals.setdefault(sym, t.shape[axis])
+    for node in body.ir.nodes:
+        if not isinstance(node, Store):
+            continue
+        out_ref = node.ref
+        try:
+            val_shape = _concrete_shape(body, node.val.name, vals, inputs)
+        except KeyError:
+            continue
+        for axis, sym in enumerate(out_ref.subscript):
+            if axis < len(val_shape):
+                vals.setdefault(sym, val_shape[axis])
     return vals
+
+
+def _concrete_shape(
+    body: MathBody,
+    name: str,
+    sym_vals: dict[str, int],
+    inputs: dict[str, torch.Tensor],
+) -> tuple[int, ...]:
+    """Derive a tensor's concrete shape from the math IR and known input symbols."""
+    cache: dict[str, tuple[int, ...]] = {}
+    producers: dict[str, MathNode | _LitMarker | _DimRefMarker] = {}
+    for node in body.ir.nodes:
+        if isinstance(node, Load):
+            producers[node.ref.name] = node
+        elif isinstance(node, Store):
+            producers[node.ref.name] = node
+        elif isinstance(node, (_LitMarker, _DimRefMarker)):
+            producers[node.name] = node
+        elif hasattr(node, "out"):
+            producers[node.out.name] = node  # type: ignore[attr-defined]
+
+    def resolve_raw(raw: tuple[int | str, ...]) -> tuple[int, ...]:
+        return tuple(d if isinstance(d, int) else int(sym_vals[d]) for d in raw)
+
+    def shape_of(n: str) -> tuple[int, ...]:
+        if n in cache:
+            return cache[n]
+        if n in inputs:
+            sh = tuple(inputs[n].shape)
+        elif n in body.in_decls:
+            sh = resolve_raw(body.in_decls[n].shape)
+        elif n in body.out_decls and n not in producers:
+            sh = resolve_raw(body.out_decls[n].shape)
+        else:
+            node = producers[n]
+            if isinstance(node, (Load, _LitMarker, _DimRefMarker)):
+                sh = resolve_raw(body.ir.tensors[n].shape)
+            elif isinstance(node, Store):
+                sh = shape_of(node.val.name)
+            elif isinstance(node, MMA):
+                a = shape_of(node.a.name)
+                b = shape_of(node.b.name)
+                sh = a[:-1] + b[-1:]
+            elif isinstance(node, Reduce):
+                x = shape_of(node.x.name)
+                ax = _norm_axis(node.axis, len(x))
+                sh = x[:ax] + (1,) + x[ax + 1 :]
+            elif isinstance(node, Slice):
+                base = shape_of(node.base.name)
+                ax = _norm_axis(node.axis, len(base))
+                start = _resolve_bound(node.start, base[ax])
+                stop = _resolve_bound(node.stop, base[ax])
+                sh = base[:ax] + (stop - start,) + base[ax + 1 :]
+            elif isinstance(node, Concat):
+                a = shape_of(node.a.name)
+                b = shape_of(node.b.name)
+                ax = _norm_axis(node.axis, len(a))
+                sh = a[:ax] + (a[ax] + b[ax],) + a[ax + 1 :]
+            elif isinstance(node, Unsqueeze):
+                base = shape_of(node.base.name)
+                ax = _norm_axis(node.axis, len(base) + 1)
+                sh = base[:ax] + (1,) + base[ax:]
+            elif isinstance(node, Gather):
+                base = shape_of(node.base.name)
+                idx = shape_of(node.index.name)
+                ax = _norm_axis(node.axis, len(base))
+                sh = base[:ax] + idx + base[ax + 1 :]
+            elif isinstance(node, Pointwise):
+                arg_shapes = [shape_of(a.name) for a in node.args]
+                sh = tuple(torch.broadcast_shapes(*arg_shapes))
+            else:  # pragma: no cover - defensive for new IR nodes
+                sh = resolve_raw(body.ir.tensors[n].shape)
+        cache[n] = sh
+        return sh
+
+    return shape_of(name)
 
 
 # The canonical Triton tile / launch-metaparam knob names (the contract between

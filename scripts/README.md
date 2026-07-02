@@ -19,6 +19,7 @@ venv/CUDA_HOME) that a bare `rcc run` does not.
 ```
 scripts/
   cluster.sh                 THE entry point: push + run/submit on any host
+  vkl_artifacts.py           emit/check registry JSON materialized from VKL sources
   profile-*.sh               per-profiler wrappers (ncu/nsys on bristen, rocprof-compute on beverin)
   setup-/stage-rocprof-*     one-time profiler install + lib staging on beverin
   bench_kernel_loop_bristen.sh   per-kernel isolation harness (see meta/wiki/04-gotchas.md)
@@ -51,6 +52,20 @@ For `run`, `--` separates `cluster.sh`'s flags from your command (optional unles
 the command's first token starts with `-`). bristen `run` honors the
 `BRISTEN_IMAGE` / `BRISTEN_PARTITION` / `BRISTEN_ACCOUNT` / `BRISTEN_GPU` /
 `BRISTEN_TIME` env overrides.
+
+## VKL registry artifacts
+
+VKL-authored kernels still materialize registry JSON for the card-driven
+substrate. Treat those files as generated artifacts:
+
+```bash
+scripts/vkl_artifacts.py check     # fail if checked-in JSON drifted from VKL
+scripts/vkl_artifacts.py write     # regenerate Op Specs + reference/backend cards
+scripts/vkl_artifacts.py list      # list VKL-managed op short names
+```
+
+The checker preserves mutable card state (`perf.measured`, tuning traces, and
+creation timestamps), so autotune/write-back data remains owned by the card.
 
 ## Profilers (Tier A)
 

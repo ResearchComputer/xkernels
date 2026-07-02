@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 ResearchComputer
-"""DSL-authored temperature softmax, the deterministic slice of sampling (#69/#70).
+"""DSL-authored row-wise softmax kernels, deterministic slices of #69/#70.
 
 The open mini-sglang sampling/gating issues need more than softmax: top-k/top-p
 selection and multinomial sampling are data-selection/RNG operations and remain
@@ -11,9 +11,11 @@ hand-path by design. The stable row-wise softmax prefix is still DSL-expressible
 ``ex = exp(scaled - m)``
 ``probs = ex / reduce_sum(ex)``
 
-This example exists to pin two VKL capabilities needed by those issue families:
-multiple row-wise reductions in one body, and a rank-1 per-row input broadcast
-(``temperatures[B]``) across the reduced vocab axis.
+This module pins the VKL capabilities needed by those issue families: multiple
+row-wise reductions in one body, and rank-1 per-row input broadcast
+(``temperatures[B]``) across the reduced vocab axis. It deliberately stops before
+top-k/top-p/RNG selection; those are value-dependent data selection operations
+outside the math IR.
 """
 from __future__ import annotations
 
@@ -28,7 +30,22 @@ from .. import (
 )
 from ..tiles import bf16, fp16, fp32
 
-__all__ = ["temperature_softmax"]
+__all__ = ["temperature_softmax", "rowwise_softmax"]
+
+
+def _softmax_numerics(notes: str) -> Numerics:
+    return Numerics(
+        rtol=6e-3,
+        atol=1e-3,
+        reduce_dtype=fp32,
+        cross_backend_rtol=6e-3,
+        by_dtype={
+            "fp32": {"rtol": 6e-3, "atol": 1e-3},
+            "bf16": {"rtol": 6e-3, "atol": 1e-3},
+            "fp16": {"rtol": 6e-3, "atol": 1e-3},
+        },
+        notes=notes,
+    )
 
 
 @kernel(
@@ -48,24 +65,15 @@ __all__ = ["temperature_softmax"]
     preconditions=(
         "temperatures are positive and finite",
         "top-k/top-p selection and RNG sampling are intentionally outside this DSL op",
+        "current rowwise Triton lowering reduces one full row per program; full 100k+ "
+        "vocab sampling needs a staged streaming follow-up",
     ),
-    numerics=Numerics(
-        rtol=6e-3,
-        atol=1e-3,
-        reduce_dtype=fp32,
-        cross_backend_rtol=6e-3,
-        by_dtype={
-            "fp32": {"rtol": 6e-3, "atol": 1e-3},
-            "bf16": {"rtol": 6e-3, "atol": 1e-3},
-            "fp16": {"rtol": 6e-3, "atol": 1e-3},
-        },
-        notes=(
-            "Stable row-wise softmax prefix for sampling/top-k gating. Logits and "
-            "temperature divide promote to fp32; max and sum reductions are fp32. "
-            "Tolerance covers Triton tl.exp approximation vs torch.exp on GB10 "
-            "(observed max_abs < 8e-4, max_rel < 5.2e-3). Value-dependent "
-            "top-k/top-p and RNG sampling stay hand-path."
-        ),
+    numerics=_softmax_numerics(
+        "Stable row-wise softmax prefix for sampling/top-k gating. Logits and "
+        "temperature divide promote to fp32; max and sum reductions are fp32. "
+        "Tolerance covers Triton tl.exp approximation vs torch.exp on GB10 "
+        "(observed max_abs < 8e-4, max_rel < 5.2e-3). Value-dependent "
+        "top-k/top-p and RNG sampling stay hand-path."
     ),
     shape_sweep="temperature_softmax",
 )
@@ -87,5 +95,47 @@ def temperature_softmax(ctx):
     scaled = logits / temp
     row_max = ctx.reduce_max(scaled, axis=1, accum_dtype="fp32")
     ex = ctx.exp(scaled - row_max)
+    denom = ctx.reduce_sum(ex, axis=1, accum_dtype="fp32")
+    ctx.store("probs", ex / denom)
+
+
+@kernel(
+    id="rowwise_softmax@1.0.0",
+    kernel="rowwise_softmax",
+    canonical_op="reduce",
+    name="row-wise stable softmax",
+    signature="probs[M,E] fp32 = softmax(logits[M,E])",
+    inputs={
+        "logits": TensorDecl(rank=2, dtype=(fp32, bf16, fp16), symbols=("M", "E")),
+    },
+    outputs={
+        "probs": TensorDecl(rank=2, dtype=(fp32,), symbols=("M", "E")),
+    },
+    constraints=(),
+    preconditions=(
+        "top-k selection and optional renormalization are intentionally outside this DSL op",
+        "current rowwise Triton lowering reduces one full row per program; very large vocab "
+        "sampling needs a staged streaming follow-up",
+    ),
+    numerics=_softmax_numerics(
+        "Stable row-wise softmax for MoE gating / top-k-softmax prefixes. Logits "
+        "promote to fp32; max and sum reductions are fp32. Value-dependent top-k "
+        "selection and renormalization stay hand-path."
+    ),
+    shape_sweep="rowwise_softmax",
+)
+@launch(Launch.rowwise())
+@targets(triton=Target(
+    backend="triton",
+    arch="any",
+    roofline="memory_bound",
+    scratch_kind="registers",
+    regime="row-wise stable softmax over expert/vocab dimension; one program per row.",
+    knobs={"num_warps": (4, 8)},
+))
+def rowwise_softmax(ctx):
+    logits = ctx.load("logits").cast("fp32")
+    row_max = ctx.reduce_max(logits, axis=1, accum_dtype="fp32")
+    ex = ctx.exp(logits - row_max)
     denom = ctx.reduce_sum(ex, axis=1, accum_dtype="fp32")
     ctx.store("probs", ex / denom)

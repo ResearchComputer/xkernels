@@ -1,11 +1,11 @@
 {
-  "id": "per_token_group_quant_fp8@1.0.0",
-  "name": "per-token-group fp8 e4m3 quantization",
+  "id": "per_block_quant_fp8@1.0.0",
+  "name": "per-block fp8 e4m3 quantization",
   "version": "1.0.0",
-  "kernel": "per_token_group_quant_fp8",
+  "kernel": "per_block_quant_fp8",
   "op": {
-    "signature": "(q[G,B] fp8, scale[G] fp32) = quantize(x[G,B]) per group; amax=reduce_max|x|; scale=amax/FP8_MAX; q=clamp(x/scale).fp8",
-    "canonical_op": "reduce",
+    "signature": "(q[G,B] fp8, scale[G] fp32) = quantize(flattened block tiles x[G,B]); B = block*block; amax=reduce_max|x|; scale=amax/FP8_MAX",
+    "canonical_op": "quantize",
     "fusions": []
   },
   "inputs": {
@@ -49,12 +49,14 @@
     "B % 16 == 0"
   ],
   "preconditions": [
-    "x is the GROUPED view [G, B] of an activation (G = num tokens * K//block);",
-    "caller reshapes [M,K] -> [M*(K//block), block] and the outputs back",
+    "x is a GROUPED full-tile view [G, B] of weight blocks;",
+    "B = block*block, e.g. 16384 for DeepSeek block=128 full tiles;",
+    "caller reshapes [N,K] full tiles -> [ceil(N/block)*ceil(K/block), B] and outputs back to [N,K] / [ceil(N/block), ceil(K/block)];",
+    "tail tiles require padding or the hand helper path;",
     "fp8 dtype is float8_e4m3fn (FP8_MAX=448); fnuz (240) is an arch override"
   ],
   "numerics": {
-    "reference": "xkernels.vkl.auto:per_token_group_quant_fp8",
+    "reference": "xkernels.vkl.auto:per_block_quant_fp8",
     "rtol": 0.01,
     "atol": 0.01,
     "reduce_dtype": "fp32",
@@ -69,12 +71,12 @@
         "atol": 0.01
       }
     },
-    "notes": "Per-token-group fp8 quant. amax reduced in fp32; scale = amax/FP8_MAX (OCP e4m3fn, max 448). Bit-exact with the hand ops/gemm/reference.py:per_token_group_quant_fp8 (same op order). bf16 rtol covers the amax reduction order on GPU."
+    "notes": "Per-block fp8 quant over flattened full block tiles. amax reduced in fp32; scale = amax/FP8_MAX (OCP e4m3fn, max 448). Bit-exact with ops/gemm/reference.py:per_block_quant_fp8 for full tiles after the same block flattening. Tail tiles are outside this base VKL op."
   },
-  "shape_sweep": "per_token_group_quant_fp8",
+  "shape_sweep": "per_block_quant_fp8",
   "composes_with": [],
   "provenance": {
     "authored_by": "dsl",
-    "source_path": "xkernels.vkl:per_token_group_quant_fp8"
+    "source_path": "xkernels.vkl:per_block_quant_fp8"
   }
 }

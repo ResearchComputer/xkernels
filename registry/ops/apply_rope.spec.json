@@ -116,5 +116,9 @@
     "notes": "RoPE rotate-half from a packed cos/sin cache. Pure pointwise over the rotation products + a data-ADDRESSING gather of the cache by the positions input (no data-dependent control flow). fp32 products, cast to the head dtype on store. Bit-exact with minisgl _rope_ref."
   },
   "shape_sweep": "apply_rope",
-  "composes_with": []
+  "composes_with": [],
+  "provenance": {
+    "authored_by": "dsl",
+    "source_path": "xkernels.vkl:apply_rope"
+  }
 }

@@ -1,0 +1,10 @@
+{
+  "default_dtype": "bf16",
+  "points": [
+    { "dtype": "fp32", "M": 1, "E": 8 },
+    { "dtype": "bf16", "M": 5, "E": 37 },
+    { "dtype": "fp16", "M": 7, "E": 63 },
+    { "dtype": "bf16", "M": 16, "E": 256 },
+    { "dtype": "fp32", "M": 4, "E": 1024 }
+  ]
+}

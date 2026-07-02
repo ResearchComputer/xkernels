@@ -81,5 +81,9 @@
     "notes": "Pure pointwise gated activation. Nonlinearity in promoted (fp32) precision, cast to out dtype; only divergence is that final cast."
   },
   "shape_sweep": "gelu_and_mul",
-  "composes_with": []
+  "composes_with": [],
+  "provenance": {
+    "authored_by": "dsl",
+    "source_path": "xkernels.vkl:gelu_and_mul"
+  }
 }

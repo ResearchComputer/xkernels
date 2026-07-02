@@ -1,0 +1,72 @@
+{
+  "id": "rowwise_softmax@1.0.0",
+  "name": "row-wise stable softmax",
+  "version": "1.0.0",
+  "kernel": "rowwise_softmax",
+  "op": {
+    "signature": "probs[M,E] fp32 = softmax(logits[M,E])",
+    "canonical_op": "reduce",
+    "fusions": []
+  },
+  "inputs": {
+    "logits": {
+      "dtype": [
+        "fp32",
+        "bf16",
+        "fp16"
+      ],
+      "rank": 2,
+      "layout": "row_major",
+      "shape_symbols": [
+        "M",
+        "E"
+      ]
+    }
+  },
+  "outputs": {
+    "probs": {
+      "dtype": [
+        "fp32"
+      ],
+      "rank": 2,
+      "layout": "row_major",
+      "shape_symbols": [
+        "M",
+        "E"
+      ]
+    }
+  },
+  "constraints": [],
+  "preconditions": [
+    "top-k selection and optional renormalization are intentionally outside this DSL op",
+    "current rowwise Triton lowering reduces one full row per program; very large vocab sampling needs a staged streaming follow-up"
+  ],
+  "numerics": {
+    "reference": "xkernels.vkl.auto:rowwise_softmax",
+    "rtol": 0.006,
+    "atol": 0.001,
+    "reduce_dtype": "fp32",
+    "cross_backend_rtol": 0.006,
+    "by_dtype": {
+      "fp32": {
+        "rtol": 0.006,
+        "atol": 0.001
+      },
+      "bf16": {
+        "rtol": 0.006,
+        "atol": 0.001
+      },
+      "fp16": {
+        "rtol": 0.006,
+        "atol": 0.001
+      }
+    },
+    "notes": "Stable row-wise softmax for MoE gating / top-k-softmax prefixes. Logits promote to fp32; max and sum reductions are fp32. Value-dependent top-k selection and renormalization stay hand-path."
+  },
+  "shape_sweep": "rowwise_softmax",
+  "composes_with": [],
+  "provenance": {
+    "authored_by": "dsl",
+    "source_path": "xkernels.vkl:rowwise_softmax"
+  }
+}

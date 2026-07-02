@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 ResearchComputer
-"""DSL-authored fp8 per-token-group quantization (issue #57).
+"""DSL-authored fp8 quantization helpers (issue #57).
 
 The fp8 blockscale GEMM (``mm_fp8_blockscale``) consumes per-token-group fp8
 activations. Today the helper (``ops/gemm/reference.py:per_token_group_quant_fp8``)
@@ -26,9 +26,18 @@ outputs back (``q`` to ``[M, K]``, ``scale`` to ``[M, K//block]``).
 
 Numerics are bit-exact with the hand ``per_token_group_quant_fp8`` (same op
 order, same OCP ``scale = amax/FP8_MAX``), so the body IS a faithful
-auto-reference. FP8_MAX = 448.0 (float8_e4m3fn, the OCP / NVIDIA encoding and
-the ``fp8`` short name); the fnuz (max 240) AMD-native encoding is an arch
-override (mixed-precision-convert / port-across-arch), not the base op.
+``per_block_quant_fp8`` applies the SAME rowwise quantization DAG to a grouped
+view of weight blocks: ``x[G, B]`` where one row is one flattened
+``block x block`` tile (``B = block*block``). The caller reshapes
+``w[N,K] -> [ceil(N/block)*ceil(K/block), block*block]`` for full tiles and
+reshapes ``q``/``scale`` back to ``[N,K]`` / ``[ceil(N/block), ceil(K/block)]``.
+Non-full tail tiles need a padding wrapper or the hand helper path; the VKL op
+is the full-tile fast path the rowwise lowering can express.
+
+Numerics are bit-exact with the hand helpers over identical grouped/full-tile
+operands. FP8_MAX = 448.0 (float8_e4m3fn, the OCP / NVIDIA encoding and the
+``fp8`` short name); the fnuz (max 240) AMD-native encoding is an arch override
+(mixed-precision-convert / port-across-arch), not the base op.
 """
 from __future__ import annotations
 
@@ -43,7 +52,7 @@ from .. import (
 )
 from ..tiles import bf16, fp32
 
-__all__ = ["per_token_group_quant_fp8"]
+__all__ = ["per_token_group_quant_fp8", "per_block_quant_fp8"]
 
 # OCP fp8 e4m3fn max (matches ops/gemm/reference.py:_FP8_MAX). The fnuz variant
 # (240, AMD CDNA3-native) is a per-arch override, not this base op.
@@ -113,3 +122,70 @@ def per_token_group_quant_fp8(ctx):
     qf = ctx.minimum(ctx.maximum(qf, ctx.lit(-FP8_MAX)), ctx.lit(FP8_MAX))  # clamp ±FP8_MAX
     ctx.store("q", qf.cast("fp8"))                              # [G, B] fp8  -> output
     ctx.store("scale", scale)                                   # [G] fp32     -> output
+
+
+@kernel(
+    id="per_block_quant_fp8@1.0.0",
+    kernel="per_block_quant_fp8",
+    canonical_op="quantize",
+    name="per-block fp8 e4m3 quantization",
+    signature=(
+        "(q[G,B] fp8, scale[G] fp32) = quantize(flattened block tiles x[G,B]); "
+        "B = block*block; amax=reduce_max|x|; scale=amax/FP8_MAX"
+    ),
+    inputs={
+        "x": TensorDecl(rank=2, dtype=(fp32, bf16), symbols=("G", "B")),
+    },
+    outputs={
+        "q": TensorDecl(rank=2, dtype=("fp8",), symbols=("G", "B")),
+        "scale": TensorDecl(rank=1, dtype=(fp32,), symbols=("G",)),
+    },
+    constraints=("B % 16 == 0",),
+    preconditions=(
+        "x is a GROUPED full-tile view [G, B] of weight blocks;",
+        "B = block*block, e.g. 16384 for DeepSeek block=128 full tiles;",
+        "caller reshapes [N,K] full tiles -> [ceil(N/block)*ceil(K/block), B] "
+        "and outputs back to [N,K] / [ceil(N/block), ceil(K/block)];",
+        "tail tiles require padding or the hand helper path;",
+        "fp8 dtype is float8_e4m3fn (FP8_MAX=448); fnuz (240) is an arch override",
+    ),
+    numerics=Numerics(
+        rtol=1e-2,
+        atol=1e-2,
+        reduce_dtype=fp32,
+        cross_backend_rtol=1e-2,
+        by_dtype={
+            "fp32": {"rtol": 1e-6, "atol": 1e-6},
+            "bf16": {"rtol": 1e-2, "atol": 1e-2},
+        },
+        notes=(
+            "Per-block fp8 quant over flattened full block tiles. amax reduced "
+            "in fp32; scale = amax/FP8_MAX (OCP e4m3fn, max 448). Bit-exact "
+            "with ops/gemm/reference.py:per_block_quant_fp8 for full tiles after "
+            "the same block flattening. Tail tiles are outside this base VKL op."
+        ),
+    ),
+    shape_sweep="per_block_quant_fp8",
+    fusions=(),
+)
+@launch(Launch.rowwise())  # one program per flattened block tile
+@targets(triton=Target(
+    backend="triton",
+    arch="any",
+    roofline="memory_bound",
+    scratch_kind="registers",
+    regime=(
+        "memory-bound row-wise reduce over flattened block tiles; one kernel for "
+        "amax + scale + fp8 cast (full-tile weight preparation path)."
+    ),
+))
+def per_block_quant_fp8(ctx):
+    """Build the math IR: per flattened block tile amax -> scale -> fp8 cast."""
+    v = ctx.load("x").cast("fp32")
+    amax = ctx.reduce_max(ctx.abs(v), axis=1, accum_dtype="fp32")
+    amax_safe = ctx.maximum(amax, ctx.lit(_EPS))
+    scale = amax_safe / ctx.lit(FP8_MAX)
+    qf = v / scale
+    qf = ctx.minimum(ctx.maximum(qf, ctx.lit(-FP8_MAX)), ctx.lit(FP8_MAX))
+    ctx.store("q", qf.cast("fp8"))
+    ctx.store("scale", scale)

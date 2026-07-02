@@ -116,6 +116,22 @@
       "type": "array",
       "items": { "type": "string" },
       "description": "Op ids this op composes with (reasoned at the op level)."
+    },
+    "provenance": {
+      "type": "object",
+      "description": "Optional source-of-truth metadata. VKL-authored specs set authored_by='dsl' and source_path='xkernels.vkl:<kernel>'.",
+      "required": ["authored_by", "source_path"],
+      "additionalProperties": false,
+      "properties": {
+        "authored_by": {
+          "type": "string",
+          "enum": ["human", "agent", "hybrid", "dsl"]
+        },
+        "source_path": {
+          "type": "string",
+          "description": "Repo-relative source path or source handle that generated this Op Spec."
+        }
+      }
     }
   },
   "$defs": {

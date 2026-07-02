@@ -85,5 +85,9 @@
     "  Qwen3-4B = 8 KV heads for 32 QO heads) \u2014 enforced downstream, not here."
   ],
   "shape_sweep": "paged_kv_gather",
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "provenance": {
+    "authored_by": "dsl",
+    "source_path": "xkernels.vkl:paged_kv_gather"
+  }
 }

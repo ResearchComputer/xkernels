@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 ResearchComputer
-"""DSL-authored gated activations — ``silu_and_mul`` / ``gelu_and_mul`` (issue #67).
+"""DSL-authored gated activations — issue #67.
 
 mini-sglang's FFN block calls ``flashinfer.silu_and_mul`` / ``gelu_and_mul``
 (no ROCm wheel). xkernels fuses SwiGLU *inside* ``fused_ffn`` but never exposed
-the bare gated-activation op. These two ops fill that gap.
+the bare gated-activation op. These ops fill that gap.
 
 Mathematically a gated activation is ``act(gate) * up`` — pure pointwise, no
 reduction — so it does not fit ``rowwise`` (which tiles a Reduce axis) or
@@ -12,12 +12,13 @@ reduction — so it does not fit ``rowwise`` (which tiles a Reduce axis) or
 ``Launch.elementwise()`` pattern added alongside this op: one program per flat
 tile of the output, every node a Load/Pointwise/Store over the same grid.
 
-The flashinfer/vLLM signature packs gate+up into ONE ``[..., 2K]`` tensor; the
-*contract* here is the mathematically-honest TWO-input form ``act(gate[M,K]) *
-up[M,K]`` (gate and up are independent tensors — the packing is a caller
-convention). A consumer with the packed buffer does ``gate, up = x.chunk(2,
-dim=-1)`` then calls this op. Keeping two inputs avoids a static-slice math node
-and keeps the IR at its designed ~6 kinds (the slice would be a 7th).
+There are two contract families:
+
+* ``silu_and_mul`` / ``gelu_and_mul`` are the mathematically-honest two-input
+  form: ``act(gate[M,K]) * up[M,K]``.
+* ``packed_silu_and_mul`` / ``packed_gelu_and_mul`` match the flashinfer/vLLM
+  single-buffer convention: ``x[M,2K]`` with gate in the first half and up in
+  the second half.
 
 gelu uses the tanh approximation (``0.5x(1+tanh(...))``) — the form flashinfer /
 vLLM's ``gelu_and_mul`` use (and what the GELU(tanh) issue specifies). silu is
@@ -39,7 +40,7 @@ from .. import (
 )
 from ..tiles import bf16, fp16, fp32
 
-__all__ = ["silu_and_mul", "gelu_and_mul"]
+__all__ = ["silu_and_mul", "gelu_and_mul", "packed_silu_and_mul", "packed_gelu_and_mul"]
 
 
 def _gated_numerics() -> Numerics:
@@ -141,3 +142,66 @@ def gelu_and_mul(ctx):
     g = ctx.load("gate").cast("fp32")
     u = ctx.load("up")
     ctx.store("out", (ctx.gelu(g) * u).cast(ctx.out_dtype()))
+
+
+@kernel(
+    id="packed_silu_and_mul@1.0.0",
+    kernel="packed_silu_and_mul",
+    canonical_op="activation",
+    name="Packed SiLU-gated multiply (FlashInfer SwiGLU activation)",
+    signature="out[M,K] = silu(x[M,0:K]) * x[M,K:2K]",
+    inputs={
+        "x": TensorDecl(rank=2, dtype=(fp32, bf16, fp16), symbols=("M", "twoK")),
+    },
+    outputs={
+        "out": TensorDecl(rank=2, dtype=(fp32, bf16, fp16), symbols=("M", "K")),
+    },
+    constraints=("twoK % 2 == 0", "twoK == K * 2"),
+    preconditions=(
+        "x is a contiguous row-major packed gate/up tensor with shape [M,2K]",
+        "x[:, :K] is the gate half; x[:, K:] is the up half",
+    ),
+    numerics=_gated_numerics(),
+    shape_sweep="packed_silu_and_mul",
+    fusions=(),
+)
+@launch(Launch.elementwise())
+@targets(triton=_TARGET)
+def packed_silu_and_mul(ctx):
+    """``out = silu(x[:, :K]) * x[:, K:]`` for packed FlashInfer-style input."""
+    x = ctx.load("x")
+    gate = ctx.slice(x, axis=1, start=0, stop="shape//2").cast("fp32")
+    up = ctx.slice(x, axis=1, start="shape//2", stop="shape")
+    ctx.store("out", (ctx.silu(gate) * up).cast(ctx.out_dtype()))
+
+
+@kernel(
+    id="packed_gelu_and_mul@1.0.0",
+    kernel="packed_gelu_and_mul",
+    canonical_op="activation",
+    name="Packed GELU(tanh)-gated multiply",
+    signature="out[M,K] = gelu_tanh(x[M,0:K]) * x[M,K:2K]",
+    inputs={
+        "x": TensorDecl(rank=2, dtype=(fp32, bf16, fp16), symbols=("M", "twoK")),
+    },
+    outputs={
+        "out": TensorDecl(rank=2, dtype=(fp32, bf16, fp16), symbols=("M", "K")),
+    },
+    constraints=("twoK % 2 == 0", "twoK == K * 2"),
+    preconditions=(
+        "x is a contiguous row-major packed gate/up tensor with shape [M,2K]",
+        "x[:, :K] is the gate half; x[:, K:] is the up half",
+        "gelu uses the tanh approximation (flashinfer/vLLM gelu_and_mul form)",
+    ),
+    numerics=_gated_numerics(),
+    shape_sweep="packed_gelu_and_mul",
+    fusions=(),
+)
+@launch(Launch.elementwise())
+@targets(triton=_TARGET)
+def packed_gelu_and_mul(ctx):
+    """``out = gelu_tanh(x[:, :K]) * x[:, K:]`` for packed input."""
+    x = ctx.load("x")
+    gate = ctx.slice(x, axis=1, start=0, stop="shape//2").cast("fp32")
+    up = ctx.slice(x, axis=1, start="shape//2", stop="shape")
+    ctx.store("out", (ctx.gelu(gate) * up).cast(ctx.out_dtype()))

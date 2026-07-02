@@ -1,15 +1,15 @@
 {
-  "id": "silu_and_mul@1.0.0",
-  "name": "SiLU-gated multiply (SwiGLU activation)",
+  "id": "packed_gelu_and_mul@1.0.0",
+  "name": "Packed GELU(tanh)-gated multiply",
   "version": "1.0.0",
-  "kernel": "silu_and_mul",
+  "kernel": "packed_gelu_and_mul",
   "op": {
-    "signature": "out[M,K] = silu(gate[M,K]) * up[M,K]",
+    "signature": "out[M,K] = gelu_tanh(x[M,0:K]) * x[M,K:2K]",
     "canonical_op": "activation",
     "fusions": []
   },
   "inputs": {
-    "gate": {
+    "x": {
       "dtype": [
         "fp32",
         "bf16",
@@ -19,20 +19,7 @@
       "layout": "row_major",
       "shape_symbols": [
         "M",
-        "K"
-      ]
-    },
-    "up": {
-      "dtype": [
-        "fp32",
-        "bf16",
-        "fp16"
-      ],
-      "rank": 2,
-      "layout": "row_major",
-      "shape_symbols": [
-        "M",
-        "K"
+        "twoK"
       ]
     }
   },
@@ -52,14 +39,16 @@
     }
   },
   "constraints": [
-    "dtype(gate) == dtype(up)"
+    "twoK % 2 == 0",
+    "twoK == K * 2"
   ],
   "preconditions": [
-    "gate, up share shape [M,K] and are contiguous row-major",
-    "for the flashinfer one-tensor [M,2K] form: gate, up = x.chunk(2, dim=-1)"
+    "x is a contiguous row-major packed gate/up tensor with shape [M,2K]",
+    "x[:, :K] is the gate half; x[:, K:] is the up half",
+    "gelu uses the tanh approximation (flashinfer/vLLM gelu_and_mul form)"
   ],
   "numerics": {
-    "reference": "xkernels.vkl.auto:silu_and_mul",
+    "reference": "xkernels.vkl.auto:packed_gelu_and_mul",
     "rtol": 0.016,
     "atol": 0.01,
     "reduce_dtype": "fp32",
@@ -80,10 +69,10 @@
     },
     "notes": "Pure pointwise gated activation. Nonlinearity in promoted (fp32) precision, cast to out dtype; only divergence is that final cast."
   },
-  "shape_sweep": "silu_and_mul",
+  "shape_sweep": "packed_gelu_and_mul",
   "composes_with": [],
   "provenance": {
     "authored_by": "dsl",
-    "source_path": "xkernels.vkl:silu_and_mul"
+    "source_path": "xkernels.vkl:packed_gelu_and_mul"
   }
 }

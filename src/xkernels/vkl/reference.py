@@ -44,7 +44,7 @@ def make_inputs(
     the point (or register a custom generator, first-writer-wins).
     """
     g = torch.Generator(device=device).manual_seed(seed)
-    dtype = to_torch_dtype(point["dtype"])
+    point_dtype = point["dtype"]
     inputs: dict[str, torch.Tensor] = {}
     for name, decl in spec.inputs.items():
         shape = tuple(point[sym] for sym in decl.symbols)
@@ -55,6 +55,8 @@ def make_inputs(
             t = torch.randint(0, upper, shape, generator=g, device=device)
             inputs[name] = t.to(to_torch_dtype(decl.dtype[0]))
         else:
+            dtype_short = point_dtype if point_dtype in decl.dtype else decl.dtype[0]
+            dtype = to_torch_dtype(dtype_short)
             t = (torch.rand(shape, generator=g, device=device) * 2 - 1).to(dtype)
             inputs[name] = t
     return inputs

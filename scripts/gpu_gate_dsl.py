@@ -16,10 +16,15 @@ from xkernels.vkl import register_dsl, spec_of
 from xkernels.vkl.examples import (
     apply_rope,
     gelu_and_mul,
+    packed_gelu_and_mul,
+    packed_silu_and_mul,
     paged_kv_gather,
+    per_block_quant_fp8,
     per_token_group_quant_fp8,
     rmsnorm,
+    rowwise_softmax,
     silu_and_mul,
+    temperature_softmax,
 )
 
 ARCH = "nvidia_sm121"
@@ -44,6 +49,11 @@ print(f"=== DSL GPU gate @ {ARCH} (torch {torch.__version__}) ===")
 _gate("rmsnorm", rmsnorm)
 _gate("silu_and_mul", silu_and_mul)
 _gate("gelu_and_mul", gelu_and_mul)
+_gate("packed_silu_and_mul", packed_silu_and_mul)
+_gate("packed_gelu_and_mul", packed_gelu_and_mul)
 _gate("per_token_group_quant_fp8", per_token_group_quant_fp8)
+_gate("per_block_quant_fp8", per_block_quant_fp8)
 _gate("apply_rope", apply_rope)
 _gate("paged_kv_gather", paged_kv_gather)
+_gate("temperature_softmax", temperature_softmax)
+_gate("rowwise_softmax", rowwise_softmax)

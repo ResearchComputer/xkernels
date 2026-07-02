@@ -80,5 +80,9 @@
     "notes": "Variance reduced in fp32 (rsqrt of fp32 mean-of-squares); identical numerics to dual_rmsnorm's per-latent branch. eps=1e-6 baked (Llama/DeepSeek default)."
   },
   "shape_sweep": "rmsnorm",
-  "composes_with": []
+  "composes_with": [],
+  "provenance": {
+    "authored_by": "dsl",
+    "source_path": "xkernels.vkl:rmsnorm"
+  }
 }

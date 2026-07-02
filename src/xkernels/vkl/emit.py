@@ -47,6 +47,10 @@ def emit_spec(spec: KernelSpec) -> dict[str, Any]:
         "numerics": spec.numerics.to_dict(spec.reference_path),
         "shape_sweep": spec.shape_sweep,
         "composes_with": [],
+        "provenance": {
+            "authored_by": "dsl",
+            "source_path": f"{_DSL_SOURCE}:{spec.short_name}",
+        },
     }
 
 

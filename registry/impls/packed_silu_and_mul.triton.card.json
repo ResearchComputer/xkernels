@@ -1,0 +1,37 @@
+{
+  "id": "packed_silu_and_mul.triton@1.0.0",
+  "implements": "packed_silu_and_mul@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": {
+      "kind": "registers",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {
+    "BLOCK": {
+      "type": "int",
+      "choices": [
+        1024,
+        2048,
+        4096
+      ],
+      "_doc": "vkl-declared autotune knob for triton/any"
+    }
+  },
+  "perf": {
+    "regime": "memory-bound elementwise; one flat-1D kernel. Portable Triton runs on amd_cdna3 (gfx942); vectorized loads + a wider BLOCK are the tune lever.",
+    "roofline": "memory_bound",
+    "measured": []
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "dsl",
+    "created": "2026-07-02T09:53:00+00:00",
+    "source_path": "xkernels.vkl:packed_silu_and_mul"
+  }
+}

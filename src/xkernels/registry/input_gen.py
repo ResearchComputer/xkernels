@@ -166,6 +166,15 @@ def _mhc_pre(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
     }
 
 
+def _temperature_softmax(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
+    dt = to_torch_dtype(point["dtype"])
+    B, V = int(point["B"]), int(point["V"])
+    logits = _gen(device, dt, B, V, seed=seed)
+    g = torch.Generator(device=device).manual_seed(seed + 1)
+    temperatures = torch.rand(B, generator=g, device=device, dtype=torch.float32) + 0.25
+    return {"logits": logits, "temperatures": temperatures}
+
+
 _GENERATORS: dict[str, Callable[[dict, int, str], dict[str, Any]]] = {
     "fused_ffn@1.0.0": _ffn,
     "dual_rmsnorm@1.0.0": _dual_rmsnorm,
@@ -177,6 +186,7 @@ _GENERATORS: dict[str, Callable[[dict, int, str], dict[str, Any]]] = {
     "moe_int4_w4a16@1.0.0": _moe_int4_w4a16,
     "sparse_mla_attention@1.0.0": _sparse_mla_attention,
     "mhc_pre@1.0.0": _mhc_pre,
+    "temperature_softmax@1.0.0": _temperature_softmax,
 }
 
 
@@ -197,6 +207,11 @@ def register_input_gen(op_id: str, fn) -> None:
 
 
 def generate_inputs(op_id: str, point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
+    if op_id not in _GENERATORS:
+        try:
+            from ..vkl import examples as _vkl_examples  # noqa: F401  lazy DSL generator wiring
+        except Exception:
+            pass
     if op_id not in _GENERATORS:
         raise KeyError(
             f"no input generator registered for {op_id!r}; "

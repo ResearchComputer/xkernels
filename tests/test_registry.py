@@ -172,13 +172,20 @@ def test_find_impl_cuda_card_rejected_on_amd_target():
     # per-token-group fp8 quant (issue #57, reduce_max + mixed-dtype outputs).
     "silu_and_mul.reference@1.0.0",
     "gelu_and_mul.reference@1.0.0",
+    "packed_silu_and_mul.reference@1.0.0",
+    "packed_gelu_and_mul.reference@1.0.0",
     "per_token_group_quant_fp8.reference@1.0.0",
+    "per_block_quant_fp8.reference@1.0.0",
     # DSL-authored (vkl): RoPE (issue #68) — the data-addressing showcase
     # (Gather/Slice/Concat/Unsqueeze; docs/brainstorm/06 A4 case (a)).
     "apply_rope.reference@1.0.0",
     # DSL-authored (vkl): paged-KV gather (issue #71 building block) — the N-D-
     # index gather showcase (pool[page_table]; docs/brainstorm/06 A4 case (a)).
     "paged_kv_gather.reference@1.0.0",
+    # DSL-authored (vkl): temperature softmax — the deterministic row-wise
+    # prefix of the sampling / gating issue family (#69/#70).
+    "temperature_softmax.reference@1.0.0",
+    "rowwise_softmax.reference@1.0.0",
 ])
 def test_verify_reference_card_passes_on_cpu(card_id):
     v = verify(card_id, arch="any")
