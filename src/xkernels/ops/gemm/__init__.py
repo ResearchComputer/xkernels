@@ -32,6 +32,21 @@ with backend_registration_guard(
     with triton_import_ctx():
         from .triton import entry  # noqa: F401  (registers TRITON: mfma + portable)
 
+# Register the DSL-generated Triton backends for the fp8 quant helpers (issue
+# #57) for their dispatch side effect. Unlike the hand-written mm_fp8_blockscale
+# kernel above (which imports ``triton`` at top level, so it routes through
+# ``triton_import_ctx``), the DSL path builds only a lazy host launcher at import
+# time -- no triton import happens until the kernel is actually called -- so no
+# import-context redirect is needed here (same pattern as ops.norm #66). The
+# cards operate on the grouped [G,B] view; the public [M,K] helpers stay the
+# reference path (reshape+dtype glue is a tracked follow-up).
+with backend_registration_guard(
+    ("per_token_group_quant_fp8", "per_block_quant_fp8"),
+    Backend.TRITON,
+    source="xkernels.ops.gemm.triton.quant_kernel",
+):  # pragma: no cover - hardware dependent
+    from .triton import quant_kernel  # noqa: F401
+
 # Import the CUTE DSL (native CUDA) backend for its registration side effect
 # (optional). NVIDIA-only; gated on `nvidia-cutlass-dsl` (the `cute` extra). On a
 # box without the DSL (CI, AMD) the guard records the failure and the op is

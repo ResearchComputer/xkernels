@@ -15,7 +15,20 @@
   "perf": {
     "regime": "memory-bound row-wise reduce; one kernel for amax + scale + fp8 cast (replaces a Python loop of small torch ops on the inference path).",
     "roofline": "memory_bound",
-    "measured": []
+    "measured": [
+      {
+        "arch": "nvidia_sm121",
+        "shape": {
+          "dtype": "bf16",
+          "G": 229376,
+          "B": 128
+        },
+        "dtype": "bf16",
+        "knobs": {},
+        "source": "run:5d1c455df43a",
+        "ms": 0.41575747100930466
+      }
+    ]
   },
   "uses_primitives": [],
   "supersedes": [],

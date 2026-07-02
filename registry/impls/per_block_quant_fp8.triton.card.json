@@ -15,7 +15,20 @@
   "perf": {
     "regime": "memory-bound row-wise reduce over flattened block tiles; one kernel for amax + scale + fp8 cast (full-tile weight preparation path).",
     "roofline": "memory_bound",
-    "measured": []
+    "measured": [
+      {
+        "arch": "nvidia_sm121",
+        "shape": {
+          "dtype": "bf16",
+          "G": 3136,
+          "B": 16384
+        },
+        "dtype": "bf16",
+        "knobs": {},
+        "source": "run:f305b5141366",
+        "ms": 0.6759706661105156
+      }
+    ]
   },
   "uses_primitives": [],
   "supersedes": [],
