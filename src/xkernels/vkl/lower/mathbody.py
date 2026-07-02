@@ -594,6 +594,23 @@ def _resolve_bound(bound: int | str, axis_size: int) -> int:
     return int(eval(code, {"__builtins__": {}}, allowed))  # noqa: S307
 
 
+def _floored_mod(expr: str, n: int | str) -> str:
+    """Emit a Triton expression for the FLOORED modulo (result always in [0,n)).
+
+    CUDA/Triton ``%`` follows C sign — ``-1 % 64 == -1`` — but coordinate
+    *broadcast* needs Python's floored semantics (``-1 % 64 == 63``). A
+    ``Concat`` b-branch shifts its coord negative (``c{ax} - len_a``); once that
+    negative coord feeds a load's per-axis offset, a C-sign ``%`` yields a
+    negative offset -> an OOB read *before* the buffer (the apply_rope #68
+    illegal-memory-access). Flooring the modulo wraps negative coords to a valid
+    non-negative index, so the (discarded) b-branch lanes stay in bounds. For
+    non-negative coords (every other case) ``((x%n)+n)%n == x%n``, so this is
+    result-preserving (the diagnose-wrong-results "mask by the true extent"
+    fix, generalized to the whole broadcast family).
+    """
+    return f"(({expr}) % {n} + {n}) % {n}"
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # §4  Triton codegen — math IR -> tiled @triton.jit (the tiled_2d launch)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1398,11 +1415,17 @@ class _TritonGenMultiDim:
         raise KeyError(f"no producer for tensor {name!r}")
 
     def _offset(self, name: str, coord: list[str]) -> str:
-        """Per-lane flat offset to read ``name`` at ``coord`` (broadcast via % dim)."""
+        """Per-lane flat offset to read ``name`` at ``coord`` (broadcast via % dim).
+
+        Each per-axis index uses the FLOORED modulo so a negative coord (a
+        ``Concat`` b-branch shifted by ``-len_a``) wraps to a valid index instead
+        of producing a C-sign negative offset (an OOB read before the buffer).
+        """
         shape = self._shape(name)
         stride = self._strides(shape)
         terms = [
-            f"(({coord[a]}) % {shape[a]}) * {stride[a]}" for a in range(len(shape))
+            f"{_floored_mod(coord[a], shape[a])} * {stride[a]}"
+            for a in range(len(shape))
         ]
         return " + ".join(terms) if terms else "0"
 
@@ -1432,14 +1455,14 @@ class _TritonGenMultiDim:
             bi = 0  # base axis
             ci = 0  # output coord index
             while bi < ax:  # leading base axes
-                terms.append(f"(({coord[ci]}) % {base_shape[bi]}) * {base_stride[bi]}")
+                terms.append(f"{_floored_mod(coord[ci], base_shape[bi])} * {base_stride[bi]}")
                 bi += 1
                 ci += 1
             terms.append(f"{idx_var} * {base_stride[bi]}")  # gathered axis
             bi += 1
             ci += n_idx  # skip the index's coords
             while bi < len(base_shape):  # trailing base axes
-                terms.append(f"(({coord[ci]}) % {base_shape[bi]}) * {base_stride[bi]}")
+                terms.append(f"{_floored_mod(coord[ci], base_shape[bi])} * {base_stride[bi]}")
                 bi += 1
                 ci += 1
             off = " + ".join(terms) if terms else "0"

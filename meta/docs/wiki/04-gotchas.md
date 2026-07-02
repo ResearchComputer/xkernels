@@ -287,53 +287,77 @@ bit-exact vs the reference, parity agrees, 134 tests pass. The #57 fp8 quant
 helpers (`per_token_group_quant_fp8` / `per_block_quant_fp8`) wired the same
 way (`ops/gemm/triton/quant_kernel.py`): both triton cards PASS `verify` +
 `verify_parity` on GB10 (bit-exact, max_rel 0.0), and the grouped-view triton
-dispatch is bit-exact with the `[M,K]` reference. **#68 `apply_rope` did NOT
-close — see §14 (its device kernel OOBs).**
+dispatch is bit-exact with the `[M,K]` reference. **#68 `apply_rope` also wired
+(`ops/attention/triton/rope_kernel.py`) — but needed §14's codegen fix first**
+(its device kernel had a modulo-sign OOB).
 
-## 14. `apply_rope`'s generated triton device kernel OOBs (multi-dim addressing codegen bug, #68)
+## 14. RESOLVED — `apply_rope`'s generated device kernel OOB was a modulo-sign bug (#68, fixed)
+
+> This entry was originally written as an unfixed blocker (the prior session
+> diagnosed a "multi-dim address decomposition codegen bug" and shipped a
+> reference-only interim). That diagnosis was **wrong**: the codegen's address
+> math is in-bounds; the real bug was a Python-vs-C **modulo sign** mismatch.
+> Rewritten as a resolved gotcha because the lesson generalizes to every future
+> DSL data-addressing op.
 
 **Symptom.** `verify("apply_rope.triton@1.0.0", arch="nvidia_sm121")` on ds5
-(GB10) raises `RuntimeError: Triton Error [CUDA]: an illegal memory access was
-encountered` (`compiled=False`). `compute-sanitizer --tool memcheck` on a
-standalone repro reports a stream of `Access to 0x... is out of bounds` (true
-OOB, not a race — the trichotomy signature is `FAILS/blocking + sanitizer
-ERROR`). The CPU oracle and the **reference** card are bit-exact
-(`verify("apply_rope.reference@1.0.0")` passes, `max_rel=0.0`); only the
-**generated triton device kernel** is broken.
+(GB10) raised `RuntimeError: Triton Error [CUDA]: an illegal memory access was
+encountered` (`compiled=False`). `compute-sanitizer --tool memcheck` reported a
+stream of `Access to 0x... is out of bounds` (true OOB — trichotomy `FAILS/
+blocking + sanitizer ERROR`). The CPU oracle and the **reference** card were
+bit-exact; only the **generated triton device kernel** crashed.
 
-**Cause.** `apply_rope` is the showcase for the data-ADDRESSING math-IR family
-(`Gather`/`Slice`/`Concat`/`Unsqueeze`, docs/brainstorm/06 A4 case (a)). Its
-body gathers `cos_sin_cache` by the `positions` input, slices/unsqueezes/rotates/
-concats over a 3-D `[T,H,D]` shape, and launches via `Launch.elementwise()` →
-the `_TritonGenMultiDim` lowering in `src/xkernels/vkl/lower/mathbody.py`. That
-lowering computes a per-lane multi-axis address whose index runs off the end of
-one of the operands — a codegen bug in the multi-dim address decomposition (the
-card's own regime note flagged this as an "A4 follow-up"). The stale
-"Verified bit-exact on GB10" in the body docstring was almost certainly
-`TRITON_INTERPRET=1`, which materializes every `tl.load` in bounds and proves
-nothing about the device address math — the exact false-confidence trap the
-`diagnose-wrong-results` skill warns about.
+**Real cause (not what the first diagnosis said).** The first diagnosis guessed
+an off-by-one in the multi-axis offset decomposition; it was **wrong**, and
+chasing it wasted a session. The generated kernel's offsets are all in-bounds by
+construction — every per-axis index is `% shape`, every load is masked. The bug
+is a **modulo-sign mismatch**: `_TritonGenMultiDim._offset` emitted `(coord) %
+shape` assuming **Python** semantics (floored: `-1 % 64 == 63`), but **CUDA /
+Triton `%` follows C sign** (truncated: `-1 % 64 == -1`). Where does a negative
+coord come from? The **`Concat` b-branch** shifts its output coord by
+`-len_a` (`b_coord = c{ax} - len_a`), so for output lanes `c{ax} < len_a` the
+b-coord is *negative*. That negative coord then feeds a downstream load's
+per-axis index (e.g. `apply_rope`'s `g13 = cache[pos*D + (c2-32) % 64]`); a
+C-sign `%` keeps it negative → the offset is `pos*D - k` → for `pos=0` it reads
+*before* the buffer → illegal memory access. The masked-`where` discards those
+lanes' *values* but the *load already executed* OOB.
 
-**Fix (status: NOT fixed; interim shipped).** The bug is in the DSL lowering
-(not the wiring), so it is tracked separately from the §13 wiring rule. Two
-load-bearing safety facts drove the interim:
-1. **A runtime illegal-memory-access is NOT caught by `dispatch`'s
-   registration-failure fallback** (that fallback only covers backends that fail
-   to *register*). The triton launcher registers fine; it crashes at *launch* →
-   the exception propagates AND **poisons the CUDA context process-wide**
-   (verified: after the triton crash, even an explicit `backend="reference"` call
-   fails with the same `AcceleratorError`).
-2. Therefore the triton backend is **deliberately NOT registered** in
-   `ops/attention/__init__.py`. The public `xkernels.apply_rope(q,k,pos,csc)`
-   dispatches to REFERENCE only (bit-exact on GPU) — real interim value for the
-   #68 consumer (a packaged RoPE replacing the mini-sglang torch reference),
-   with zero crash risk. The two device-gate tests in `tests/test_vkl_rope.py`
-   are marked `xfail(strict=True)` as canaries — they xpass the day the lowering
-   is fixed.
+**Fix.** Add a floored-modulo helper `_floored_mod(expr, n)` =
+`((expr) % n + n) % n` (non-negative for all inputs) and use it at the three
+emit sites that compute a load's per-axis broadcast index (`_offset` + the
+Gather leading/trailing axes). The output coord decomposition (`c0/c1/c2` from
+`offs >= 0`) is left on plain `%` (its dividend is always non-negative). For
+non-negative coords `((x%n)+n)%n == x%n`, so the fix is **result-preserving**
+for every existing (non-`Concat-b`) load — it only changes the (discarded,
+value-irrelevant) b-branch lanes, wrapping them in-bounds. This is exactly the
+"mask every gather by its true extent; result-preserving" rule the
+`diagnose-wrong-results` skill states, generalized to the whole broadcast
+family. One-line-after-the-helper change; bit-exact-within-bf16 verified.
 
-**Repro / next step.** `rcc --profile ds5 run --docker -s 'python -c "from
-xkernels import verify; verify(\"apply_rope.triton@1.0.0\", arch=\"nvidia_sm121\")"'`
-then `compute-sanitizer --tool memcheck` to see the OOB. The fix is in
-`_TritonGenMultiDim` (likely an off-by-one / missing mask in the multi-axis
-offset decomposition); once it passes `verify`, enabling the backend is the
-one-line `register_dsl` module + import (§13).
+**Verification (ds5/GB10, after the fix).** `verify("apply_rope.triton@1.0.0")`
+compiled=True, passed=True (5/5, max_rel 7.5e-3 < bf16 rtol 1e-2);
+`verify("apply_rope.reference@1.0.0")` bit-exact; `verify_parity(archs=[
+"nvidia_sm121"])` agree=True; compute-sanitizer CLEAN. The triton backend is
+wired (`ops/attention/triton/rope_kernel.py` + the §13 import); the 3
+device-gate tests in `test_vkl_rope.py` RUN and PASS (the skip markers are now
+no-ops).
+
+**The reusable lesson (why this is a gotcha, not just a fix).**
+1. **Python `%` ≠ CUDA `%` for negative dividends.** Any DSL lowering that
+   emits `coord % shape` for a broadcast index MUST floor it — a `Concat`
+   b-branch (and any future op that subtracts from a coord) makes the dividend
+   negative. Assume Python semantics only when the dividend is provably `>= 0`.
+2. **An OOB read is committed even if `tl.where` discards the value.** The
+   `where` selects between two *already-loaded* values; both loads run. So the
+   b-branch's address must be in-bounds even though its result is thrown away —
+   hence floor the modulo rather than relying on the `where`.
+3. **"Sanitizer reports OOB" names the *symptom*, not the *root cause*.** The
+   first session read the sanitizer's "out of bounds" as "the multi-axis
+   decomposition is wrong" and spent a session on a wrong fix. The standalone
+   repro + offset-algebra (read the *generated source*) pinpointed the negative
+   modulo in 15 minutes. **Always dump + read the generated kernel source
+   before theorizing about codegen** — the `diagnose-wrong-results` skill's
+   step-1 standalone-repro includes exactly this.
+4. **`verify_parity` defaults to CPU** (`device` derived from `archs`); pass
+   `archs=["nvidia_sm121"]` (or `device="cuda"`) or the TRITON backend is
+   "not runnable" and parity is inconclusive (`agree=None`), not a pass.

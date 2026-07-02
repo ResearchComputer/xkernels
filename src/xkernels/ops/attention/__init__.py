@@ -63,16 +63,15 @@ with backend_registration_guard(
     with triton_import_ctx():
         from .triton import sparse_mla_kernel  # noqa: F401
 
-# NOTE: ``apply_rope`` (issue #68) has a DSL-emitted triton card, but its device
-# kernel currently CRASHES with an illegal-memory-access (a true OOB in the
-# multi-dim gather/slice lowering, ``_TritonGenMultiDim`` -- confirmed by
-# compute-sanitizer; see meta/docs/wiki/04-gotchas.md §14). The triton backend
-# is therefore deliberately NOT registered here: a runtime illegal-memory-access
-# is not caught by dispatch's registration-failure fallback and would poison
-# the CUDA context, making ``xkernels.apply_rope(...)`` crash by default. The
-# public ``apply_rope`` dispatches to REFERENCE (the DSL auto-reference, which
-# verifies bit-exact on GPU) until the codegen bug is fixed -- then the one-line
-# ``register_dsl`` module + this import is the only addition needed (wiki §13).
+# Import the DSL-generated Triton backend for ``apply_rope`` (issue #68) for its
+# registration side effect. Optional. DSL path (no triton_import_ctx needed --
+# register_dsl builds only the host launcher; wiki §13).
+with backend_registration_guard(
+    "apply_rope",
+    Backend.TRITON,
+    source="xkernels.ops.attention.triton.rope_kernel",
+):  # pragma: no cover - requires triton
+    from .triton import rope_kernel  # noqa: F401
 
 __all__ = [
     "mha_merge_state",

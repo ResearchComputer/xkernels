@@ -15,7 +15,22 @@
   "perf": {
     "regime": "per-token cos/sin-cache gather + rotate-half pointwise. Memory-bound (one cache read per token, broadcast over heads). Device lowering needs the multi-dim gather launch pattern (docs/brainstorm/06 A4 follow-up).",
     "roofline": "memory_bound",
-    "measured": []
+    "measured": [
+      {
+        "arch": "nvidia_sm121",
+        "shape": {
+          "dtype": "bf16",
+          "T": 64,
+          "H": 8,
+          "D": 128,
+          "P": 512
+        },
+        "dtype": "bf16",
+        "knobs": {},
+        "source": "run:548e6ee74f63",
+        "ms": 0.010364000025826195
+      }
+    ]
   },
   "uses_primitives": [],
   "supersedes": [],

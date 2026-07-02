@@ -120,19 +120,20 @@ needs anything outside this list — e.g.:
   first, then `add-epilogue-fusion` — the DSL emits the UN-fused base)
 
 > **Caveat — the data-ADDRESSING family (`gather`/`slice`/`concat`/`unsqueeze`)
-> is CPU-oracle-verifiable but its DEVICE lowering is currently unreliable.**
-> These nodes were added (docs/brainstorm/06 A4 case (a)) and the torch oracle +
-> reference card pass bit-exact, but the generated triton device kernel
-> (`_TritonGenMultiDim` in `lower/mathbody.py`) has a known OOB — `apply_rope`
-> (#68) crashes with an illegal-memory-access on GB10 despite an interpreter-green
-> oracle (diagnosis: `meta/docs/wiki/04-gotchas.md` §14; `TRITON_INTERPRET=1`
-> gives false confidence here). So for an op that needs gather/indexing: the CPU
-> gate (step 6) passes, but the device gate (step 8) may crash. Do NOT wire such
-> a triton backend into the package import (a runtime OOB poisons the CUDA
-> context — `dispatch`'s registration-failure fallback does not catch it) until
-> the device gate passes; ship the reference-backed op and track the codegen bug.
-> The pointwise/reduce/MMA categories (gemm/norm/reduce/activation) are not
-> affected.
+> verifies on device, but its codegen had a modulo-sign gotcha (now fixed).**
+> These nodes (docs/brainstorm/06 A4 case (a)) lower via `_TritonGenMultiDim`, a
+> flat-tiled grid that decomposes each lane's offset into per-axis coords and
+> lets every node compute its own address. `apply_rope` (#68) is the worked
+> example and is now verified on GB10 (`verify` 5/5, parity agrees). The ONE
+> gotcha to know: the codegen emits `coord % shape` for broadcast indices, and a
+> `Concat` b-branch shifts its coord *negative* (`c{ax} - len_a`) — so the modulo
+> MUST be floored (`((x%n)+n)%n`), because CUDA `%` follows C sign (`-1%64 ==
+> -1`, not Python's `63`). That bug (now fixed via `_floored_mod` in
+> `lower/mathbody.py`; diagnosis: `meta/docs/wiki/04-gotchas.md` §14) was the
+> one that made an earlier session wrongly declare the addressing family
+> "unverifiable on device." It is verifiable; just floor the modulo. The
+> pointwise/reduce/MMA categories (gemm/norm/reduce/activation) are unaffected
+> (their coords are always non-negative).
 
 If you are unsure, sketch the op as the DAG above on paper; if every arrow maps
 to a row in the table, the DSL path is faster.

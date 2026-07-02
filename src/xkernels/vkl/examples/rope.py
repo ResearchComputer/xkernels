@@ -30,23 +30,26 @@ This is bit-exact with the hand ``minisgl`` ``_rope_ref`` (the rotate-half form;
 flashinfer's packed-cache kernel computes the identical products directly). The
 CPU oracle IS the reference; the reference card passes ``verify`` on CPU.
 
-**Device codegen (KNOWN BUG — not yet verified on device):** RoPE is a
-multi-dim (``[T,H,D]``) gather + per-axis broadcast, so it exercises the
-multi-dim addressing lowering (``_TritonGenMultiDim`` in ``lower/mathbody.py``):
-a flat-tiled grid whose kernel decomposes each lane's offset into per-axis
-coords and lets every ``Gather``/``Slice``/``Concat``/``Unsqueeze`` compute its
-own address. **The CPU oracle + reference card ARE bit-exact (``max_rel=0.0``,
-``verify("apply_rope.reference@1.0.0")`` passes), but the generated triton
-DEVICE kernel currently CRASHES with an illegal-memory-access on GB10 (sm_121) —
-a true OOB in the multi-dim address computation, confirmed by
-``compute-sanitizer``.** Earlier docstrings claimed "verified bit-exact on
-GB10"; that was stale (almost certainly ``TRITON_INTERPRET=1``, which gives
-false confidence — it materializes every ``tl.load`` in bounds; see the
-``diagnose-wrong-results`` skill). The triton backend is therefore NOT wired
-into ``ops/attention``; the public ``xkernels.apply_rope`` dispatches to
-REFERENCE until the lowering is fixed. Diagnosis + repro:
-``meta/docs/wiki/04-gotchas.md`` §14. The data-addressing family does NOT yet
-close the A4 loop on real hardware — only on the CPU oracle.
+**Device codegen — VERIFIED on GB10 (sm_121).** RoPE is a multi-dim (``[T,H,D]``)
+gather + per-axis broadcast, lowered by ``_TritonGenMultiDim`` in
+``lower/mathbody.py``: a flat-tiled grid whose kernel decomposes each lane's
+offset into per-axis coords and lets every ``Gather``/``Slice``/``Concat``/
+``Unsqueeze`` compute its own address. ``verify("apply_rope.triton@1.0.0")`` is
+compiled=True, passed=True (5/5, max_rel 7.5e-3 < bf16 rtol);
+``verify("apply_rope.reference@1.0.0")`` bit-exact; ``verify_parity`` agrees.
+The triton backend is wired (``ops/attention/triton/rope_kernel.py``).
+
+**The one gotcha (now fixed).** The per-axis broadcast index is emitted as
+``coord % shape``, which is correct only for non-negative coords. A ``Concat``
+b-branch shifts its output coord by ``-len_a`` (negative for the discarded
+lanes), and CUDA/Triton ``%`` follows C sign (``-1 % 64 == -1``, NOT Python's
+``63``), so an unfloored modulo yielded a negative offset → an OOB read *before*
+the buffer. Fixed by ``_floored_mod`` (``((x%n)+n)%n``) in ``lower/mathbody.py``;
+result-preserving for all non-negative-coord loads. The
+``illegal-memory-access`` it caused was once misdiagnosed as a "multi-dim
+decomposition" bug — see ``meta/docs/wiki/04-gotchas.md`` §14 for the full
+lesson (always dump + read the *generated source* before theorizing about
+codegen). The data-addressing family now closes the A4 loop on real hardware.
 """
 from __future__ import annotations
 
