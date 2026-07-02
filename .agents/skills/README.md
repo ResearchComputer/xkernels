@@ -9,6 +9,25 @@ Per `meta/docs/library.md` §7: **cards are nouns (what exists); skills are verb
 to make/improve them).** Every skill is narrow on purpose (§7.2) — broad skills
 mis-fire.
 
+## Authoring surface (two roads to the same contract)
+
+Every NEW op needs an Op Spec + a backend-neutral reference + Impl Cards. There
+are two ways to produce them — **peers, not rivals** (the contract is
+interchangeable; the DSL is never a gatekeeper, `meta/docs/library.md` §10):
+
+- **DSL path** — [`author-a-kernel-with-dsl`](author-a-kernel-with-dsl/SKILL.md):
+  one `@kernel` body builds the math IR that lowers to BOTH the auto-reference
+  (torch, bit-exact) AND a generated Triton kernel. The spec + reference + cards
+  are **emitted**. Faster, less boilerplate, but only for ops expressible as a
+  fixed DAG of pointwise / reduce / MMA (gemm / norm / reduce / activation).
+- **Hand path** — [`author-an-op-spec`](author-an-op-spec/SKILL.md): write the
+  spec + reference + cards by hand across the eight artifacts. The fallback when
+  the op needs data-dependent control flow, masking, scatter/gather, collectives,
+  or a dequant the math IR can't spell — and always a valid choice.
+
+Both gates are CPU-satisfiable (the reference passes `verify` on torch with no
+GPU), so either is a productive first step on a CPU-only box.
+
 ## Frontmatter
 
 Standard fields every agent reads: `name`, `description`, `license`. The
@@ -19,6 +38,8 @@ in a namespaced `x-kernel-lib` block that non-standard consumers ignore (§7.1).
 
 | Skill | Scope | When |
 |---|---|---|
+| [`author-a-kernel-with-dsl`](author-a-kernel-with-dsl/SKILL.md) | agnostic | author a NEW op's whole contract (spec + reference + cards) from ONE `@kernel` source in the **vkl DSL** — the fast-path twin of `author-an-op-spec` for ops the math IR can express (gemm / norm / reduce / activation) |
+| [`author-an-op-spec`](author-an-op-spec/SKILL.md) | agnostic | author the contract BY HAND — the fallback when the op is not math-IR-expressible (attention masking, scatter/gather, collectives), or the gateway when you prefer the eight-artifact path |
 | [`tile-a-gemm`](tile-a-gemm/SKILL.md) | cuda, hip | build a tiled GEMM from primitives (the workhorse) |
 | [`autotune-knob-sweep`](autotune-knob-sweep/SKILL.md) | agnostic | search the declared knob space, record the winner |
 | [`port-cuda-to-hip`](port-cuda-to-hip/SKILL.md) | cuda→hip | functional port of a CUDA card to a HIP card |

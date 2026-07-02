@@ -54,6 +54,17 @@ x-kernel-lib:
 
 ## Procedure
 
+> **Contract first.** If the GEMM op has no Op Spec yet, the fastest path is
+> [`author-a-kernel-with-dsl`](../author-a-kernel-with-dsl/SKILL.md): one
+> `@kernel` body (`ctx.mma(a,b,accum_dtype="fp32")` under `Launch.tiled_2d()`)
+> emits the spec + reference + a **generated Triton GEMM card** that already
+> passes `verify` and reaches ~97% of cuBLAS after autotune. THIS skill
+> (`tile-a-gemm`) is the **native-kernel** layer — it builds the CUTE/CK tiled
+> kernel from primitives to reach the vendor ceiling where the generated Triton
+> kernel stops (e.g. attention-shaped GEMMs, fp8 dequant, custom epilogues). The
+> two are complementary: the DSL gives you the contract + a strong Triton
+> baseline; tile-a-gemm writes the native kernel when you need more.
+
 1. `get_op_spec(op_id)`. Confirm `op.canonical_op == "gemm"`, read `constraints`
    (e.g. `K % 8 == 0`) and `numerics` (accumulate in fp32 for fp16/bf16 inputs).
 2. Read `arch.wave_size`. Tile so that one tile's output is produced by an

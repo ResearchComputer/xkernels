@@ -1,0 +1,11 @@
+{
+  "default_dtype": "bf16",
+  "points": [
+    {"dtype": "bf16", "num_pages": 8,  "page_size": 2, "num_kv_heads": 4, "head_dim": 64,  "num_seqs": 2, "max_num_pages": 3},
+    {"dtype": "bf16", "num_pages": 16, "page_size": 1, "num_kv_heads": 8, "head_dim": 128, "num_seqs": 1, "max_num_pages": 7},
+    {"dtype": "fp16", "num_pages": 32, "page_size": 4, "num_kv_heads": 4, "head_dim": 64,  "num_seqs": 4, "max_num_pages": 5},
+    {"dtype": "bf16", "num_pages": 64, "page_size": 2, "num_kv_heads": 8, "head_dim": 128, "num_seqs": 3, "max_num_pages": 11},
+    {"dtype": "fp32", "num_pages": 16, "page_size": 2, "num_kv_heads": 4, "head_dim": 64,  "num_seqs": 2, "max_num_pages": 5},
+    {"dtype": "fp16", "num_pages": 128,"page_size": 2, "num_kv_heads": 16,"head_dim": 256, "num_seqs": 6, "max_num_pages": 13}
+  ]
+}

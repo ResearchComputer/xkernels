@@ -11,5 +11,9 @@ dist/
 build/
 # rcc local configuration stays on the laptop.
 .rcc/
+# build metadata, not source.
+*.egg-info/
+# archived probes/scripts are laptop-only working notes.
+scripts/archive/
 # Claude agent worktrees and local state are not needed on the cluster.
 .claude/

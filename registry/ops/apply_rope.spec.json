@@ -1,0 +1,120 @@
+{
+  "id": "apply_rope@1.0.0",
+  "name": "rotary position embedding (RoPE) from a cos/sin cache",
+  "version": "1.0.0",
+  "kernel": "apply_rope",
+  "op": {
+    "signature": "(query_out[T,H,D], key_out[T,H,D]) = rope(query, key, positions, cos_sin_cache); cs=gather(cache, positions); halves=split(D/2); out = concat(q1*cos-q2*sin, q2*cos+q1*sin)",
+    "canonical_op": "attention",
+    "fusions": []
+  },
+  "inputs": {
+    "query": {
+      "dtype": [
+        "bf16",
+        "fp16"
+      ],
+      "rank": 3,
+      "layout": "row_major",
+      "shape_symbols": [
+        "T",
+        "H",
+        "D"
+      ]
+    },
+    "key": {
+      "dtype": [
+        "bf16",
+        "fp16"
+      ],
+      "rank": 3,
+      "layout": "row_major",
+      "shape_symbols": [
+        "T",
+        "H",
+        "D"
+      ]
+    },
+    "cos_sin_cache": {
+      "dtype": [
+        "fp32"
+      ],
+      "rank": 2,
+      "layout": "row_major",
+      "shape_symbols": [
+        "P",
+        "D"
+      ]
+    },
+    "positions": {
+      "dtype": [
+        "int32"
+      ],
+      "rank": 1,
+      "layout": "row_major",
+      "shape_symbols": [
+        "T"
+      ]
+    }
+  },
+  "outputs": {
+    "query_out": {
+      "dtype": [
+        "bf16",
+        "fp16"
+      ],
+      "rank": 3,
+      "layout": "row_major",
+      "shape_symbols": [
+        "T",
+        "H",
+        "D"
+      ]
+    },
+    "key_out": {
+      "dtype": [
+        "bf16",
+        "fp16"
+      ],
+      "rank": 3,
+      "layout": "row_major",
+      "shape_symbols": [
+        "T",
+        "H",
+        "D"
+      ]
+    }
+  },
+  "constraints": [
+    "D % 2 == 0"
+  ],
+  "preconditions": [
+    "cos_sin_cache columns [0, D/2) are cos, [D/2, D) are sin (packed);",
+    "positions[t] < P (a valid row index into cos_sin_cache);",
+    "query.dtype == key.dtype == {query_out,key_out}.dtype;",
+    "D (head_size) in {64, 128, 256, 512} (the supported RoPE head sizes)."
+  ],
+  "numerics": {
+    "reference": "xkernels.vkl.auto:apply_rope",
+    "rtol": 0.01,
+    "atol": 0.01,
+    "cross_backend_rtol": 0.01,
+    "by_dtype": {
+      "fp32": {
+        "rtol": 1e-05,
+        "atol": 1e-06
+      },
+      "bf16": {
+        "rtol": 0.01,
+        "atol": 0.01
+      },
+      "fp16": {
+        "rtol": 0.01,
+        "atol": 0.01
+      }
+    },
+    "notes": "RoPE rotate-half from a packed cos/sin cache. Pure pointwise over the rotation products + a data-ADDRESSING gather of the cache by the positions input (no data-dependent control flow). fp32 products, cast to the head dtype on store. Bit-exact with minisgl _rope_ref."
+  },
+  "shape_sweep": "apply_rope",
+  "composes_with": []
+}

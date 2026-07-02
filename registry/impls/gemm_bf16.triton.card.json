@@ -1,0 +1,1421 @@
+{
+  "id": "gemm_bf16.triton@1.0.0",
+  "implements": "gemm_bf16@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": {
+      "kind": "smem",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {
+    "BLOCK_M": {
+      "type": "int",
+      "choices": [
+        64,
+        128,
+        256
+      ],
+      "_doc": "vkl-declared autotune knob for triton/any"
+    },
+    "BLOCK_N": {
+      "type": "int",
+      "choices": [
+        64,
+        128,
+        256
+      ],
+      "_doc": "vkl-declared autotune knob for triton/any"
+    },
+    "BLOCK_K": {
+      "type": "int",
+      "choices": [
+        32,
+        64
+      ],
+      "_doc": "vkl-declared autotune knob for triton/any"
+    },
+    "num_warps": {
+      "type": "int",
+      "choices": [
+        4,
+        8
+      ],
+      "_doc": "vkl-declared autotune knob for triton/any"
+    },
+    "num_stages": {
+      "type": "int",
+      "choices": [
+        2,
+        3,
+        4
+      ],
+      "_doc": "vkl-declared autotune knob for triton/any"
+    }
+  },
+  "perf": {
+    "regime": "compute-bound dense GEMM; tl.dot on the matrix engine.",
+    "roofline": "compute_bound",
+    "measured": [
+      {
+        "arch": "nvidia_sm90",
+        "shape": {
+          "dtype": "bf16",
+          "M": 4096,
+          "N": 4096,
+          "K": 4096
+        },
+        "dtype": "bf16",
+        "knobs": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "source": "vkl-sweep:gemm_bf16.triton@1.0.0",
+        "ms": 0.5138205289840698
+      },
+      {
+        "arch": "nvidia_sm90",
+        "shape": {
+          "dtype": "bf16",
+          "M": 4096,
+          "N": 4096,
+          "K": 4096
+        },
+        "dtype": "bf16",
+        "knobs": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "source": "vkl-sweep:gemm_bf16.triton@1.0.0 (clean re-time, node unloaded)",
+        "ms": 0.298
+      }
+    ]
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "dsl",
+    "created": "2026-06-30T00:00:00+00:00",
+    "source_path": "xkernels.vkl:gemm_bf16",
+    "tuning_trace": [
+      {
+        "_gate": {
+          "verdict": "BELOW_BAR",
+          "passed": false,
+          "achieved_fraction": 0.27,
+          "bar": 692.3,
+          "measured_tflops": 267.5,
+          "ceiling_tflops": 989.0,
+          "instruction": "wgmma"
+        }
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 64,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.2907721996307373,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 64,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 1.0777151584625244,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 64,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 1.1319537162780762,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 64,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.6156021356582642,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 64,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 1.3427600860595703,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 64,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 1.6537911891937256,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 64,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.0343081951141357,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 64,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 1.1020323038101196,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 64,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 1.2884929180145264,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 64,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.2966285943984985,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 64,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 1.2667222023010254,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 64,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 1.2574466466903687,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.0513064861297607,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 1.0067249536514282,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 1.0261017084121704,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.0257238149642944,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 1.036379098892212,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 1.0942747592926025,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 128,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 0.8480274677276611,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 128,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.7843395471572876,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 128,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.8538028597831726,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 128,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.102407455444336,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 128,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.9600433707237244,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 128,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.9188113212585449,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 256,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.0551012754440308,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 256,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.824312150478363,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 256,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.8984264731407166,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 256,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.0771656036376953,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 256,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.9132583141326904,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 256,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.9799417853355408,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 0.9462012052536011,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.9365689754486084,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.741936981678009,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 0.8640884757041931,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.8862236738204956,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 64,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.9570356011390686,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 64,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.044602632522583,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 64,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.9516734480857849,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 64,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 1.0002390146255493,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 64,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.0317035913467407,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 64,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 1.0816410779953003,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 64,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 1.0928188562393188,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 64,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 0.6930325627326965,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 64,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.9160281419754028,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 64,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.9423673748970032,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 64,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.0262340307235718,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 64,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.5349642038345337,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 64,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 1.050219178199768,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 0.9983720183372498,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.7587265372276306,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.7687680125236511,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.0562517642974854,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.7743970155715942,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.7820945382118225,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 128,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 0.8518978953361511,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 128,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.5404022336006165,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 128,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.8584207892417908,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 128,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 0.7238690257072449,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 128,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.6690554022789001,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 128,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.7934073805809021,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 256,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 5.963387489318848,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 256,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 7.203460693359375,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 256,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 6.608695030212402,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 256,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.175645351409912,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 256,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.6763054728507996,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 256,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.7302970290184021,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 3.7908034324645996,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 3.872356653213501,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 3.8661892414093018,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 0.8516104221343994,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.7092046737670898,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 128,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.514319896697998,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 64,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.132773756980896,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 64,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.8749496340751648,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 64,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.837939441204071,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 64,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.2297635078430176,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 64,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.9050866961479187,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 64,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.9093669652938843,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 64,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.0242493152618408,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 64,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 1.0562514066696167,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 64,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.8702386021614075,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 64,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 0.9033165574073792,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 64,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.9485383033752441,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 64,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.9009957909584045,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 2.711721420288086,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 2.9586617946624756,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 2.964212656021118,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.2423312664031982,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.6455175876617432,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 128,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.5138205289840698,
+        "winner": true
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 128,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 2.4710965156555176,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 128,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 4.434216022491455,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 128,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 4.5022993087768555,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 128,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 1.1822949647903442,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 128,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 0.7099695801734924,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 128,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 0.7456797361373901,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 256,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 15.439007759094238,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 256,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 15.188714027404785,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 256,
+          "BLOCK_K": 32,
+          "num_warps": 4,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 13.219029426574707,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 256,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 5.872196674346924,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 256,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 5.598039150238037,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 256,
+          "BLOCK_K": 32,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "passed": true,
+        "ms": 6.626171588897705,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 5.332276344299316,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 4.995776176452637,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 4,
+          "num_stages": 4
+        },
+        "passed": false,
+        "ms": null,
+        "winner": false,
+        "reason": "scratch overflow: 256 KB > arch budget"
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 2
+        },
+        "passed": true,
+        "ms": 3.751732110977173,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 3
+        },
+        "passed": true,
+        "ms": 3.7842631340026855,
+        "winner": false
+      },
+      {
+        "config": {
+          "BLOCK_M": 256,
+          "BLOCK_N": 256,
+          "BLOCK_K": 64,
+          "num_warps": 8,
+          "num_stages": 4
+        },
+        "passed": false,
+        "ms": null,
+        "winner": false,
+        "reason": "scratch overflow: 256 KB > arch budget"
+      }
+    ]
+  }
+}

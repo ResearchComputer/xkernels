@@ -1,0 +1,27 @@
+{
+  "arch": {
+    "family": "amd_cdna3",
+    "requires": [],
+    "scratch": {
+      "bytes": 0,
+      "kind": "registers"
+    },
+    "wave_size": 0
+  },
+  "backend": "triton",
+  "id": "paged_kv_gather.triton@1.0.0",
+  "implements": "paged_kv_gather@1.0.0",
+  "perf": {
+    "measured": [],
+    "regime": "Pure gather: one page read per (seq, page_slot), no compute. Memory-bound \u2014 the bandwidth ceiling is set by the 5-D copy volume. Exercises the N-D-index gather codegen (2-D page_table -> 5-D out).",
+    "roofline": "memory_bound"
+  },
+  "provenance": {
+    "authored_by": "dsl",
+    "created": "2026-07-02T06:29:48+00:00",
+    "source_path": "xkernels.vkl:paged_kv_gather"
+  },
+  "specialization_knobs": {},
+  "supersedes": [],
+  "uses_primitives": []
+}

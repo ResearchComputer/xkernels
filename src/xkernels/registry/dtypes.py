@@ -11,6 +11,7 @@ _DTYPE_MAP: dict[str, torch.dtype] = {
     "fp8_e4m3fnuz": torch.float8_e4m3fnuz,
     "int32": torch.int32,
     "int8": torch.int8,
+    "bool": torch.bool,  # attention masks (the where() mask operand)
 }
 
 

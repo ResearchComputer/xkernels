@@ -18,3 +18,10 @@ remote_dir = "/capstor/scratch/cscs/xyao/xkernels"
 [profiles.ds5]
 host = "ds5"
 remote_dir = "/local/home/xiayao/xkernels"
+
+# sgs-gpu07: ETH Systems group node, 4x NVIDIA H100 NVL (sm_90), CUDA 13.0,
+# Python 3.12 venv (torch 2.5.1+cu124, triton 3.1.0). No SLURM; venv at .venv/.
+# Run via `rcc --profile sgs-gpu07 run -- .venv/bin/python ...`.
+[profiles.sgs-gpu07]
+host = "sgs-gpu07"
+remote_dir = "/home/xiayao/xkernels"

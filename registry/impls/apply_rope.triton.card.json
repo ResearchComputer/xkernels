@@ -1,0 +1,27 @@
+{
+  "id": "apply_rope.triton@1.0.0",
+  "implements": "apply_rope@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "amd_cdna3",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": {
+      "kind": "registers",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "per-token cos/sin-cache gather + rotate-half pointwise. Memory-bound (one cache read per token, broadcast over heads). Device lowering needs the multi-dim gather launch pattern (docs/brainstorm/06 A4 follow-up).",
+    "roofline": "memory_bound",
+    "measured": []
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "dsl",
+    "created": "2026-07-01T23:59:25+00:00",
+    "source_path": "xkernels.vkl:apply_rope"
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "id": "gemm_bf16@1.0.0",
+  "name": "dense bf16 GEMM (fp32 accumulate)",
+  "version": "1.0.0",
+  "kernel": "gemm_bf16",
+  "op": {
+    "signature": "out[M,N] = (a[M,K] @ b[K,N]) accumulated in fp32, cast to out dtype",
+    "canonical_op": "gemm",
+    "fusions": []
+  },
+  "inputs": {
+    "a": {
+      "dtype": [
+        "fp32",
+        "bf16"
+      ],
+      "rank": 2,
+      "layout": "row_major",
+      "shape_symbols": [
+        "M",
+        "K"
+      ]
+    },
+    "b": {
+      "dtype": [
+        "fp32",
+        "bf16"
+      ],
+      "rank": 2,
+      "layout": "row_major",
+      "shape_symbols": [
+        "K",
+        "N"
+      ]
+    }
+  },
+  "outputs": {
+    "out": {
+      "dtype": [
+        "fp32",
+        "bf16"
+      ],
+      "rank": 2,
+      "layout": "row_major",
+      "shape_symbols": [
+        "M",
+        "N"
+      ]
+    }
+  },
+  "constraints": [
+    "M % 16 == 0",
+    "N % 16 == 0",
+    "K % 16 == 0",
+    "dtype(a) == dtype(b)"
+  ],
+  "preconditions": [
+    "a, b contiguous row-major",
+    "out dtype follows the point dtype"
+  ],
+  "numerics": {
+    "reference": "xkernels.vkl.auto:gemm_bf16",
+    "rtol": 0.02,
+    "atol": 0.1,
+    "reduce_dtype": "fp32",
+    "cross_backend_rtol": 0.02,
+    "by_dtype": {
+      "fp32": {
+        "rtol": 0.0001,
+        "atol": 0.001
+      },
+      "bf16": {
+        "rtol": 0.02,
+        "atol": 0.1
+      }
+    },
+    "notes": "Dense GEMM accumulated in fp32 (out = a.float() @ b.float(), cast). bf16 rtol 2e-2 covers the final fp32->bf16 cast (~1-2 ULP at the output magnitude, which scales with K) plus accumulation-order differences; calibrated empirically, see docs/brainstorm/11 \u00a711."
+  },
+  "shape_sweep": "gemm_bf16",
+  "composes_with": []
+}

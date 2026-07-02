@@ -1,0 +1,89 @@
+{
+  "composes_with": [],
+  "constraints": [
+    "page_size % 1 == 0"
+  ],
+  "id": "paged_kv_gather@1.0.0",
+  "inputs": {
+    "kv_cache": {
+      "dtype": [
+        "bf16",
+        "fp16",
+        "fp32"
+      ],
+      "layout": "row_major",
+      "rank": 4,
+      "shape_symbols": [
+        "num_pages",
+        "page_size",
+        "num_kv_heads",
+        "head_dim"
+      ]
+    },
+    "page_table": {
+      "dtype": [
+        "int32"
+      ],
+      "layout": "row_major",
+      "rank": 2,
+      "shape_symbols": [
+        "num_seqs",
+        "max_num_pages"
+      ]
+    }
+  },
+  "kernel": "paged_kv_gather",
+  "name": "gather a paged KV cache by a page table (paged-attention unpage step)",
+  "numerics": {
+    "atol": 0.0,
+    "by_dtype": {
+      "bf16": {
+        "atol": 0.0,
+        "rtol": 0.0
+      },
+      "fp16": {
+        "atol": 0.0,
+        "rtol": 0.0
+      },
+      "fp32": {
+        "atol": 0.0,
+        "rtol": 0.0
+      }
+    },
+    "cross_backend_rtol": 0.0,
+    "notes": "A pure gather/copy \u2014 no arithmetic, so the gate is bit-exact (max_abs == 0, max_rel == 0). Any drift is a codegen bug in the N-D gather lowering, never rounding. The torch oracle is kv_cache[page_table] (advanced indexing); the device lowering is tl.load(pool + page_table_value * stride).",
+    "reference": "xkernels.vkl.auto:paged_kv_gather",
+    "rtol": 0.0
+  },
+  "op": {
+    "canonical_op": "gather",
+    "fusions": [],
+    "signature": "out[num_seqs, max_num_pages, page_size, num_kv_heads, head_dim] = kv_cache[page_table]; a pure data-ADDRESSING gather (N-D index)"
+  },
+  "outputs": {
+    "out": {
+      "dtype": [
+        "bf16",
+        "fp16",
+        "fp32"
+      ],
+      "layout": "row_major",
+      "rank": 5,
+      "shape_symbols": [
+        "num_seqs",
+        "max_num_pages",
+        "page_size",
+        "num_kv_heads",
+        "head_dim"
+      ]
+    }
+  },
+  "preconditions": [
+    "page_table[s, p] < num_pages (a valid page index into kv_cache axis 0);",
+    "kv_cache.dtype == out.dtype (the gather copies, it does not cast);",
+    "num_kv_heads <= num_qo_heads at the consuming attention op (the GQA ratio;",
+    "  Qwen3-4B = 8 KV heads for 32 QO heads) \u2014 enforced downstream, not here."
+  ],
+  "shape_sweep": "paged_kv_gather",
+  "version": "1.0.0"
+}

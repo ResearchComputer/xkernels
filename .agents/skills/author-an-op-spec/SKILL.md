@@ -71,6 +71,17 @@ gate is the reference card passing `verify`, which needs no GPU.
 
 ## Procedure
 
+> **DSL fast-path.** If the op is expressible as a fixed DAG of pointwise /
+> reduce / MMA (gemm / norm / reduce / activation categories — see the routing
+> table in [`author-a-kernel-with-dsl`](../author-a-kernel-with-dsl/SKILL.md)),
+> author it with the **vkl DSL** instead: one `@kernel` body builds the math IR
+> that lowers to BOTH the auto-reference (torch, bit-exact) AND a generated
+> Triton kernel, so the spec + reference + cards are **emitted, not hand-written**
+> — the same CPU gate, a fraction of the boilerplate. This hand path below is the
+> fallback for ops the math IR cannot express (attention masking, scatter/gather,
+> collectives, fp8 block-scale dequant not expressible as a pointwise cast). The
+> two skills are peers; the contract they produce is interchangeable.
+
 1. **Confirm the gap is real.** `get_op_spec('<op>@<ver>')` should raise, and
    `find_impl('<canonical_op>', ...)` should return no applicable card for the
    target arch/dtype. If a spec already exists, *revise it inline* — don't run

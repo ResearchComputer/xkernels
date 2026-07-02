@@ -184,6 +184,18 @@ def has_generator(op_id: str) -> bool:
     return op_id in _GENERATORS
 
 
+def register_input_gen(op_id: str, fn) -> None:
+    """Register (or supersede) a seeded input generator for ``op_id``.
+
+    Additive entry point so a generator can be wired WITHOUT editing the
+    ``_GENERATORS`` dict literal above — e.g. the vkl DSL's ``register_dsl``
+    delegates to the spec's ``shape_symbols`` generator (``vkl.reference.make_inputs``)
+    so an emitted op is ``verify``-able with no hand-editing of this file.
+    Supersedes any prior registration (same op re-emitted takes over).
+    """
+    _GENERATORS[op_id] = fn
+
+
 def generate_inputs(op_id: str, point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
     if op_id not in _GENERATORS:
         raise KeyError(

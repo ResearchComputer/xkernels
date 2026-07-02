@@ -1,0 +1,27 @@
+{
+  "id": "apply_rope.reference@1.0.0",
+  "implements": "apply_rope@1.0.0",
+  "backend": "reference",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": {
+      "kind": "none",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "pure-torch auto-reference: the @kernel body on torch.",
+    "roofline": "latency_bound",
+    "measured": []
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "dsl",
+    "created": "2026-07-01T23:59:25+00:00",
+    "source_path": "xkernels.vkl:apply_rope"
+  }
+}

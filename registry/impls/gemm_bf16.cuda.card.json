@@ -1,0 +1,28 @@
+{
+  "id": "gemm_bf16.cuda@1.0.0",
+  "implements": "gemm_bf16@1.0.0",
+  "backend": "cuda",
+  "arch": {
+    "family": "nvidia_sm121",
+    "requires": [],
+    "wave_size": 32,
+    "scratch": {
+      "kind": "smem",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "native override (full_body) on nvidia_sm121",
+    "roofline": "compute_bound",
+    "measured": []
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "dsl",
+    "created": "2026-07-01T19:44:30+00:00",
+    "source_path": "xkernels.vkl:gemm_bf16#cuda",
+    "derived_from": "gemm_bf16.triton@1.0.0"
+  }
+}

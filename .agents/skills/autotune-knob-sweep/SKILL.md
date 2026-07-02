@@ -42,15 +42,27 @@ x-kernel-lib:
 > **Maturity note — harness perf fields.** `verify(..., measure_perf=True)`
 > returns `perf = {ms, tflops, achieved_bw_pct}`, but today only **`ms`** is
 > populated (median wall-clock via `do_bench`). `tflops` and `achieved_bw_pct` are
-> stubbed to `None` until an op-specific FLOP/byte model lands (open question
-> §11), and the normalized `stall_reasons`/`occupancy` vocabulary §10 describes
-> is not emitted either. So the only in-harness objective you can read directly
-> today is **min `perf.ms`**. When this skill references tflops, achieved
-> bandwidth, occupancy, or stalls, compute them yourself — `ms` + your own
-> FLOP/byte model for `tflops`/`achieved_bw_pct`; `rocprof` (AMD) or Nsight
-> Compute (NVIDIA) for occupancy and stalls — and pass them to
-> `record_measurement(..., tflops=, achieved_bw_pct=)`, which accepts both even
-> though `verify()` doesn't populate them yet.
+> stubbed to `None` in the harness; compute them yourself and pass to
+> `record_measurement(..., tflops=, achieved_bw_pct=)`. **The FLOP/byte model + the
+> roofline gate now exist** in [`xkernels.vkl.cost`](../../src/xkernels/vkl/cost.py)
+> (Phase 2.3): `workload(op_id, point)` -> `(flops, bytes)`, `roofline(...)` ->
+> `{tflops, ceiling, ai, bottleneck}`, `roofline_gate(ms, op, point, arch, instr)`
+> -> the §2 70%-of-ceiling verdict. The normalized `stall_reasons`/`occupancy`
+> vocabulary §10 describes still needs an external profiler (`rocprof` AMD /
+> Nsight Compute NVIDIA — see `use-rocprof-compute` / `use-nsight-compute`);
+> `vkl.cost.occupancy()` gives the closed-form (smem/warp) half, profile-calibrated
+> for the register half.
+>
+> **DSL-native driver.** If the card was emitted by the
+> [`author-a-kernel-with-dsl`](../author-a-kernel-with-dsl/SKILL.md) skill, its
+> `specialization_knobs` came from the `@kernel` body's `Target.knobs` dict, and
+> **`xkernels.vkl.autotune(impl_card_id, arch, point)`** is the higher-level
+> driver over this same `verify(measure_perf=True)` path: it enumerates the
+> declared space, **rejects smem/lds-overflow configs before launch** (via
+> `vkl.cost.overflows_scratch` — no crash), times the survivors, writes the winner
+> to `perf.measured`, appends the full history to `provenance.tuning_trace`, and
+> records the roofline-gate verdict. Prefer it for DSL-emitted cards; the raw
+> per-point `verify(knobs=...)` loop below is the general (hand-card) path.
 
 ## Procedure
 

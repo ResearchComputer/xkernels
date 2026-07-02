@@ -1,0 +1,27 @@
+{
+  "id": "rmsnorm.triton@1.0.0",
+  "implements": "rmsnorm@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": {
+      "kind": "registers",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "memory-bound row-wise reduce; one kernel/one pass. Portable Triton runs on amd_cdna3 (gfx942); a native LDS/MFMA-tuned override for the MI300X ceiling is the GPU-gated tune-for-cdna follow-up (Phase 2.1).",
+    "roofline": "memory_bound",
+    "measured": []
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "dsl",
+    "created": "2026-07-01T22:43:45+00:00",
+    "source_path": "xkernels.vkl:rmsnorm"
+  }
+}
