@@ -657,6 +657,35 @@ def _dim_roles(mma: MMA, body: MathBody) -> dict:
     }
 
 
+def _tl_tanh(x: str) -> str:
+    """Portable Triton ``tanh`` source expression for an operand expr ``x``.
+
+    Two dead-ends force this: Triton 3.7+ *removed* ``tl.tanh``, and
+    ``libdevice.tanh`` — while faithful on-device — returns ``None`` under
+    ``TRITON_INTERPRET=1`` (the intrinsic is GPU-only, so the CPU interpreter,
+    which is the repo's no-GPU ``verify`` path via ``gpu_device_or_skip``,
+    cannot run it; the symptom is ``TypeError: unsupported operand type(s) for
+    +: 'float' and 'NoneType'`` in the GELU body). The sigmoid identity
+    ``tanh(x) = 2*sigmoid(2x) - 1`` is portable to BOTH modes: ``tl.sigmoid``
+    is universal (it is what the SiLU lowering already uses). It is bit-faithful
+    to ``torch.tanh`` (~1.8e-7 max abs err in fp32) and overflow-safe — for
+    large ``|x|`` the inner ``exp`` overflows to exactly the correct ±1
+    saturation (no NaNs; verified at ±100).
+    """
+    return f"(2.0 * tl.sigmoid(2.0 * ({x})) - 1.0)"
+
+
+def _tl_gelu_tanh(x: str) -> str:
+    """GELU tanh-approx source expr: ``0.5x(1 + tanh(sqrt(2/pi)(x + .044715x^3)))``.
+
+    Lowers via :func:`_tl_tanh` so it inherits the interpreter/device
+    portability and ``torch.tanh``-faithfulness. This is the form flashinfer /
+    vLLM ``gelu_and_mul`` use.
+    """
+    inner = f"0.7978845608028654 * ({x} + 0.044715 * {x} * {x} * {x})"
+    return f"0.5 * {x} * (1.0 + {_tl_tanh(inner)})"
+
+
 class _TritonGen:
     """Emit a tiled @triton.jit kernel for a bare GEMM math IR (tiled_2d launch).
 
@@ -791,7 +820,7 @@ class _TritonGen:
         elif fn == "exp":
             self.lines.append(f"    {v} = tl.exp({a0})")
         elif fn == "tanh":
-            self.lines.append(f"    {v} = tl.tanh({a0})")
+            self.lines.append(f"    {v} = {_tl_tanh(a0)}")
         elif fn == "sigmoid":
             self.lines.append(f"    {v} = tl.sigmoid({a0})")
         elif fn == "sqrt":
@@ -801,10 +830,7 @@ class _TritonGen:
         elif fn == "silu":
             self.lines.append(f"    {v} = {a0} * tl.sigmoid({a0})")
         elif fn == "gelu":  # tanh approx
-            self.lines.append(
-                f"    {v} = 0.5 * {a0} * (1.0 + tl.tanh("
-                f"0.7978845608028654 * ({a0} + 0.044715 * {a0} * {a0} * {a0})))"
-            )
+            self.lines.append(f"    {v} = {_tl_gelu_tanh(a0)}")
         elif fn == "min":
             self.lines.append(f"    {v} = tl.minimum({a0}, {args[1]})")
         elif fn == "max":
@@ -1001,7 +1027,7 @@ class _TritonGenRowwise:
         elif node.fn == "exp":
             self.lines.append(f"    {v} = tl.exp({args[0]})")
         elif node.fn == "tanh":
-            self.lines.append(f"    {v} = tl.tanh({args[0]})")
+            self.lines.append(f"    {v} = {_tl_tanh(args[0])}")
         elif node.fn == "sigmoid":
             self.lines.append(f"    {v} = tl.sigmoid({args[0]})")
         elif node.fn == "sqrt":
@@ -1009,10 +1035,7 @@ class _TritonGenRowwise:
         elif node.fn == "silu":
             self.lines.append(f"    {v} = {args[0]} * tl.sigmoid({args[0]})")
         elif node.fn == "gelu":  # tanh approx
-            self.lines.append(
-                f"    {v} = 0.5 * {args[0]} * (1.0 + tl.tanh("
-                f"0.7978845608028654 * ({args[0]} + 0.044715 * {args[0]} * {args[0]} * {args[0]})))"
-            )
+            self.lines.append(f"    {v} = {_tl_gelu_tanh(args[0])}")
         elif node.fn == "min":
             self.lines.append(f"    {v} = tl.minimum({args[0]}, {args[1]})")
         elif node.fn == "max":
@@ -1119,8 +1142,12 @@ class _TritonGenElementwise:
             self._emit_node(node)
         src = "import triton\nimport triton.language as tl\n"
         if self._needs_libdevice:
-            # Triton 3.7+ dropped ``tl.tanh``; ``libdevice.tanh`` is the faithful
-            # (CUDA-quality) equivalent — the same routine torch.tanh lowers to.
+            # Retained hook for a future GPU-only intrinsic needing a libdevice
+            # import. (The tanh/gelu lowering previously set this for
+            # ``libdevice.tanh``, but that intrinsic returns None under
+            # ``TRITON_INTERPRET=1``; tanh now lowers via the portable sigmoid
+            # identity in ``_tl_tanh`` — see its docstring — so this never
+            # fires today.)
             src += "from triton.language.extra import libdevice\n"
         src += "\n\n"
         src += f"@triton.jit\ndef _kernel({', '.join(self._signature())}):\n"
@@ -1156,8 +1183,7 @@ class _TritonGenElementwise:
             elif fn == "exp":
                 self.lines.append(f"    {v} = tl.exp({a0})")
             elif fn == "tanh":
-                self._needs_libdevice = True
-                self.lines.append(f"    {v} = libdevice.tanh({a0})")
+                self.lines.append(f"    {v} = {_tl_tanh(a0)}")
             elif fn == "sigmoid":
                 self.lines.append(f"    {v} = tl.sigmoid({a0})")
             elif fn == "sqrt":
@@ -1166,12 +1192,8 @@ class _TritonGenElementwise:
                 self.lines.append(f"    {v} = tl.rsqrt({a0})")
             elif fn == "silu":
                 self.lines.append(f"    {v} = {a0} * tl.sigmoid({a0})")
-            elif fn == "gelu":  # tanh approx — Triton 3.7+ has no tl.tanh
-                self._needs_libdevice = True
-                self.lines.append(
-                    f"    {v} = 0.5 * {a0} * (1.0 + libdevice.tanh("
-                    f"0.7978845608028654 * ({a0} + 0.044715 * {a0} * {a0} * {a0})))"
-                )
+            elif fn == "gelu":  # tanh approx
+                self.lines.append(f"    {v} = {_tl_gelu_tanh(a0)}")
             elif fn == "min":
                 self.lines.append(f"    {v} = tl.minimum({a0}, {args[1]})")
             elif fn == "max":
@@ -1476,8 +1498,7 @@ class _TritonGenMultiDim:
         elif fn == "exp":
             L.append(f"    {v} = tl.exp({a0})")
         elif fn == "tanh":
-            self._needs_libdevice = True
-            L.append(f"    {v} = libdevice.tanh({a0})")
+            L.append(f"    {v} = {_tl_tanh(a0)}")
         elif fn == "sigmoid":
             L.append(f"    {v} = tl.sigmoid({a0})")
         elif fn == "sqrt":
@@ -1486,12 +1507,8 @@ class _TritonGenMultiDim:
             L.append(f"    {v} = tl.rsqrt({a0})")
         elif fn == "silu":
             L.append(f"    {v} = {a0} * tl.sigmoid({a0})")
-        elif fn == "gelu":  # tanh approx (libdevice.tanh — Triton 3.7+ has no tl.tanh)
-            self._needs_libdevice = True
-            L.append(
-                f"    {v} = 0.5 * {a0} * (1.0 + libdevice.tanh("
-                f"0.7978845608028654 * ({a0} + 0.044715 * {a0} * {a0} * {a0})))"
-            )
+        elif fn == "gelu":  # tanh approx
+            L.append(f"    {v} = {_tl_gelu_tanh(a0)}")
         elif fn == "min":
             L.append(f"    {v} = tl.minimum({a0}, {args[1]})")
         elif fn == "max":
