@@ -2,6 +2,12 @@
 
 from . import registry
 from ._dispatch import backend_diagnostics
+from .ops.activation import (
+    gelu_and_mul,
+    packed_gelu_and_mul,
+    packed_silu_and_mul,
+    silu_and_mul,
+)
 from .ops.attention import (
     dsa_indexer_logits,
     dsa_indexer_topk,
@@ -67,6 +73,10 @@ __all__ = [
     "flat_all_reduce",
     "hierarchical_all_reduce",
     "residual_rmsnorm",
+    "silu_and_mul",
+    "gelu_and_mul",
+    "packed_silu_and_mul",
+    "packed_gelu_and_mul",
     "backend_diagnostics",
     "__version__",
     # agent-native surfaces

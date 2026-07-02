@@ -14,6 +14,8 @@ added alongside them. This test pins:
 """
 from __future__ import annotations
 
+import os
+
 import pytest
 import torch
 
@@ -173,4 +175,6 @@ def test_find_impl_rejects_odd_packed_width():
 def test_triton_card_honestly_uncompiled_without_gpu():
     if torch.cuda.is_available():
         pytest.skip("GPU present; triton is runnable here")
+    if os.environ.get("TRITON_INTERPRET", "0") == "1":
+        pytest.skip("TRITON_INTERPRET=1 runs triton on CPU; the card is runnable here")
     assert verify("silu_and_mul.triton@1.0.0", arch="amd_cdna3")["compiled"] is False
