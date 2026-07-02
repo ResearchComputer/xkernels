@@ -41,6 +41,10 @@ from .ops.moe import (
     topk_softmax,
 )
 from .ops.norm import dual_rmsnorm, rmsnorm
+from .ops.sampling import (
+    sampling_from_probs,
+    top_k_sampling_from_probs,
+)
 
 # --- agent-native surfaces (meta/docs/library.md) ----------------------------------
 # These are lazily-evaluating; importing the package does not parse the registry.
@@ -54,6 +58,8 @@ __all__ = [
     "fused_moe_mxfp4",
     "moe_align_block_size",
     "moe_sum_reduce",
+    "sampling_from_probs",
+    "top_k_sampling_from_probs",
     "topk_softmax",
     "mxfp4_paged_gather",
     "mm_fp8_blockscale",

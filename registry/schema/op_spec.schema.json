@@ -41,7 +41,7 @@
         "canonical_op": {
           "type": "string",
           "description": "Canonical op family; the primary retrieval key.",
-          "enum": ["gemm", "conv2d", "rmsnorm", "attention", "reduce", "gather", "scatter", "norm", "activation", "quantize", "comm", "index", "elementwise", "moe", "mhc"]
+          "enum": ["gemm", "conv2d", "rmsnorm", "attention", "reduce", "gather", "scatter", "norm", "activation", "quantize", "comm", "index", "elementwise", "moe", "mhc", "sampling"]
         },
         "fusions": {
           "type": "array",

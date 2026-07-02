@@ -1,0 +1,12 @@
+{
+  "default_dtype": "fp32",
+  "points": [
+    { "dtype": "fp32", "B": 64,  "V": 256,   "top_k": 8 },
+    { "dtype": "fp32", "B": 1,   "V": 256,   "top_k": 8 },
+    { "dtype": "fp32", "B": 37,  "V": 1024,  "top_k": 16 },
+    { "dtype": "fp32", "B": 128, "V": 4096,  "top_k": 32 },
+    { "dtype": "bf16", "B": 64,  "V": 256,   "top_k": 8 },
+    { "dtype": "bf16", "B": 128, "V": 4096,  "top_k": 1 },
+    { "dtype": "fp16", "B": 32,  "V": 512,   "top_k": 10 }
+  ]
+}

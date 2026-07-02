@@ -1,0 +1,18 @@
+{
+  "id": "top_k_sampling_from_probs.reference@1.0.0",
+  "implements": "top_k_sampling_from_probs@1.0.0",
+  "backend": "reference",
+  "arch": { "family": "any", "wave_size": 0, "scratch": { "kind": "none", "bytes": 0 } },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "pure-torch oracle: stable descending argsort (top-k selection) -> scatter into a masked distribution -> renormalize -> inverse-CDF (sampling_from_probs_ref). Fuses top-k mask + renorm + sample; deterministic given uniform_samples.",
+    "roofline": "latency_bound"
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-07-02T00:00:00Z",
+    "source_path": "src/xkernels/ops/sampling/sampling.py"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "id": "sampling_from_probs.reference@1.0.0",
+  "implements": "sampling_from_probs@1.0.0",
+  "backend": "reference",
+  "arch": { "family": "any", "wave_size": 0, "scratch": { "kind": "none", "bytes": 0 } },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "pure-torch oracle: torch.cumsum (sequential fp32 prefix) + torch.searchsorted(right=True) + clamp to V-1. The RNG is EXTERNAL (uniform_samples is an input), so this is fully deterministic. Single fused expression; the baseline a Triton card replaces is the same math (the device kernel's value is fusing the prefix scan into one launch and avoiding the materialized [B,V] cdf).",
+    "roofline": "latency_bound"
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-07-02T00:00:00Z",
+    "source_path": "src/xkernels/ops/sampling/sampling.py"
+  }
+}

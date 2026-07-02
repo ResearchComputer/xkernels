@@ -1,0 +1,44 @@
+{
+  "id": "sampling_from_probs.triton@1.0.0",
+  "implements": "sampling_from_probs@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": {
+      "kind": "registers",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "One program per batch row: coalesced read of V probs into registers, fp32 tl.cumsum prefix scan, then argmax over (cdf > u) to find the leftmost crossing (the sampled token), V-1 fallback. BLOCK_V=next_pow2(V). Memory-bound on the [B,V] probs read; the [B,V] cdf is kept in registers (never materialized). num_warps=4.",
+    "roofline": "memory_bound",
+    "measured": [
+      {
+        "arch": "nvidia_sm121",
+        "shape": {
+          "dtype": "fp32",
+          "B": 256,
+          "V": 4096
+        },
+        "dtype": "fp32",
+        "knobs": {},
+        "source": "run:53aae0d6d0cb",
+        "ms": 0.04345066659152508
+      }
+    ]
+  },
+  "uses_primitives": [
+    "reduce.cumsum",
+    "reduce.argmax_threshold"
+  ],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-07-02T00:00:00Z",
+    "source_path": "src/xkernels/ops/sampling/triton/sampling_kernel.py"
+  },
+  "notes": "Deterministic given the external uniform_samples input (the RNG is outside the kernel). The token is the leftmost vocab index whose cumulative prob first exceeds the draw; tl.argmax returns the lowest index on ties so the leftmost-crossing semantics match torch.searchsorted(right=True) bit-for-bit on well-separated distributions. BLOCK_V=next_pow2(V) is a tl.constexpr derived from the dispatch V (cached by Triton) -- NOT a user specialization_knob. Portable (pure tl.cumsum + tl.argmax, no vendor intrinsics); the AMD gfx942 card is the port-across-arch follow-up (the issue's primary target). The production 100k+ vocab path needs a staged streaming scan (same limitation as temperature_softmax); this card targets moderate V (<= a few thousand)."
+}

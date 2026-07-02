@@ -1,0 +1,62 @@
+{
+  "id": "top_k_sampling_from_probs@1.0.0",
+  "name": "top-k filtered multinomial draw (mask top-k, renormalize, inverse-CDF sample)",
+  "version": "1.0.0",
+  "kernel": "top_k_sampling_from_probs",
+  "op": {
+    "signature": "token_ids[B] int32 = inverse_cdf_sample(renorm(top_k_mask(probs[B,V] fp32, top_k)), uniform_samples[B] fp32)",
+    "canonical_op": "sampling",
+    "fusions": ["topk_mask_renorm", "topk_renorm_sample"]
+  },
+  "inputs": {
+    "probs": {
+      "dtype": ["fp32", "bf16", "fp16"],
+      "layout": "row_major",
+      "rank": 2,
+      "shape_symbols": ["B", "V"],
+      "contiguous": true
+    },
+    "uniform_samples": {
+      "dtype": ["fp32"],
+      "layout": "row_major",
+      "rank": 1,
+      "shape_symbols": ["B"]
+    }
+  },
+  "outputs": {
+    "token_ids": {
+      "dtype": ["int32"],
+      "layout": "row_major",
+      "rank": 1,
+      "shape_symbols": ["B"]
+    }
+  },
+  "constraints": [],
+  "preconditions": [
+    "1 <= top_k <= V (top_k is a dispatch kwarg, not a tensor shape, so it cannot bind in the decidable constraint mini-language; the reference asserts it at runtime)",
+    "uniform_samples are in [0, 1) and are an INPUT (external RNG) -- see sampling_from_probs@1.0.0 for the determinism contract",
+    "the top-k tokens are selected by DESCENDING probability, ties broken by ASCENDING vocab id (a stable descending argsort -- the same canonical order as topk_softmax; load-bearing for bf16-induced ties). The masked-out tokens get probability 0; the kept top-k are renormalized to sum to 1; then inverse-CDF sampling (the draw can never land on a masked token)",
+    "current Triton lowering loads one full row per program (BLOCK_V=next_pow2(V)); the production 100k+ vocab path needs a staged streaming scan (tuning follow-up, NOT a contract change)",
+    "top_k is a SCALAR (one value for the whole batch); per-row tensor top_k is a follow-up (it breaks the TOPK constexpr unroll in the device kernel)",
+    "top-p / nucleus + combined top-k-top-p sampling are SEPARATE ops (they need a device sort) and are a follow-up"
+  ],
+  "numerics": {
+    "reference": "xkernels.ops.sampling.sampling:top_k_sampling_from_probs_ref",
+    "rtol": 0.0,
+    "atol": 0.0,
+    "reduce_dtype": "fp32",
+    "cross_backend_rtol": 0.0,
+    "by_dtype": {
+      "fp32": { "rtol": 0.0, "atol": 0.0 },
+      "bf16": { "rtol": 0.0, "atol": 0.0 },
+      "fp16": { "rtol": 0.0, "atol": 0.0 }
+    },
+    "notes": "Token selection is INTEGER-EXACT (rtol=atol=0). The top-k selection is the same descending-prob/ascending-id-tiebreak canonical order as topk_softmax (integer-exact); the mask+renorm is deterministic fp32; the inverse-CDF draw runs on a fixed-point int64 representation (see sampling_from_probs@1.0.0 numerics.notes) so it is bit-exact across scan orders/backends. The whole op is deterministic given (probs, uniform_samples, top_k)."
+  },
+  "shape_sweep": "top_k_sampling_from_probs",
+  "composes_with": ["temperature_softmax@1.0.0", "sampling_from_probs@1.0.0"],
+  "provenance": {
+    "authored_by": "human",
+    "source_path": "src/xkernels/ops/sampling/sampling.py"
+  }
+}

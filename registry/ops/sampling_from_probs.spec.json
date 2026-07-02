@@ -1,0 +1,61 @@
+{
+  "id": "sampling_from_probs@1.0.0",
+  "name": "inverse-CDF multinomial draw from a probability distribution",
+  "version": "1.0.0",
+  "kernel": "sampling_from_probs",
+  "op": {
+    "signature": "token_ids[B] int32 = inverse_cdf_sample(probs[B,V] fp32, uniform_samples[B] fp32)",
+    "canonical_op": "sampling",
+    "fusions": []
+  },
+  "inputs": {
+    "probs": {
+      "dtype": ["fp32", "bf16", "fp16"],
+      "layout": "row_major",
+      "rank": 2,
+      "shape_symbols": ["B", "V"],
+      "contiguous": true
+    },
+    "uniform_samples": {
+      "dtype": ["fp32"],
+      "layout": "row_major",
+      "rank": 1,
+      "shape_symbols": ["B"]
+    }
+  },
+  "outputs": {
+    "token_ids": {
+      "dtype": ["int32"],
+      "layout": "row_major",
+      "rank": 1,
+      "shape_symbols": ["B"]
+    }
+  },
+  "constraints": [],
+  "preconditions": [
+    "uniform_samples are in [0, 1) and are an INPUT (the RNG is external to the kernel). This is the determinism contract: the same (probs, uniform_samples) always yields the same token_ids, so verify is bit-exact. Production code generates uniform_samples on the host with any RNG stream (philox, torch, numpy) and passes them in.",
+    "probs need not sum to 1 to machine precision; if uniform_samples[b] >= the row total (possible under fp rounding), the LAST valid index V-1 is returned.",
+    "the token is the LEFTMOST vocab index j whose cumulative probability first exceeds uniform_samples[b] (torch.searchsorted(cumsum, u, right=True), clamped to V-1)",
+    "current Triton lowering loads one full row per program (BLOCK_V=next_pow2(V)); the production 100k+ vocab path needs a staged streaming scan (the SAME documented limitation as temperature_softmax) and is a tuning follow-up, NOT a contract change",
+    "top-p / nucleus sampling is a SEPARATE op (needs a device sort); this op is plain inverse-CDF over the full distribution"
+  ],
+  "numerics": {
+    "reference": "xkernels.ops.sampling.sampling:sampling_from_probs_ref",
+    "rtol": 0.0,
+    "atol": 0.0,
+    "reduce_dtype": "fp32",
+    "cross_backend_rtol": 0.0,
+    "by_dtype": {
+      "fp32": { "rtol": 0.0, "atol": 0.0 },
+      "bf16": { "rtol": 0.0, "atol": 0.0 },
+      "fp16": { "rtol": 0.0, "atol": 0.0 }
+    },
+    "notes": "Token selection is INTEGER-EXACT: a different sampled token is abs_err >= 1 and fails any tolerance, so rtol=atol=0 (bit-exact). The inverse-CDF runs on a FIXED-POINT (int64) representation: q = probs * 2**30 (the scale is an exact fp32 power of two, so q is identical in every backend), then an INTEGER cumsum + searchsorted(right=True) threshold, clamped to V-1. Integer addition is associative and exact, so the prefix is order-INDEPENDENT -- a parallel scan (the device kernel) and a sequential scan (torch) give the same int64 cumsum bit-for-bit, and the cdf > u crossing lands at the same token in every backend. This is why the op is HONESTLY bit-exact: a floating cumsum genuinely diverges between scan orders at V~4096 (parallel != sequential for non-associative fp32) and flips tokens, which a naive float implementation hits; the integer representation removes that divergence entirely. The fixed-point scale (2**30 ~= 1e9 levels) exceeds fp32's ~7 sig digits, so it adds no quantization error beyond fp32's own precision. The stochasticity is OUTSIDE the contract (uniform_samples is an input), so this op is fully deterministic and verify-exact."
+  },
+  "shape_sweep": "sampling_from_probs",
+  "composes_with": ["temperature_softmax@1.0.0"],
+  "provenance": {
+    "authored_by": "human",
+    "source_path": "src/xkernels/ops/sampling/sampling.py"
+  }
+}

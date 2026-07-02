@@ -1,0 +1,46 @@
+{
+  "id": "top_k_sampling_from_probs.triton@1.0.0",
+  "implements": "top_k_sampling_from_probs@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": {
+      "kind": "registers",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "One program per batch row: coalesced read of V probs, TOPK-unrolled iterative argmax top-k selection (descending prob, ties by ascending vocab id -- same pattern as topk_softmax_kernel), renormalize the kept set, then tl.cumsum + argmax-over-(cdf>u) inverse-CDF sample. TOPK + BLOCK_V=next_pow2(V) are tl.constexpr. Fuses top-k mask + renorm + sample into one launch. num_warps=4.",
+    "roofline": "memory_bound",
+    "measured": [
+      {
+        "arch": "nvidia_sm121",
+        "shape": {
+          "dtype": "fp32",
+          "B": 256,
+          "V": 4096,
+          "top_k": 40
+        },
+        "dtype": "fp32",
+        "knobs": {},
+        "source": "run:c854fb529f49",
+        "ms": 0.13546917631345637
+      }
+    ]
+  },
+  "uses_primitives": [
+    "reduce.argmax_topk",
+    "reduce.cumsum",
+    "reduce.argmax_threshold"
+  ],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-07-02T00:00:00Z",
+    "source_path": "src/xkernels/ops/sampling/triton/sampling_kernel.py"
+  },
+  "notes": "Deterministic given (probs, uniform_samples, top_k). The top-k selection reuses topk_softmax_kernel's iterative-argmax pattern (tl.argmax lowest-index-on-ties == the reference's stable descending argsort, so the kept set matches element-wise). TOPK + BLOCK_V are tl.constexpr derived from dispatch args (cached) -- NOT user specialization_knobs. Portable; AMD gfx942 is the port-across-arch follow-up. Scalar top_k only (per-row tensor top_k breaks the TOPK constexpr unroll); production 100k+ vocab needs a staged scan (follow-up)."
+}

@@ -190,6 +190,31 @@ def _topk_softmax(point: dict[str, Any], seed: int, device: str) -> dict[str, An
     }
 
 
+def _probs_and_uniform(point: dict[str, Any], seed: int, device: str) -> tuple[torch.Tensor, torch.Tensor]:
+    # A valid per-row probability distribution + one external uniform draw per
+    # row. probs come from a fp32 softmax of seeded logits (sharpened so the
+    # distribution is non-degenerate and the inverse-CDF crossing is
+    # unambiguous -- the op's token selection is integer-exact; a crossing within
+    # 1 fp32-ULP of the draw is measure-zero here, see each spec's numerics.notes).
+    dt = to_torch_dtype(point["dtype"])
+    B, V = int(point["B"]), int(point["V"])
+    logits = _gen(device, dt, B, V, seed=seed) * 3.0  # sharpen -> distinct probs
+    probs = torch.softmax(logits.float(), dim=1).to(dt)
+    g = torch.Generator(device=device).manual_seed(seed + 7)
+    uniform = torch.rand(B, generator=g, device=device, dtype=torch.float32)  # [0, 1)
+    return probs, uniform
+
+
+def _sampling_from_probs(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
+    probs, uniform = _probs_and_uniform(point, seed, device)
+    return {"probs": probs, "uniform_samples": uniform}
+
+
+def _top_k_sampling_from_probs(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
+    probs, uniform = _probs_and_uniform(point, seed, device)
+    return {"probs": probs, "uniform_samples": uniform, "top_k": int(point["top_k"])}
+
+
 _GENERATORS: dict[str, Callable[[dict, int, str], dict[str, Any]]] = {
     "fused_ffn@1.0.0": _ffn,
     "dual_rmsnorm@1.0.0": _dual_rmsnorm,
@@ -203,6 +228,8 @@ _GENERATORS: dict[str, Callable[[dict, int, str], dict[str, Any]]] = {
     "mhc_pre@1.0.0": _mhc_pre,
     "temperature_softmax@1.0.0": _temperature_softmax,
     "topk_softmax@1.0.0": _topk_softmax,
+    "sampling_from_probs@1.0.0": _sampling_from_probs,
+    "top_k_sampling_from_probs@1.0.0": _top_k_sampling_from_probs,
 }
 
 
