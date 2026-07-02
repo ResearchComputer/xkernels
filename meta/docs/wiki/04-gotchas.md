@@ -283,4 +283,57 @@ stayed open.
 **Fix shipped (2026-07-02).** `ops/norm/triton/rmsnorm_kernel.py` +
 `ops/norm/interface.rmsnorm` + the `__init__` exports; `verify` passes through
 plain `import` (compiled=True, max_rel 3.1e-7), `xkernels.rmsnorm(x, w)` is
-bit-exact vs the reference, parity agrees, 134 tests pass.
+bit-exact vs the reference, parity agrees, 134 tests pass. The #57 fp8 quant
+helpers (`per_token_group_quant_fp8` / `per_block_quant_fp8`) wired the same
+way (`ops/gemm/triton/quant_kernel.py`): both triton cards PASS `verify` +
+`verify_parity` on GB10 (bit-exact, max_rel 0.0), and the grouped-view triton
+dispatch is bit-exact with the `[M,K]` reference. **#68 `apply_rope` did NOT
+close — see §14 (its device kernel OOBs).**
+
+## 14. `apply_rope`'s generated triton device kernel OOBs (multi-dim addressing codegen bug, #68)
+
+**Symptom.** `verify("apply_rope.triton@1.0.0", arch="nvidia_sm121")` on ds5
+(GB10) raises `RuntimeError: Triton Error [CUDA]: an illegal memory access was
+encountered` (`compiled=False`). `compute-sanitizer --tool memcheck` on a
+standalone repro reports a stream of `Access to 0x... is out of bounds` (true
+OOB, not a race — the trichotomy signature is `FAILS/blocking + sanitizer
+ERROR`). The CPU oracle and the **reference** card are bit-exact
+(`verify("apply_rope.reference@1.0.0")` passes, `max_rel=0.0`); only the
+**generated triton device kernel** is broken.
+
+**Cause.** `apply_rope` is the showcase for the data-ADDRESSING math-IR family
+(`Gather`/`Slice`/`Concat`/`Unsqueeze`, docs/brainstorm/06 A4 case (a)). Its
+body gathers `cos_sin_cache` by the `positions` input, slices/unsqueezes/rotates/
+concats over a 3-D `[T,H,D]` shape, and launches via `Launch.elementwise()` →
+the `_TritonGenMultiDim` lowering in `src/xkernels/vkl/lower/mathbody.py`. That
+lowering computes a per-lane multi-axis address whose index runs off the end of
+one of the operands — a codegen bug in the multi-dim address decomposition (the
+card's own regime note flagged this as an "A4 follow-up"). The stale
+"Verified bit-exact on GB10" in the body docstring was almost certainly
+`TRITON_INTERPRET=1`, which materializes every `tl.load` in bounds and proves
+nothing about the device address math — the exact false-confidence trap the
+`diagnose-wrong-results` skill warns about.
+
+**Fix (status: NOT fixed; interim shipped).** The bug is in the DSL lowering
+(not the wiring), so it is tracked separately from the §13 wiring rule. Two
+load-bearing safety facts drove the interim:
+1. **A runtime illegal-memory-access is NOT caught by `dispatch`'s
+   registration-failure fallback** (that fallback only covers backends that fail
+   to *register*). The triton launcher registers fine; it crashes at *launch* →
+   the exception propagates AND **poisons the CUDA context process-wide**
+   (verified: after the triton crash, even an explicit `backend="reference"` call
+   fails with the same `AcceleratorError`).
+2. Therefore the triton backend is **deliberately NOT registered** in
+   `ops/attention/__init__.py`. The public `xkernels.apply_rope(q,k,pos,csc)`
+   dispatches to REFERENCE only (bit-exact on GPU) — real interim value for the
+   #68 consumer (a packaged RoPE replacing the mini-sglang torch reference),
+   with zero crash risk. The two device-gate tests in `tests/test_vkl_rope.py`
+   are marked `xfail(strict=True)` as canaries — they xpass the day the lowering
+   is fixed.
+
+**Repro / next step.** `rcc --profile ds5 run --docker -s 'python -c "from
+xkernels import verify; verify(\"apply_rope.triton@1.0.0\", arch=\"nvidia_sm121\")"'`
+then `compute-sanitizer --tool memcheck` to see the OOB. The fix is in
+`_TritonGenMultiDim` (likely an off-by-one / missing mask in the multi-axis
+offset decomposition); once it passes `verify`, enabling the backend is the
+one-line `register_dsl` module + import (§13).

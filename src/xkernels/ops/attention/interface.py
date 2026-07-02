@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 ResearchComputer
-"""Public attention ops (``mha_merge_state``, ``dsa_indexer_logits``): each
-dispatches to a registered backend."""
+"""Public attention ops (``mha_merge_state``, ``dsa_indexer_logits``,
+    ``apply_rope``): each dispatches to a registered backend."""
 
 from __future__ import annotations
 
@@ -160,3 +160,47 @@ def get_mla_metadata(*args, **kwargs) -> tuple[torch.Tensor, int]:
     ``mha_merge_state`` #3).
     """
     return torch.empty(0, dtype=torch.int32), 1
+
+
+def apply_rope(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    positions: torch.Tensor,
+    cos_sin_cache: torch.Tensor,
+    *,
+    backend: Backend | str = "auto",
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Rotary position embedding (RoPE) from a precomputed cos/sin cache (issue #68).
+
+    The flashinfer ``apply_rope_with_cos_sin_cache`` convention (no ROCm wheel --
+    this op is the AMD/ROCm path for mini-sglang). Applies the GPT-NeoX rotate-half
+    rotation in fp32, in place of ``query`` / ``key`` conceptually (returns new
+    tensors):
+
+        cs = cos_sin_cache[positions]                 # [T, D] (packed)
+        cos, sin = cs[:, :D/2], cs[:, D/2:]           # [T, D/2]
+        q_rot = concat(q[..., :D/2]*cos - q[..., D/2:]*sin,
+                       q[..., D/2:]*cos + q[..., :D/2]*sin)
+        # same for key
+
+    Args:
+        query: ``[T, H, D]`` (bf16 / fp16); rotated in fp32, cast back on store.
+        key: ``[T, H, D]`` (same dtype as ``query``).
+        positions: ``[T]`` int32 absolute token positions (the gather index into
+            ``cos_sin_cache``; must be ``< P``).
+        cos_sin_cache: ``[P, D]`` fp32 packed cache -- columns ``[0, D/2)`` are cos,
+            ``[D/2, D)`` are sin over the ``D/2`` rotation frequencies.
+        backend: ``"auto"`` (triton when available, else reference) or a
+            ``Backend`` / its string value.
+
+    Returns:
+        ``(query_out [T, H, D], key_out [T, H, D])`` in the input dtype.
+    """
+    return dispatch(
+        "apply_rope",
+        query=query,
+        key=key,
+        positions=positions,
+        cos_sin_cache=cos_sin_cache,
+        backend=backend,
+    )

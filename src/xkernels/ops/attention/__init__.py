@@ -12,6 +12,7 @@ that drives V4 sparse attention (portable replacement for the NVIDIA-only
 from ..._backends import Backend
 from ..._dispatch import backend_registration_guard
 from .interface import (
+    apply_rope,
     dsa_indexer_logits,
     dsa_indexer_topk,
     flash_mla_sparse_fwd,
@@ -62,6 +63,17 @@ with backend_registration_guard(
     with triton_import_ctx():
         from .triton import sparse_mla_kernel  # noqa: F401
 
+# NOTE: ``apply_rope`` (issue #68) has a DSL-emitted triton card, but its device
+# kernel currently CRASHES with an illegal-memory-access (a true OOB in the
+# multi-dim gather/slice lowering, ``_TritonGenMultiDim`` -- confirmed by
+# compute-sanitizer; see meta/docs/wiki/04-gotchas.md §14). The triton backend
+# is therefore deliberately NOT registered here: a runtime illegal-memory-access
+# is not caught by dispatch's registration-failure fallback and would poison
+# the CUDA context, making ``xkernels.apply_rope(...)`` crash by default. The
+# public ``apply_rope`` dispatches to REFERENCE (the DSL auto-reference, which
+# verifies bit-exact on GPU) until the codegen bug is fixed -- then the one-line
+# ``register_dsl`` module + this import is the only addition needed (wiki §13).
+
 __all__ = [
     "mha_merge_state",
     "dsa_indexer_logits",
@@ -70,4 +82,5 @@ __all__ = [
     "flash_mla_sparse_fwd",
     "flash_mla_with_kvcache",
     "get_mla_metadata",
+    "apply_rope",
 ]

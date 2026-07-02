@@ -9,6 +9,7 @@ from .ops.activation import (
     silu_and_mul,
 )
 from .ops.attention import (
+    apply_rope,
     dsa_indexer_logits,
     dsa_indexer_topk,
     flash_mla_sparse_fwd,
@@ -65,6 +66,7 @@ __all__ = [
     "dsa_indexer_logits",
     "dsa_indexer_topk",
     "sparse_mla_attention",
+    "apply_rope",
     "flash_mla_sparse_fwd",
     "flash_mla_with_kvcache",
     "get_mla_metadata",

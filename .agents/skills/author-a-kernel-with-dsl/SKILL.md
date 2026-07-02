@@ -119,6 +119,21 @@ needs anything outside this list — e.g.:
 - **a fusion whose output shape/semantics change** (route to `author-an-op-spec`
   first, then `add-epilogue-fusion` — the DSL emits the UN-fused base)
 
+> **Caveat — the data-ADDRESSING family (`gather`/`slice`/`concat`/`unsqueeze`)
+> is CPU-oracle-verifiable but its DEVICE lowering is currently unreliable.**
+> These nodes were added (docs/brainstorm/06 A4 case (a)) and the torch oracle +
+> reference card pass bit-exact, but the generated triton device kernel
+> (`_TritonGenMultiDim` in `lower/mathbody.py`) has a known OOB — `apply_rope`
+> (#68) crashes with an illegal-memory-access on GB10 despite an interpreter-green
+> oracle (diagnosis: `meta/docs/wiki/04-gotchas.md` §14; `TRITON_INTERPRET=1`
+> gives false confidence here). So for an op that needs gather/indexing: the CPU
+> gate (step 6) passes, but the device gate (step 8) may crash. Do NOT wire such
+> a triton backend into the package import (a runtime OOB poisons the CUDA
+> context — `dispatch`'s registration-failure fallback does not catch it) until
+> the device gate passes; ship the reference-backed op and track the codegen bug.
+> The pointwise/reduce/MMA categories (gemm/norm/reduce/activation) are not
+> affected.
+
 If you are unsure, sketch the op as the DAG above on paper; if every arrow maps
 to a row in the table, the DSL path is faster.
 

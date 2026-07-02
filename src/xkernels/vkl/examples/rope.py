@@ -30,14 +30,23 @@ This is bit-exact with the hand ``minisgl`` ``_rope_ref`` (the rotate-half form;
 flashinfer's packed-cache kernel computes the identical products directly). The
 CPU oracle IS the reference; the reference card passes ``verify`` on CPU.
 
-**Device codegen:** RoPE is a multi-dim (``[T,H,D]``) gather + per-axis broadcast,
-so it exercises the multi-dim addressing lowering (``_TritonGenMultiDim`` in
-``lower/mathbody.py``): a flat-tiled grid whose kernel decomposes each lane's
-offset into per-axis coords and lets every ``Gather``/``Slice``/``Concat``/
-``Unsqueeze`` compute its own address. Verified bit-exact (``max_abs=0.0``) +
-deterministic on an NVIDIA GB10 (sm_121), and the reference↔triton parity gate
-passes (``max_rel=0.0``) — the data-addressing family closes the A4 loop on
-real hardware, not just on the CPU oracle.
+**Device codegen (KNOWN BUG — not yet verified on device):** RoPE is a
+multi-dim (``[T,H,D]``) gather + per-axis broadcast, so it exercises the
+multi-dim addressing lowering (``_TritonGenMultiDim`` in ``lower/mathbody.py``):
+a flat-tiled grid whose kernel decomposes each lane's offset into per-axis
+coords and lets every ``Gather``/``Slice``/``Concat``/``Unsqueeze`` compute its
+own address. **The CPU oracle + reference card ARE bit-exact (``max_rel=0.0``,
+``verify("apply_rope.reference@1.0.0")`` passes), but the generated triton
+DEVICE kernel currently CRASHES with an illegal-memory-access on GB10 (sm_121) —
+a true OOB in the multi-dim address computation, confirmed by
+``compute-sanitizer``.** Earlier docstrings claimed "verified bit-exact on
+GB10"; that was stale (almost certainly ``TRITON_INTERPRET=1``, which gives
+false confidence — it materializes every ``tl.load`` in bounds; see the
+``diagnose-wrong-results`` skill). The triton backend is therefore NOT wired
+into ``ops/attention``; the public ``xkernels.apply_rope`` dispatches to
+REFERENCE until the lowering is fixed. Diagnosis + repro:
+``meta/docs/wiki/04-gotchas.md`` §14. The data-addressing family does NOT yet
+close the A4 loop on real hardware — only on the CPU oracle.
 """
 from __future__ import annotations
 
