@@ -175,6 +175,21 @@ def _temperature_softmax(point: dict[str, Any], seed: int, device: str) -> dict[
     return {"logits": logits, "temperatures": temperatures}
 
 
+def _topk_softmax(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
+    # Seeded gating logits over [M, E] experts (the MoE router input). Distinct
+    # fp32 values -> distinct softmax probabilities -> unambiguous top-k selection
+    # (the op's top-k is integer-exact; near-ties are measure-zero for real
+    # logits, see registry/ops/topk_softmax.spec.json numerics.notes).
+    dt = to_torch_dtype(point["dtype"])
+    M, E = int(point["M"]), int(point["E"])
+    gating = _gen(device, dt, M, E, seed=seed)
+    return {
+        "gating_output": gating,
+        "topk": int(point["topk"]),
+        "renormalize": bool(point["renormalize"]),
+    }
+
+
 _GENERATORS: dict[str, Callable[[dict, int, str], dict[str, Any]]] = {
     "fused_ffn@1.0.0": _ffn,
     "dual_rmsnorm@1.0.0": _dual_rmsnorm,
@@ -187,6 +202,7 @@ _GENERATORS: dict[str, Callable[[dict, int, str], dict[str, Any]]] = {
     "sparse_mla_attention@1.0.0": _sparse_mla_attention,
     "mhc_pre@1.0.0": _mhc_pre,
     "temperature_softmax@1.0.0": _temperature_softmax,
+    "topk_softmax@1.0.0": _topk_softmax,
 }
 
 

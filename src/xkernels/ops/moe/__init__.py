@@ -13,6 +13,7 @@ from .interface import fused_moe_int4_w4a16
 from .mxfp4 import dequant_mxfp4_weight, make_mxfp4_moe_weights
 from .mxfp4_interface import fused_moe_mxfp4
 from .sum_reduce import moe_sum_reduce
+from .topk_softmax import topk_softmax
 from .w4a16 import (
     dequant_w4a16,
     make_w4a16_weights,
@@ -50,6 +51,15 @@ with backend_registration_guard(
     with triton_import_ctx():
         from .triton import sum_reduce_kernel  # noqa: F401
 
+# Fused MoE gating (softmax + top-k + optional renorm) Triton backend (issue #70).
+with backend_registration_guard(
+    "topk_softmax", Backend.TRITON, source="xkernels.ops.moe.triton.topk_softmax_kernel"
+):  # pragma: no cover - requires triton
+    from ..._triton_compat import triton_import_ctx
+
+    with triton_import_ctx():
+        from .triton import topk_softmax_kernel  # noqa: F401
+
 # Import the CUTE DSL (native CUDA) backend for moe_sum_reduce (optional).
 # NVIDIA-only; gated on `nvidia-cutlass-dsl` (the `cute` extra).
 with backend_registration_guard(
@@ -70,6 +80,7 @@ __all__ = [
     "fused_moe_mxfp4",
     "moe_align_block_size",
     "moe_sum_reduce",
+    "topk_softmax",
     "dequant_w4a16",
     "make_w4a16_weights",
     "dequant_mxfp4_weight",

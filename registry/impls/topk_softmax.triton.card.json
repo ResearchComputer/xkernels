@@ -1,0 +1,46 @@
+{
+  "id": "topk_softmax.triton@1.0.0",
+  "implements": "topk_softmax@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": {
+      "kind": "registers",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "One program per token row: coalesced read of E logits into registers, fp32 online softmax, iterative argmax top-k (TOPK unrolled, BLOCK_E=next_pow2(E)), optional fp32 renorm. Memory-bound on the [M,E] gating read; fuses softmax + topk + renorm into one launch (the reference is two launches + a pointwise). num_warps=4.",
+    "roofline": "memory_bound",
+    "measured": [
+      {
+        "arch": "nvidia_sm121",
+        "shape": {
+          "dtype": "bf16",
+          "M": 4096,
+          "E": 256,
+          "topk": 8,
+          "renormalize": true
+        },
+        "dtype": "bf16",
+        "knobs": {},
+        "source": "run:9563a820fbbe",
+        "ms": 0.09119860925104308
+      }
+    ]
+  },
+  "uses_primitives": [
+    "reduce.softmax",
+    "reduce.argmax_topk"
+  ],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-07-02T00:00:00Z",
+    "source_path": "src/xkernels/ops/moe/triton/topk_softmax_kernel.py"
+  },
+  "notes": "Fused sgl_kernel.topk_softmax equivalent. TOPK and BLOCK_E are compiled as tl.constexpr (recompiled per (topk, next_pow2(E)) and cached by Triton) \u2014 they are derived from the dispatch args, NOT user specialization_knobs, so specialization_knobs is empty. Portable across NVIDIA sm_80+/AMD cdna3 (no vendor intrinsics; pure tl.exp + tl.argmax). Selection order is descending probability to match the reference's torch.topk(sorted=True) for element-wise verify parity."
+}

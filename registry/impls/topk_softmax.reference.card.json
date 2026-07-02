@@ -1,0 +1,18 @@
+{
+  "id": "topk_softmax.reference@1.0.0",
+  "implements": "topk_softmax@1.0.0",
+  "backend": "reference",
+  "arch": { "family": "any", "wave_size": 0, "scratch": { "kind": "none", "bytes": 0 } },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "pure-torch oracle: fp32 softmax -> torch.topk(sorted=True) -> optional renorm. Two kernel launches (softmax, topk) + a renorm pointwise — the unfused baseline a fused Triton card replaces.",
+    "roofline": "latency_bound"
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-07-02T00:00:00Z",
+    "source_path": "src/xkernels/ops/moe/topk_softmax.py"
+  }
+}

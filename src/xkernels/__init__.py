@@ -38,6 +38,7 @@ from .ops.moe import (
     fused_moe_mxfp4,
     moe_align_block_size,
     moe_sum_reduce,
+    topk_softmax,
 )
 from .ops.norm import dual_rmsnorm, rmsnorm
 
@@ -53,6 +54,7 @@ __all__ = [
     "fused_moe_mxfp4",
     "moe_align_block_size",
     "moe_sum_reduce",
+    "topk_softmax",
     "mxfp4_paged_gather",
     "mm_fp8_blockscale",
     "per_token_group_quant_fp8",

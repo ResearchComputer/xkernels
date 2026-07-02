@@ -1,0 +1,11 @@
+{
+  "default_dtype": "bf16",
+  "points": [
+    { "dtype": "bf16", "M": 128, "E": 256, "topk": 8,  "renormalize": true },
+    { "dtype": "bf16", "M": 1,   "E": 256, "topk": 8,  "renormalize": true },
+    { "dtype": "bf16", "M": 37,  "E": 8,   "topk": 2,  "renormalize": true },
+    { "dtype": "fp16", "M": 64,  "E": 64,  "topk": 4,  "renormalize": false },
+    { "dtype": "fp32", "M": 128, "E": 256, "topk": 8,  "renormalize": true },
+    { "dtype": "bf16", "M": 8,   "E": 4,   "topk": 1,  "renormalize": true }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "id": "topk_softmax@1.0.0",
+  "name": "fused MoE gating: softmax + top-k + optional renormalize",
+  "version": "1.0.0",
+  "kernel": "topk_softmax",
+  "op": {
+    "signature": "(topk_weights[M,topk] fp32, topk_ids[M,topk] int32) = topk(softmax(gating_output[M,E] / fp32)); optional renorm",
+    "canonical_op": "moe",
+    "fusions": ["softmax_topk", "topk_renormalize"]
+  },
+  "inputs": {
+    "gating_output": {
+      "dtype": ["fp32", "bf16", "fp16"],
+      "layout": "row_major",
+      "rank": 2,
+      "shape_symbols": ["M", "E"],
+      "contiguous": true
+    }
+  },
+  "outputs": {
+    "topk_weights": {
+      "dtype": ["fp32"],
+      "layout": "row_major",
+      "rank": 2,
+      "shape_symbols": ["M", "topk"]
+    },
+    "topk_ids": {
+      "dtype": ["int32"],
+      "layout": "row_major",
+      "rank": 2,
+      "shape_symbols": ["M", "topk"]
+    }
+  },
+  "constraints": [],
+  "preconditions": [
+    "1 <= topk <= E (topk is a dispatch kwarg, not a tensor shape, so it cannot bind in the decidable constraint mini-language at retrieval time; the reference asserts it at runtime)",
+    "topk_weights and topk_ids are returned in DESCENDING probability order within each row, with ties broken by ASCENDING expert id (a stable descending argsort). This is a CONTRACT requirement, not an implementation detail: bf16/fp16 logits quantize many experts to the same fp32 probability, so exact ties are NOT measure-zero, and every backend must agree element-wise. The Triton device kernel achieves this for free because tl.argmax returns the LOWEST index on ties.",
+    "softmax is computed over ALL E experts first, then top-k, then optional renorm — NOT softmax over the selected experts only (sgl_kernel.topk_softmax / DeepSeek-V3 convention)",
+    "gating_output is contiguous row-major"
+  ],
+  "numerics": {
+    "reference": "xkernels.ops.moe.topk_softmax:topk_softmax_ref",
+    "rtol": 1e-2,
+    "atol": 1e-3,
+    "reduce_dtype": "fp32",
+    "cross_backend_rtol": 1e-2,
+    "by_dtype": {
+      "fp32": { "rtol": 1e-5, "atol": 1e-6 },
+      "bf16": { "rtol": 1e-2, "atol": 1e-2 },
+      "fp16": { "rtol": 1e-2, "atol": 1e-2 }
+    },
+    "notes": "Pure-torch oracle: fp32 softmax (logits upcast) -> stable descending argsort (ties by ascending expert id) -> top-k -> optional fp32 renorm. NOT torch.topk (its tie-break is unspecified and diverges from tl.argmax, false-failing element-wise parity on bf16 inputs where quantization makes exact ties common). The top-k SELECTION is integer-exact (an id mismatch is abs_err >= 1 and fails any tolerance); the weight VALUES carry the softmax rounding (tl.exp vs torch.exp). The by_dtype tolerance covers a future Triton device kernel's fp32 reduction order. NOTE the top-k discontinuity remains for ADVERSARIAL inputs with near-equal (but not bit-identical) probabilities: a 1-ULP rounding flip can swap the selected id; compare ids by set-equality for such cases. Cross-backend rtol is the fp32-softmax bar, intentionally >= single-backend rtol."
+  },
+  "shape_sweep": "topk_softmax",
+  "composes_with": ["moe_sum_reduce@1.0.0", "fused_moe_int4_w4a16@1.0.0", "fused_moe_mxfp4@1.0.0"],
+  "provenance": {
+    "authored_by": "human",
+    "source_path": "src/xkernels/ops/moe/topk_softmax.py"
+  }
+}
