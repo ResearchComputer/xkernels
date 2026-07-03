@@ -38,8 +38,12 @@ def sparse_mla_attention_ref(
     topk_length: torch.Tensor | None = None,
     attn_sink: torch.Tensor | None = None,
     d_v: int | None = None,
+    workspace=None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Sparse latent-MLA attention. See module docstring.
+
+    ``workspace`` is accepted for signature uniformity with the Triton backend
+    but ignored (the reference always returns fresh tensors).
 
     Args:
         q: ``[T, H, D]`` latent queries.

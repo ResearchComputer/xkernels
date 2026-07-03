@@ -23,6 +23,11 @@ from .interface import (
     paged_attention_prefill,
     sparse_mla_attention,
 )
+from .workspace import (
+    PagedAttentionPrefillWorkspace,
+    PagedAttentionWorkspace,
+    SparseMlaAttentionWorkspace,
+)
 
 # Import the Triton backends for their registration side effect. Optional. Routed
 # through the optional ``_triton_compat`` redirect so the kernel binds ``tokenspeed_triton``
@@ -109,4 +114,7 @@ __all__ = [
     "apply_rope",
     "paged_attention",
     "paged_attention_prefill",
+    "PagedAttentionWorkspace",
+    "PagedAttentionPrefillWorkspace",
+    "SparseMlaAttentionWorkspace",
 ]

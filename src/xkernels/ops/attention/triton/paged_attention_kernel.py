@@ -149,11 +149,17 @@ def paged_attention_triton(
     seq_lens: torch.Tensor,
     *,
     scale: float,
+    workspace=None,
 ) -> torch.Tensor:
     """Host launcher for the batched paged GQA decode kernel.
 
     Args match the reference (:func:`xkernels.ops.attention.paged_attention.paged_attention_decode_ref`);
     returns ``out [B, H_q, D]``.
+
+    ``workspace`` (optional :class:`PagedAttentionWorkspace`): if provided and
+    matching, write into its ``out`` buffer (a ``[:B]`` slice when the buffer
+    was allocated at ``B_max >= B``) instead of allocating. Enables graph
+    capture (issue #52).
     """
     q = q.contiguous()
     k_cache = k_cache.contiguous()
@@ -170,7 +176,16 @@ def paged_attention_triton(
     group = H_q // H_kv
     max_blocks = block_table.shape[1]
 
-    out = torch.empty(B, H_q, D, device=q.device, dtype=q.dtype)
+    if workspace is not None:
+        if not workspace.matches(B, H_q, D, device=q.device, dtype=q.dtype):
+            raise ValueError(
+                f"workspace buffer is shape {tuple(workspace.out.shape)} on "
+                f"{workspace.out.device}/{workspace.out.dtype}; need >= ({B}, "
+                f"{H_q}, {D}) on {q.device}/{q.dtype}."
+            )
+        out = workspace.out[:B]  # valid slice; strides unchanged
+    else:
+        out = torch.empty(B, H_q, D, device=q.device, dtype=q.dtype)
     BLOCK_D = triton.next_power_of_2(D)
     # BLOCK_N: how many KV positions per flash chunk. 64 is the vLLM/flash
     # default; the flash reduction is exact for any chunk size (tune later).

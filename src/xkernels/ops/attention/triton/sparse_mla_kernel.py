@@ -122,6 +122,7 @@ def sparse_mla_attention_triton(
     topk_length=None,
     attn_sink=None,
     d_v=None,
+    workspace=None,
 ):
     q = q.contiguous()
     kv = kv.contiguous()
@@ -131,9 +132,20 @@ def sparse_mla_attention_triton(
     topk = indices.shape[1]
     d_v = D if d_v is None else d_v
 
-    out = torch.empty(T, H, d_v, device=q.device, dtype=q.dtype)
-    lse = torch.empty(T, H, device=q.device, dtype=torch.float32)
-    maxl = torch.empty(T, H, device=q.device, dtype=torch.float32)
+    if workspace is not None:
+        if not workspace.matches(T, H, d_v, device=q.device, dtype=q.dtype):
+            raise ValueError(
+                f"workspace buffer is shape {tuple(workspace.out.shape)} on "
+                f"{workspace.out.device}/{workspace.out.dtype}; need >= ({T}, "
+                f"{H}, {d_v}) on {q.device}/{q.dtype}."
+            )
+        out = workspace.out[:T]
+        lse = workspace.lse[:T]
+        maxl = workspace.maxl[:T]
+    else:
+        out = torch.empty(T, H, d_v, device=q.device, dtype=q.dtype)
+        lse = torch.empty(T, H, device=q.device, dtype=torch.float32)
+        maxl = torch.empty(T, H, device=q.device, dtype=torch.float32)
 
     has_sink = attn_sink is not None
     has_len = topk_length is not None

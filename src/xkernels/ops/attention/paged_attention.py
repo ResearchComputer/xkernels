@@ -55,8 +55,12 @@ def paged_attention_decode_ref(
     seq_lens: torch.Tensor,
     *,
     scale: float,
+    workspace=None,
 ) -> torch.Tensor:
     """Reference: batched paged GQA decode. See module docstring.
+
+    ``workspace`` is accepted for signature uniformity with the Triton backend
+    but ignored (the reference always returns a fresh tensor).
 
     For each request ``b``, gathers its valid KV pages from the pool, computes
     fp32 GQA attention of that request's single query token against its full KV
@@ -117,12 +121,18 @@ def paged_attention(
     *,
     scale: float,
     backend: Backend | str = "auto",
+    workspace=None,
 ) -> torch.Tensor:
     """Batched paged grouped-query attention (DECODE). See
     :func:`paged_attention_decode_ref`.
 
     ``backend="auto"`` picks the fastest registered backend (Triton device kernel
     when available, else the pure-torch reference).
+
+    ``workspace`` (optional :class:`PagedAttentionWorkspace`): reuse a
+    preallocated output buffer across decode steps to avoid per-call
+    allocation and enable CUDA/HIP graph capture (issue #52). Ignored by the
+    reference backend.
     """
     return dispatch(
         "paged_attention",
@@ -132,5 +142,6 @@ def paged_attention(
         block_table=block_table,
         seq_lens=seq_lens,
         scale=scale,
+        workspace=workspace,
         backend=backend,
     )

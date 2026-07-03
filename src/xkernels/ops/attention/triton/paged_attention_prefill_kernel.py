@@ -165,12 +165,18 @@ def paged_attention_prefill_triton(
     cu_seqlens_k: torch.Tensor,
     *,
     scale: float,
+    workspace=None,
 ) -> torch.Tensor:
     """Host launcher for the varlen paged GQA prefill kernel.
 
     Args match the reference
     (:func:`xkernels.ops.attention.paged_attention_prefill.paged_attention_prefill_ref`);
     returns ``out [num_tokens, H_q, D]``.
+
+    ``workspace`` (optional :class:`PagedAttentionPrefillWorkspace`): if provided
+    and matching, write into its ``out``/``seq_ids`` buffers (``[:num_tokens]``
+    slices when allocated at ``num_tokens_max >= num_tokens``) instead of
+    allocating. Enables graph capture (issue #52).
     """
     q = q.contiguous()
     k_cache = k_cache.contiguous()
@@ -192,11 +198,22 @@ def paged_attention_prefill_triton(
     # is the seq with cu_seqlens_q[s] <= t < cu_seqlens_q[s+1]. O(num_tokens log
     # num_seqs) once on the host; the device program then does one gather.
     token_idx = torch.arange(num_tokens, device=q.device, dtype=torch.int32)
-    seq_ids = (
-        torch.searchsorted(cu_seqlens_q, token_idx, right=True) - 1
-    ).to(torch.int32)
-
-    out = torch.empty(num_tokens, H_q, D, device=q.device, dtype=q.dtype)
+    if workspace is not None:
+        if not workspace.matches(num_tokens, H_q, D, device=q.device, dtype=q.dtype):
+            raise ValueError(
+                f"workspace buffer is shape {tuple(workspace.out.shape)} on "
+                f"{workspace.out.device}/{workspace.out.dtype}; need >= "
+                f"({num_tokens}, {H_q}, {D}) on {q.device}/{q.dtype}."
+            )
+        out = workspace.out[:num_tokens]
+        seq_ids = workspace.seq_ids[:num_tokens]
+        # searchsorted returns int64; compute then copy into the int32 workspace slice
+        seq_ids.copy_(torch.searchsorted(cu_seqlens_q, token_idx, right=True) - 1)
+    else:
+        out = torch.empty(num_tokens, H_q, D, device=q.device, dtype=q.dtype)
+        seq_ids = (
+            torch.searchsorted(cu_seqlens_q, token_idx, right=True) - 1
+        ).to(torch.int32)
     BLOCK_D = triton.next_power_of_2(D)
     BLOCK_N = 64  # flash-chunk size; the flash reduction is exact for any size.
     grid = (num_tokens, H_q)

@@ -55,6 +55,7 @@ def paged_attention_prefill_ref(
     cu_seqlens_k: torch.Tensor,
     *,
     scale: float,
+    workspace=None,
 ) -> torch.Tensor:
     """Reference: varlen paged GQA prefill. See module docstring.
 
@@ -63,6 +64,8 @@ def paged_attention_prefill_ref(
     range ``[0, prefix + p + 1)``. Written for CLARITY (per-seq, per-token Python
     loop), not speed -- the device kernel fuses the whole packed batch into one
     launch.
+    ``workspace`` is accepted for signature uniformity with the Triton backend
+    but ignored (the reference always returns a fresh tensor).
     """
     if q.dim() != 3:
         raise ValueError(
@@ -142,12 +145,17 @@ def paged_attention_prefill(
     *,
     scale: float,
     backend: Backend | str = "auto",
+    workspace=None,
 ) -> torch.Tensor:
     """Variable-length paged grouped-query attention (PREFILL/EXTEND). See
     :func:`paged_attention_prefill_ref`.
 
     ``backend="auto"`` picks the fastest registered backend (Triton device kernel
     when available, else the pure-torch reference).
+
+    ``workspace`` (optional :class:`PagedAttentionPrefillWorkspace`): reuse
+    preallocated ``out`` + ``seq_ids`` buffers to avoid per-call allocation and
+    enable graph capture (issue #52). Ignored by the reference backend.
     """
     return dispatch(
         "paged_attention_prefill",
@@ -158,5 +166,6 @@ def paged_attention_prefill(
         cu_seqlens_q=cu_seqlens_q,
         cu_seqlens_k=cu_seqlens_k,
         scale=scale,
+        workspace=workspace,
         backend=backend,
     )

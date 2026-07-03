@@ -95,10 +95,15 @@ def sparse_mla_attention(
     attn_sink: torch.Tensor | None = None,
     d_v: int | None = None,
     backend: Backend | str = "auto",
+    workspace=None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """DeepSeek-V4 sparse-MLA attention compute (issue #32): flash softmax over
     the DSA-indexer-selected latent KV. Portable gfx942 replacement for the
     NVIDIA-only ``flash_mla`` sparse/decode kernels.
+
+    ``workspace`` (optional :class:`SparseMlaAttentionWorkspace`): reuse
+    preallocated ``out``/``lse``/``maxl`` buffers to avoid per-call allocation
+    and enable graph capture (issue #52). Ignored by the reference backend.
 
     Args:
         q: ``[T, H, D]`` latent queries (D = kv_lora_rank + rope; V4: 512).
@@ -122,6 +127,7 @@ def sparse_mla_attention(
         topk_length=topk_length,
         attn_sink=attn_sink,
         d_v=d_v,
+        workspace=workspace,
         backend=backend,
     )
 
@@ -220,11 +226,13 @@ def paged_attention_prefill(
     *,
     scale: float,
     backend: Backend | str = "auto",
+    workspace=None,
 ) -> torch.Tensor:
     """Variable-length paged grouped-query attention (PREFILL/EXTEND).
 
     Thin re-export of
     :func:`xkernels.ops.attention.paged_attention_prefill.paged_attention_prefill`.
+    Passes ``workspace`` through to the Triton backend (issue #52).
     """
     return dispatch(
         "paged_attention_prefill",
@@ -235,5 +243,6 @@ def paged_attention_prefill(
         cu_seqlens_q=cu_seqlens_q,
         cu_seqlens_k=cu_seqlens_k,
         scale=scale,
+        workspace=workspace,
         backend=backend,
     )
