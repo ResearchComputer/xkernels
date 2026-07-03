@@ -377,3 +377,43 @@ no-ops).
    is provably a superset of rel-only (no op can go PASS→FAIL; it only converts
    near-zero false-FAILs to honest PASSes). See `_within_tolerance`'s docstring,
    which flags the rel-only parity inconsistency this resolves.
+
+## 15. Workspaces enable CUDA graph capture (the real #52 win, not allocation savings)
+
+**The eager-mode allocation savings from preallocated workspaces are MARGINAL
+(0–6 µs).** torch's caching allocator makes `torch.empty` nearly free on size
+reuse, so "avoid allocation" is NOT the win. The load-bearing value of the
+`*Workspace` dataclasses (`xkernels.ops.attention.workspace`) is enabling **CUDA
+/HIP graph capture**: a graph requires the SAME memory addresses across captures,
+which per-call allocation makes impossible. With a workspace, the whole decode
+step captures once and replays as one graph launch.
+
+Measured on ds5 (GB10), `paged_attention` decode (Qwen3-4B GQA), graph-replay
+vs eager:
+```
+   B  seq   eager_ms  graph_ms   speedup
+   1  128    0.0175    0.0062    2.83x   <- launch-overhead-dominated (the win)
+   1  512    0.0370    0.0369    1.00x   <- kernel-bound (no win)
+  16  512    0.0920    0.0932    0.99x   <- kernel-bound
+```
+The speedup is exactly where issue #52 hypothesized ("allocation overhead
+dominates SMALL-BATCH latency"): single/few-request decode, where Python
+dispatch + kernel-launch overhead is a large fraction of total time. In a real
+serving stack the win COMPOUNDS — every layer's attention + rope + the rest all
+capture into one graph replay, collapsing the whole per-token Python overhead.
+
+**Recipe** (the `workspace.py` module docstring has the full version):
+```python
+ws = PagedAttentionWorkspace.allocate(B_max, H_q, D, device="cuda", dtype=bf16)
+for _ in range(3): paged_attention(q, ..., workspace=ws)   # warmup
+with torch.cuda.graph(g):
+    out = paged_attention(q, ..., workspace=ws)            # capture (stable addrs)
+# replay each decode step: mutate inputs in place, g.replay()
+```
+
+**Stale-data safety**: these workspaces are safe to reuse for SMALLER buckets
+(`B < B_max`) because the kernels FULLY overwrite every output element every
+call (flash softmax always produces a value). The caller reads the valid `[:B]`
+slice. Do NOT extend this pattern to outputs that need SELECTIVE zeroing (MoE
+combine outputs with atomic-add into skipped-expert slots) without a per-call
+zero — those are a separate follow-up.
