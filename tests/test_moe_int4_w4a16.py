@@ -176,6 +176,35 @@ def test_fused_combine_matches_reference(mul_routed):
     torch.testing.assert_close(got.float(), ref.float(), atol=atol, rtol=rtol)
 
 
+@pytest.mark.parametrize("M", [4, 8, 16, 32, 128])
+def test_fused_combine_full_config_space_matches_reference(M):
+    """Regression for issue #72: fused_combine=True with the FULL autotune config
+    space (no ``_pin_single_config``) must match the reference.
+
+    Before #72's fix, the combine path fell through to ``@triton.autotune`` when
+    no tuned config was present, and autotune benchmarked EVERY candidate config
+    into the SAME atomic-add output buffer -- accumulating N_configs x the correct
+    value (verified ~480x too big). The sibling ``test_fused_combine_matches_reference``
+    masked the bug because it pins the autotuner to one config. This test does NOT
+    pin, so it catches the regression if the combine path ever re-enters autotune.
+    """
+    if not _HAS_TRITON:
+        pytest.skip("triton backend not registered (triton not installed)")
+    dev = _device()
+    group_size = 32
+    E, N, K, top_k = 8, 256, 256, 4
+    packed, scale, A, topk_ids, topk_w = _inputs(M, E, N, K, top_k, dev, group_size)
+    got = fused_moe_int4_w4a16(
+        A, packed, scale, topk_ids, topk_w,
+        group_size=group_size, mul_routed_weight=True,
+        backend=Backend.TRITON, fused_combine=True,
+    )
+    ref = _ref_grouped(A, packed, scale, topk_ids, topk_w, group_size, True)
+    assert got.shape == (M, N)
+    atol = rtol = 3e-3 if _INTERP else 2e-2
+    torch.testing.assert_close(got.float(), ref.float(), atol=atol, rtol=rtol)
+
+
 def test_auto_fused_combine_decode_default_and_escape_hatch(monkeypatch):
     """Decode-sized no-EP calls default to fused combine; False keeps scratch+sum."""
     if not _HAS_TRITON:

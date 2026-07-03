@@ -67,6 +67,7 @@ from .align_kernel import moe_align_block_size_triton
 from .configs import (
     align_block_m,
     get_autotune_configs,
+    get_default_config,
     get_moe_int4_config,
     prune_configs,
 )
@@ -502,25 +503,23 @@ def _moe_int4_w4a16_triton(
         filter_expert = False
     if fused_combine is None:
         fused_combine = _auto_fused_combine(M, top_k, expert_map)
+    # The fused combine atomic-accumulates into the output buffer, so it MUST NOT
+    # run under @triton.autotune (every benchmarked config would atomic-add its
+    # result, multiplying the output by the config count -- issue #72). Resolve a
+    # default config when no tuned one exists so the combine launch always takes
+    # the single-run direct path. ``block_m`` above already equals
+    # ``align_block_m(M)`` (the default config's BLOCK_SIZE_M), so the sort/pad
+    # granularity and the kernel tile M stay consistent.
+    if fused_combine and config is None:
+        config = get_default_config(M)
     if fused_combine:
         # Fused weighted top-k combine: the kernel atomic-accumulates into a single
         # [M, N] fp32 buffer, so there is no [M*top_k, N] scratch and no separate
-        # moe_sum_reduce. fp32 accumulate -> cast to the activation dtype.
-        #
-        # SOUNDNESS GUARD (issue #52): the atomic-add combine is only sound under
-        # the RESOLVED-config launch path (``config is not None`` -> single kernel
-        # run). When ``config is None`` the GEMM goes through ``@triton.autotune``,
-        # whose benchmarking runs EVERY candidate config into the SAME output
-        # buffer -- each atomic-add accumulates, so the result is N_configs x too
-        # large. That is a pre-existing autotune+atomic interaction (it breaks the
-        # ALLOC path equally), NOT a workspace bug; the workspace just can't make
-        # an unsound launch sound, so it falls back to allocate-each-call there.
-        # A serving stack tunes once and reuses the cached config (config != None),
-        # which is where the workspace is active and correct.
-        if (
-            workspace is not None
-            and config is not None
-            and workspace.matches(M, top_k, N, dtype=A.dtype, device=A.device)
+        # moe_sum_reduce. fp32 accumulate -> cast to the activation dtype. The
+        # combine path is always single-run (config resolved above), so the
+        # atomic-add is sound (issue #72 fixed).
+        if workspace is not None and workspace.matches(
+            M, top_k, N, dtype=A.dtype, device=A.device
         ):
             # Reuse the workspace combine buffer (atomic-add -> MUST re-zero).
             out = workspace.combine_out[:M]

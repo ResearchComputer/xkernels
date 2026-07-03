@@ -8,13 +8,11 @@ output): workspace path == allocation path, buffer-address stability across
 calls (graph-capture enabler), smaller-bucket reuse without stale-data leak,
 and the re-zero discipline for atomic-add combine outputs.
 
-NOTE: the int4 ``fused_combine=True`` path is NOT exercised here -- it relies on
-the RESOLVED-config launch path for soundness (see the SOUNDNESS GUARD in
-``_moe_int4_w4a16_triton``). With ``config=None`` (no tuned config for the test
-M on GB10), ``@triton.autotune`` accumulates atomic-adds across candidate
-configs, which breaks the ALLOC path equally. A serving stack reuses a cached
-config (config != None), where the workspace IS active and correct; verifying
-that needs a populated config cache.
+NOTE: the int4 ``fused_combine=True`` path was UNSOUND under ``@triton.autotune``
+before issue #72 was fixed (autotune accumulated atomic-adds across candidate
+configs). #72 fixed it by resolving a default config so the combine launch is
+always single-run; the workspace combine path is covered below (it was guarded
+out before the fix).
 """
 
 from __future__ import annotations
@@ -140,7 +138,7 @@ def test_align_workspace_ignored_by_reference():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# §2  fused_moe_int4_w4a16  (fused_combine=False, the sound path on GB10)
+# §2  fused_moe_int4_w4a16  (both combine paths; #72 fixed the combine path)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
@@ -189,6 +187,30 @@ def test_int4_workspace_smaller_m_reuse():
         fused_combine=False, backend="triton", workspace=ws_big,
     )
     torch.testing.assert_close(o_ws.float(), o_alloc.float(), atol=1e-3, rtol=1e-3)
+
+
+@_DEV
+def test_int4_workspace_combine_matches_allocation():
+    """fused_combine=True workspace path (issue #72): the combine launch now
+    always resolves a config (default when no tuned one), so it is single-run and
+    the atomic-add is sound. The workspace combine buffer (re-zeroed each call)
+    matches the allocate-each-call path."""
+    dev = _device()
+    A, packed, scale, tids, tw = _int4_inputs(8, 8, 256, 256, 4, dev, seed=2)
+    N = packed.shape[1]
+    o_alloc = fused_moe_int4_w4a16(
+        A, packed, scale, tids, tw, fused_combine=True, backend="triton"
+    )
+    ws = MoeInt4Workspace.allocate(8, 4, N, dtype=_DTYPE, device=dev)
+    o_ws = fused_moe_int4_w4a16(
+        A, packed, scale, tids, tw, fused_combine=True, backend="triton", workspace=ws
+    )
+    torch.testing.assert_close(o_ws.float(), o_alloc.float(), atol=1e-3, rtol=1e-3)
+    # re-zero on reuse: atomic-add combine must not 2x-accumulate
+    o_ws2 = fused_moe_int4_w4a16(
+        A, packed, scale, tids, tw, fused_combine=True, backend="triton", workspace=ws
+    )
+    torch.testing.assert_close(o_ws.float(), o_ws2.float(), atol=1e-3, rtol=1e-3)
 
 
 @_DEV

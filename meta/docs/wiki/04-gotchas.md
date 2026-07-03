@@ -418,12 +418,12 @@ slice. Do NOT extend this pattern to outputs that need SELECTIVE zeroing (MoE
 combine outputs with atomic-add into skipped-expert slots) without a per-call
 zero — those are a separate follow-up.
 
-## 16. `@triton.autotune` + atomic-add combine = silently wrong (the int4 fused_combine finding)
+## 16. `@triton.autotune` + atomic-add combine = silently wrong (RESOLVED — the int4 fused_combine bug, #72)
 
-**Root cause found while wiring the MoE workspaces (#52):**
-`fused_moe_int4_w4a16(fused_combine=True)` is **silently wrong** whenever the
-GEMM launches through `@triton.autotune` (i.e. when `get_moe_int4_config(...)`
-returns `None` — no tuned config for the shape). Verified on GB10 for M=8:
+**Root cause found while wiring the MoE workspaces (#52), fixed in #72:**
+`fused_moe_int4_w4a16(fused_combine=True)` was **silently wrong** whenever the
+GEMM launched through `@triton.autotune` (i.e. when `get_moe_int4_config(...)`
+returned `None` — no tuned config for the shape). Verified on GB10 for M=8:
 the fused-combine output was **312** vs the correct reference **0.65** (~480×
 too big), while `fused_combine=False` (the scratch path) matched the reference
 at 0.002.
@@ -436,15 +436,28 @@ atomic-adds accumulate, so after autotune the buffer holds roughly
 WRITES (each token-slot to a unique row), not atomic-adds — the last autotune
 trial's write simply wins, and it's correct.
 
-**The mxfp4 kernel avoids this** by always calling `get_default_config(M)`
-(always returns a config) and launching the resolved-config path (single run,
-no autotune). The int4 kernel does not — `get_moe_int4_config` returns `None`
-for untuned shapes and falls through to the autotune entry point.
+**Why the existing test missed it:** `test_fused_combine_matches_reference`
+called `_pin_single_config()`, which pins the autotuner to ONE config
+(`node.configs = node.configs[:1]`) — so only one atomic-add ran and the test
+passed. In production all ~17 configs ran → 17× too big.
 
-**This breaks the ALLOC path equally** (it is not a workspace bug). The workspace
-falls back to allocate-each-call under `config is None` (the SOUNDNESS GUARD in
-`_moe_int4_wa16_triton`) so it never claims correctness for an unsound launch —
-but the alloc path is still wrong. **Fix (follow-up):** make int4 resolve a
-config before the combine launch (mirror mxfp4's `get_default_config`), or gate
-`fused_combine=True` on `config is not None`. Until then, `fused_combine=True`
-without a tuned config is broken on EVERY arch, not just GB10.
+**The mxfp4 kernel avoided this** by always calling `get_default_config(M)`
+(always returns a config) and launching the resolved-config path (single run,
+no autotune).
+
+**Fix (#72):** int4 now mirrors mxfp4 — added `get_default_config(M)` to
+`configs.py`, and the wrapper resolves it when no tuned config exists AND the
+combine path is active, so the combine launch always takes the single-run
+direct path. After the fix, the combine path matches the reference at
+`combine-vs-ref = 0.000` (the fp32-accumulate combine is actually MORE accurate
+than the bf16 scratch path, which has `scratch-vs-ref ≈ 0.002–0.004` bf16
+quantization noise). The workspace combine path (previously guarded out by the
+`config is not None` SOUNDNESS GUARD) is now active.
+
+**General lesson:** never run a kernel that **atomic-accumulates** into its
+output under `@triton.autotune` against the real buffer — autotune is a
+benchmark, not a single run. Either (a) resolve a config and take the direct
+launch path (mxfp4/int4-combine), or (b) autotune into a SCRATCH buffer and
+keep the real output for the single resolved run. A regression test
+(`test_fused_combine_full_config_space_matches_reference`, NO config pinning)
+guards against re-introducing this.

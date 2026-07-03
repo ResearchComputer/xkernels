@@ -44,6 +44,7 @@ __all__ = [
     "get_autotune_configs",
     "prune_configs",
     "align_block_m",
+    "get_default_config",
     "get_moe_int4_config",
     "load_tuned_config",
 ]
@@ -187,6 +188,41 @@ def align_block_m(M: int) -> int:
     decode uses 16; larger M uses 64.
     """
     return 16 if M <= 32 else 64
+
+
+def get_default_config(M: int) -> dict:
+    """A safe, fixed launch config for the production (non-autotuned) path.
+
+    Mirrors ``mxfp4_configs.get_default_config``. The fused-MoE ``combine=True``
+    path atomic-accumulates into the ``[M, N]`` output, so it MUST NOT run under
+    ``@triton.autotune`` against the real buffer: every benchmarked config would
+    atomic-add its result, multiplying the output by the number of candidate
+    configs (issue #72). The wrapper therefore resolves one config here (tuned if
+    available, else this default) and takes the single-run direct launch path.
+
+    ``BLOCK_SIZE_M`` matches :func:`align_block_m` so the sort/pad granularity and
+    the kernel's per-block ``expert_ids`` indexing agree. Both regimes pick a real
+    entry from :func:`get_autotune_configs` (so the config is known-runnable on
+    every backend; the AMD knobs are ignored on NVIDIA, per ``_cfg``'s docstring).
+    ``BLOCK_SIZE_K=128`` is a multiple of both the pack factor (8) and the group
+    size (32); for ``K < 128`` the kernel runs one masked K-iteration
+    (``EVEN_K=False``), which is correct.
+
+    This is a *correctness* default, not a perf-tuned one — offline-tuned winners
+    in ``tuned_configs/`` take precedence when present (``get_moe_int4_config``).
+    """
+    bm = align_block_m(M)
+    if M <= 32:  # decode: tiny M, wide N to amortize scale + launch overhead
+        return {
+            "BLOCK_SIZE_M": bm, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1, "num_warps": 4, "num_stages": 2,
+            "waves_per_eu": 3, "matrix_instr_nonkdim": 16, "kpack": 2,
+        }
+    return {  # prefill: larger M, balanced tile
+        "BLOCK_SIZE_M": bm, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 128,
+        "GROUP_SIZE_M": 8, "num_warps": 4, "num_stages": 2,
+        "waves_per_eu": 2, "matrix_instr_nonkdim": 16, "kpack": 2,
+    }
 
 
 def _device_name(arch: str | None = None) -> str | None:
