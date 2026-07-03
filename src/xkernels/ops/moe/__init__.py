@@ -20,6 +20,11 @@ from .w4a16 import (
     moe_align_block_size_ep,
     moe_align_block_size_ref,
 )
+from .workspace import (
+    MoeAlignWorkspace,
+    MoeInt4Workspace,
+    MoeMxfp4Workspace,
+)
 
 # Import Triton backends for their registration side effects. Optional — guard
 # each so the package imports without Triton installed. Routed through the
@@ -87,4 +92,7 @@ __all__ = [
     "make_mxfp4_moe_weights",
     "moe_align_block_size_ref",
     "moe_align_block_size_ep",
+    "MoeAlignWorkspace",
+    "MoeInt4Workspace",
+    "MoeMxfp4Workspace",
 ]

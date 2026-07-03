@@ -28,6 +28,7 @@ def fused_moe_int4_w4a16(
     fused_combine: bool | None = None,
     expert_map: torch.Tensor | None = None,
     backend: Backend | str = "auto",
+    workspace=None,
 ) -> torch.Tensor:
     """INT4 W4A16 grouped fused-MoE GEMM ``out[m] = sum_j w[m,j] * (A[m] @ W[e]^T)``.
 
@@ -55,6 +56,12 @@ def fused_moe_int4_w4a16(
             the caller all-reduces the partials across the EP group to get the
             full result. ``None`` (default) = all experts local (no EP).
         backend: ``"auto"`` or a ``Backend`` / its string value.
+        workspace: optional :class:`~xkernels.ops.moe.workspace.MoeInt4Workspace`
+            (issue #52). When given and matching, the Triton backend writes the
+            combine / scratch output into the workspace buffer (re-zeroing the
+            atomic-add combine output) instead of allocating, so the buffer
+            addresses are stable for CUDA/HIP graph capture. Ignored by the
+            reference backend. ``None`` (default) = allocate-each-call.
 
     Returns:
         ``[M, N]`` output in ``A.dtype`` (a per-rank partial when ``expert_map``
@@ -71,5 +78,6 @@ def fused_moe_int4_w4a16(
         mul_routed_weight=mul_routed_weight,
         fused_combine=fused_combine,
         expert_map=expert_map,
+        workspace=workspace,
         backend=backend,
     )

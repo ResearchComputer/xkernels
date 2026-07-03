@@ -43,7 +43,8 @@ def dequant_w4a16(
 
 
 def moe_align_block_size_ref(
-    topk_ids: torch.Tensor, block_size: int, num_experts: int, truncate: bool = True
+    topk_ids: torch.Tensor, block_size: int, num_experts: int, truncate: bool = True,
+    workspace=None,
 ):
     """Sort/pad routed token-slots into per-expert blocks (issue #4 baseline).
 

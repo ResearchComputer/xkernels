@@ -444,6 +444,7 @@ def _moe_int4_w4a16_triton(
     mul_routed_weight: bool = True,
     fused_combine: bool | None = None,
     expert_map: torch.Tensor | None = None,
+    workspace=None,
 ) -> torch.Tensor:
     M, top_k = topk_ids.shape
     E, N, kp = packed.shape  # E == E_local (rank-local expert count under EP)
@@ -479,8 +480,22 @@ def _moe_int4_w4a16_triton(
         filter_expert = False
     else:
         if topk_ids.is_cuda:
+            # Thread the inner align workspace (issue #52): lazily allocate +
+            # cache it on the workspace so the align buffers are ALSO stable
+            # across calls (whole-call graph capture). Populated during warmup
+            # (before capture), so graph capture sees fixed addresses.
+            align_ws = None
+            if workspace is not None:
+                align_ws = workspace.align_workspace
+                if align_ws is None:
+                    from ..workspace import MoeAlignWorkspace
+
+                    align_ws = MoeAlignWorkspace.allocate(
+                        M, top_k, E, block_m, device=A.device
+                    )
+                    workspace.align_workspace = align_ws
             sorted_ids, expert_ids, num_post = moe_align_block_size_triton(
-                topk_ids, block_m, E, truncate=False
+                topk_ids, block_m, E, truncate=False, workspace=align_ws
             )
         else:
             sorted_ids, expert_ids, num_post = moe_align_block_size_ref(topk_ids, block_m, E)
@@ -491,7 +506,27 @@ def _moe_int4_w4a16_triton(
         # Fused weighted top-k combine: the kernel atomic-accumulates into a single
         # [M, N] fp32 buffer, so there is no [M*top_k, N] scratch and no separate
         # moe_sum_reduce. fp32 accumulate -> cast to the activation dtype.
-        out = torch.zeros((M, N), dtype=torch.float32, device=A.device)
+        #
+        # SOUNDNESS GUARD (issue #52): the atomic-add combine is only sound under
+        # the RESOLVED-config launch path (``config is not None`` -> single kernel
+        # run). When ``config is None`` the GEMM goes through ``@triton.autotune``,
+        # whose benchmarking runs EVERY candidate config into the SAME output
+        # buffer -- each atomic-add accumulates, so the result is N_configs x too
+        # large. That is a pre-existing autotune+atomic interaction (it breaks the
+        # ALLOC path equally), NOT a workspace bug; the workspace just can't make
+        # an unsound launch sound, so it falls back to allocate-each-call there.
+        # A serving stack tunes once and reuses the cached config (config != None),
+        # which is where the workspace is active and correct.
+        if (
+            workspace is not None
+            and config is not None
+            and workspace.matches(M, top_k, N, dtype=A.dtype, device=A.device)
+        ):
+            # Reuse the workspace combine buffer (atomic-add -> MUST re-zero).
+            out = workspace.combine_out[:M]
+            out.zero_()
+        else:
+            out = torch.zeros((M, N), dtype=torch.float32, device=A.device)
         int4_w4a16_moe_gemm(
             A,
             packed,
@@ -510,8 +545,19 @@ def _moe_int4_w4a16_triton(
             combine=True,
         )
         return out.to(A.dtype)
-    scratch = torch.empty if expert_map is None else torch.zeros
-    c = scratch((M * top_k, N), dtype=A.dtype, device=A.device)
+    # Token-indexed scratch path: [M*top_k, N]. Non-EP fully overwrites every
+    # element (the GEMM assigns each live slot) -> reuse WITHOUT zeroing; EP
+    # atomic-accumulates the rank partial -> MUST re-zero (issue #52).
+    if workspace is not None and workspace.matches(
+        M, top_k, N, dtype=A.dtype, device=A.device
+    ):
+        c = workspace.scratch[: M * top_k]
+        if expert_map is not None:
+            c.zero_()
+    elif expert_map is None:
+        c = torch.empty((M * top_k, N), dtype=A.dtype, device=A.device)
+    else:
+        c = torch.zeros((M * top_k, N), dtype=A.dtype, device=A.device)
     compute_type = tl.bfloat16 if A.dtype == torch.bfloat16 else tl.float32
     int4_w4a16_moe_gemm(
         A,

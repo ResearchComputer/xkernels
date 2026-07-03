@@ -35,6 +35,7 @@ def fused_moe_mxfp4(
     mul_routed_weight: bool = True,
     expert_map: torch.Tensor | None = None,
     backend: Backend | str = "auto",
+    workspace=None,
 ) -> torch.Tensor:
     """MXFP4 grouped fused-MoE GEMM for DeepSeek-V4 routed experts.
 
@@ -68,6 +69,12 @@ def fused_moe_mxfp4(
             (in ``[0, E_local)``), or ``-1`` if not on this rank. When given, the
             op returns this rank's **partial** output; the caller all-reduces.
         backend: ``"auto"`` or a ``Backend`` / its string value.
+        workspace: optional :class:`~xkernels.ops.moe.workspace.MoeMxfp4Workspace`
+            (issue #52). When given and matching, the Triton backend writes the
+            activation scratch (no zero -- fully overwritten) and the combine
+            output (re-zeroed -- atomic-add) into the workspace buffers, so the
+            buffer addresses are stable for CUDA/HIP graph capture. Ignored by the
+            reference backend. ``None`` (default) = allocate-each-call.
 
     Returns:
         ``[M, hidden]`` output in ``A.dtype`` (a per-rank partial when
@@ -88,5 +95,6 @@ def fused_moe_mxfp4(
         group_size=group_size,
         mul_routed_weight=mul_routed_weight,
         expert_map=expert_map,
+        workspace=workspace,
         backend=backend,
     )

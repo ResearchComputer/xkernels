@@ -434,16 +434,25 @@ def mxfp4_moe_gemm(
     compute_type: tl.dtype = tl.bfloat16,
     filter_expert: bool = True,
     config: dict | None = None,
+    act_buf: torch.Tensor | None = None,
+    out_buf: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Launch the two fused MXFP4 grouped GEMMs (gate_up+SwiGLU, then down+combine).
 
     Returns the ``[M, hidden]`` fp32 combined output (caller casts).
+
+    ``act_buf`` / ``out_buf`` (issue #52): optional preallocated buffers (slices
+    already sized to ``[EM, ispp]`` / ``[M, hidden]``). ``act`` is fully
+    overwritten (no zero); ``out`` is atomic-accumulated (caller must zero).
     """
     assert w13.dtype == torch.uint8 and w2.dtype == torch.uint8
     assert sorted_token_ids.stride(0) == 1
     EM = sorted_token_ids.shape[0]
     act_dtype = tl.float32 if a.dtype == torch.float32 else tl.bfloat16
-    act = torch.empty(EM, ispp, dtype=a.dtype, device=a.device)
+    if act_buf is not None:
+        act = act_buf  # fully overwritten by the gate_up GEMM -- no zero needed
+    else:
+        act = torch.empty(EM, ispp, dtype=a.dtype, device=a.device)
 
     # STAGE 0: gate_up (K = hidden, N = 2*ispp) -> SwiGLU -> act [EM, ispp].
     _launch(
@@ -456,7 +465,11 @@ def mxfp4_moe_gemm(
     )
 
     # STAGE 1: down (K = ispp, N = hidden), act is token-indexed [EM, ispp].
-    out = torch.zeros((M, hidden), dtype=torch.float32, device=a.device)
+    if out_buf is not None:
+        out = out_buf
+        out.zero_()  # atomic-add accumulate -> MUST re-zero (issue #52)
+    else:
+        out = torch.zeros((M, hidden), dtype=torch.float32, device=a.device)
     _launch(
         act, w2, out, w2_scale, b2, topk_weights, sorted_token_ids, expert_ids,
         num_tokens_post_padded,
@@ -485,6 +498,7 @@ def _moe_mxfp4_triton(
     group_size: int = 32,
     mul_routed_weight: bool = True,
     expert_map: torch.Tensor | None = None,
+    workspace=None,
 ) -> torch.Tensor:
     M, top_k = topk_ids.shape
     E, two_ispp, _ = w13.shape
@@ -515,19 +529,41 @@ def _moe_mxfp4_triton(
         filter_expert = True
     else:
         if topk_ids.is_cuda:
+            # Thread the inner align workspace (issue #52): lazily allocate +
+            # cache it on the workspace so the align buffers are ALSO stable
+            # across calls (whole-call graph capture). Populated during warmup
+            # (before capture), so graph capture sees fixed addresses.
+            align_ws = None
+            if workspace is not None:
+                align_ws = workspace.align_workspace
+                if align_ws is None:
+                    from ..workspace import MoeAlignWorkspace
+
+                    align_ws = MoeAlignWorkspace.allocate(
+                        M, top_k, E, block_m, device=A.device
+                    )
+                    workspace.align_workspace = align_ws
             sorted_ids, expert_ids, num_post = moe_align_block_size_triton(
-                topk_ids, block_m, E, truncate=False
+                topk_ids, block_m, E, truncate=False, workspace=align_ws
             )
         else:
             sorted_ids, expert_ids, num_post = moe_align_block_size_ref(topk_ids, block_m, E)
         filter_expert = False
+    # Resolve optional workspace buffers (issue #52): act is fully overwritten
+    # (no zero), out is atomic-add (re-zeroed inside mxfp4_moe_gemm).
+    act_buf = out_buf = None
+    if workspace is not None and workspace.matches(
+        M, top_k, E, block_m, ispp, hidden, dtype=A.dtype, device=A.device
+    ):
+        act_buf = workspace.act[: sorted_ids.shape[0]]
+        out_buf = workspace.out[:M]
     out = mxfp4_moe_gemm(
         A, w13, w13_scale, w2, w2_scale,
         topk_w.reshape(-1).float(), sorted_ids, expert_ids, num_post,
         M=M, top_k=top_k, ispp=ispp, hidden=hidden, group_size=group_size,
         b13=b13, b2=b2, swiglu_limit=swiglu_limit,
         mul_routed_weight=mul_routed_weight, filter_expert=filter_expert,
-        config=config,
+        config=config, act_buf=act_buf, out_buf=out_buf,
     )
     return out.to(A.dtype)
 

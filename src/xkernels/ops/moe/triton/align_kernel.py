@@ -158,6 +158,7 @@ def moe_align_block_size_triton(
     block_size: int,
     num_experts: int,
     truncate: bool = True,
+    workspace=None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Sort/pad routed token-slots into per-expert blocks (issue #4, Triton).
 
@@ -167,6 +168,13 @@ def moe_align_block_size_triton(
         topk_ids: ``[M, top_k]`` int32 expert id per token-slot.
         block_size: GEMM block size each expert run is padded up to.
         num_experts: number of experts.
+        workspace: optional :class:`~xkernels.ops.moe.workspace.MoeAlignWorkspace`
+            (issue #52). When given and it ``matches`` the runtime shape, the
+            five scratch buffers are RE-INITIALIZED IN PLACE into the workspace
+            (``sorted_ids`` filled with ``pad_id``, the rest zeroed) so the
+            buffer addresses are stable across calls -- the precondition for
+            CUDA/HIP graph capture. The init cost is unchanged (counters, not
+            fully-overwritten); the win is address stability. ``None`` = allocate.
 
     Returns:
         ``(sorted_token_ids [max_pad], expert_ids [n // block_size],
@@ -181,16 +189,35 @@ def moe_align_block_size_triton(
     flat = topk_ids.reshape(-1).contiguous()
     numel = flat.numel()
     pad_id = numel
+    M, top_k = topk_ids.shape
     device = topk_ids.device
 
     max_pad = numel + (num_experts + 1) * (block_size - 1)
     max_blocks = triton.cdiv(max_pad, block_size)
 
-    sorted_ids = torch.full((max_pad,), pad_id, dtype=torch.int32, device=device)
-    expert_ids = torch.zeros((max_blocks,), dtype=torch.int32, device=device)
-    num_post = torch.zeros((1,), dtype=torch.int32, device=device)
-    tokens_cnts = torch.zeros((num_experts + 1, num_experts), dtype=torch.int32, device=device)
-    cumsum = torch.zeros((num_experts + 1,), dtype=torch.int32, device=device)
+    # Reuse the workspace buffers when provided + matching (issue #52): re-init
+    # the counters/fills IN PLACE so the addresses are stable for graph capture.
+    # These are histogram counters / accumulators, so the init is load-bearing
+    # and cannot be skipped -- the win is address stability, not skipping zero.
+    if workspace is not None and workspace.matches(
+        M, top_k, num_experts, block_size, device=device
+    ):
+        sorted_ids = workspace.sorted_ids
+        expert_ids = workspace.expert_ids
+        num_post = workspace.num_post
+        tokens_cnts = workspace.tokens_cnts
+        cumsum = workspace.cumsum
+        sorted_ids.fill_(pad_id)
+        expert_ids.zero_()
+        num_post.zero_()
+        tokens_cnts.zero_()
+        cumsum.zero_()
+    else:
+        sorted_ids = torch.full((max_pad,), pad_id, dtype=torch.int32, device=device)
+        expert_ids = torch.zeros((max_blocks,), dtype=torch.int32, device=device)
+        num_post = torch.zeros((1,), dtype=torch.int32, device=device)
+        tokens_cnts = torch.zeros((num_experts + 1, num_experts), dtype=torch.int32, device=device)
+        cumsum = torch.zeros((num_experts + 1,), dtype=torch.int32, device=device)
 
     tokens_per_thread = triton.cdiv(numel, num_experts)
     grid = (num_experts,)
@@ -212,10 +239,13 @@ def moe_align_block_size_triton(
     if truncate:
         # Eager mode: device->host sync to trim expert_ids to the used blocks.
         n = int(num_post.item())
-        return sorted_ids, expert_ids[: n // block_size], num_post
+        return sorted_ids[:max_pad], expert_ids[: n // block_size], num_post
     # Sync-free / fixed-shape mode (graph-capturable): no .item(); expert_ids is
-    # the full max_blocks length with unused trailing blocks = 0.
-    return sorted_ids, expert_ids, num_post
+    # the full max_blocks length with unused trailing blocks = 0. Slice
+    # sorted_ids / expert_ids to the runtime-M bounds so a workspace allocated
+    # for a larger max_M returns the same M-shaped output as the alloc path
+    # (issue #52 smaller-M reuse).
+    return sorted_ids[:max_pad], expert_ids[:max_blocks], num_post
 
 
 def moe_align_block_size_ep_triton(

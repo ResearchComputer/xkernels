@@ -39,6 +39,7 @@ def moe_mxfp4_ref(
     group_size: int = MXFP4_GROUP_SIZE,
     mul_routed_weight: bool = True,
     expert_map: torch.Tensor | None = None,
+    workspace=None,
 ) -> torch.Tensor:
     """Reference MXFP4 fused-MoE: per active expert, gate_up -> SwiGLU -> down.
 

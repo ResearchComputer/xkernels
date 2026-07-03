@@ -29,6 +29,7 @@ def moe_w4a16_ref(
     mul_routed_weight: bool = True,
     fused_combine: bool | None = None,
     expert_map: torch.Tensor | None = None,
+    workspace=None,
 ) -> torch.Tensor:
     """Reference grouped MoE GEMM: ``out[m] = sum_j w[m,j] * (A[m] @ W[e]^T)``.
 

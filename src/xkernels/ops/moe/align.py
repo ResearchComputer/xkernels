@@ -38,6 +38,7 @@ def moe_align_block_size(
     *,
     backend: Backend | str = "auto",
     truncate: bool = True,
+    workspace=None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Sort/pad routed token-slots into per-expert blocks.
 
@@ -49,6 +50,14 @@ def moe_align_block_size(
         truncate: if True (default) trim ``expert_ids`` to used blocks (eager); if
             False return the full ``max_blocks`` length with no host sync, for
             HIP/CUDA-graph capture (Triton backend).
+        workspace: optional :class:`~xkernels.ops.moe.workspace.MoeAlignWorkspace`
+            (issue #52). The Triton backend re-inits the five scratch buffers
+            IN PLACE into the workspace (fill ``sorted_ids`` with ``pad_id``, zero
+            the rest) so the buffer ADDRESSES are stable across calls -- the
+            precondition for CUDA/HIP graph capture. The init cost is unchanged
+            (these are counters, not fully-overwritten); the win is address
+            stability. Ignored by the reference backend. ``None`` (default) =
+            allocate-each-call.
 
     Returns:
         ``(sorted_token_ids [max_pad], expert_ids [max_blocks], num_tokens_post_padded [1])``
@@ -57,5 +66,5 @@ def moe_align_block_size(
     """
     return dispatch(
         "moe_align_block_size", topk_ids, block_size, num_experts,
-        backend=backend, truncate=truncate,
+        backend=backend, truncate=truncate, workspace=workspace,
     )
