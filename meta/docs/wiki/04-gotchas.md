@@ -417,3 +417,34 @@ call (flash softmax always produces a value). The caller reads the valid `[:B]`
 slice. Do NOT extend this pattern to outputs that need SELECTIVE zeroing (MoE
 combine outputs with atomic-add into skipped-expert slots) without a per-call
 zero — those are a separate follow-up.
+
+## 16. `@triton.autotune` + atomic-add combine = silently wrong (the int4 fused_combine finding)
+
+**Root cause found while wiring the MoE workspaces (#52):**
+`fused_moe_int4_w4a16(fused_combine=True)` is **silently wrong** whenever the
+GEMM launches through `@triton.autotune` (i.e. when `get_moe_int4_config(...)`
+returns `None` — no tuned config for the shape). Verified on GB10 for M=8:
+the fused-combine output was **312** vs the correct reference **0.65** (~480×
+too big), while `fused_combine=False` (the scratch path) matched the reference
+at 0.002.
+
+**Why:** the fused-combine path atomic-accumulates the top-k weighted expert
+results into a single `[M, N]` fp32 output buffer. `@triton.autotune`'s
+benchmarking runs EVERY candidate config into that SAME buffer — each run's
+atomic-adds accumulate, so after autotune the buffer holds roughly
+`N_configs ×` the correct value. The scratch path is unaffected because it
+WRITES (each token-slot to a unique row), not atomic-adds — the last autotune
+trial's write simply wins, and it's correct.
+
+**The mxfp4 kernel avoids this** by always calling `get_default_config(M)`
+(always returns a config) and launching the resolved-config path (single run,
+no autotune). The int4 kernel does not — `get_moe_int4_config` returns `None`
+for untuned shapes and falls through to the autotune entry point.
+
+**This breaks the ALLOC path equally** (it is not a workspace bug). The workspace
+falls back to allocate-each-call under `config is None` (the SOUNDNESS GUARD in
+`_moe_int4_wa16_triton`) so it never claims correctness for an unsound launch —
+but the alloc path is still wrong. **Fix (follow-up):** make int4 resolve a
+config before the combine launch (mirror mxfp4's `get_default_config`), or gate
+`fused_combine=True` on `config is not None`. Until then, `fused_combine=True`
+without a tuned config is broken on EVERY arch, not just GB10.
