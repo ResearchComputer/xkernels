@@ -13,7 +13,7 @@
   },
   "specialization_knobs": {},
   "perf": {
-    "regime": "native override (full_body, wavefront-FMA mechanism validation) on amd_cdna3 — NOT the MFMA ceiling; v_mfma follow-up via map-to-matrix-cores",
+    "regime": "native override (full_body) on amd_cdna3",
     "roofline": "compute_bound",
     "measured": []
   },
