@@ -46,7 +46,7 @@ import torch
 
 from xkernels import verify
 from xkernels.utils.benchmarking import benchmark
-from xkernels.vkl import spec_of, register_dsl
+from xkernels.vkl import register_dsl, spec_of
 from xkernels.vkl.examples.gemm_bf16 import gemm_bf16
 
 M = N = K = 4096          # compute-bound big shape for ceiling + H2
