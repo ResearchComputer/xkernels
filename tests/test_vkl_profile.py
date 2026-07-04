@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import pytest
 
+from xkernels.mcp_server import _dispatch
 from xkernels.vkl import (
     ProfileMetrics,
     annotate_schedule,
@@ -40,7 +41,6 @@ from xkernels.vkl import (
     spec_of,
 )
 from xkernels.vkl.examples import gemm_bf16
-from xkernels.mcp_server import _dispatch
 
 # ─── synthetic fixtures (modeled on the skills' real on-device profiles) ──────
 

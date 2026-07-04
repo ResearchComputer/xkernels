@@ -34,16 +34,19 @@ schedule is CPU-doable and is what an agent reasons over.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
 
 from . import archdb
 from .ir.math import MMA, MathNode, Reduce
 from .ir.schedule import Knob, MapTo, ScheduleIR, Stage, Tile
 
-# ``trace_ir`` + ``KernelSpec`` live in torch-bearing modules (reference / surface).
-# Imported lazily inside ``schedule_from_spec`` so this module's pure projections
-# (``resolve_binding`` / ``precision_of``) import on a CPU-only box, where the
-# edit round-trip is reasoned about without a GPU (docs/brainstorm/09 §0).
+if TYPE_CHECKING:
+    # ``KernelSpec`` lives in the torch-bearing ``surface`` module. Imported only
+    # under TYPE_CHECKING so this module's pure projections (``resolve_binding``
+    # / ``precision_of``) stay CPU-importable: the edit round-trip is reasoned
+    # about without a GPU (docs/brainstorm/09 §0). ``trace_ir`` is still imported
+    # lazily inside the functions that actually trace, since tracing needs torch.
+    from .surface import KernelSpec
 
 # Knob/value names the Triton lowering recognizes as the MMA's input-precision
 # policy (flattened from a MapTo node, not a declared specialization knob).
@@ -88,7 +91,7 @@ def _find_reduces(nodes: tuple[MathNode, ...]) -> tuple[Reduce, ...]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def schedule_from_spec(spec: "KernelSpec", arch: str = "any") -> ScheduleIR:
+def schedule_from_spec(spec: KernelSpec, arch: str = "any") -> ScheduleIR:
     """Build a structured ``ScheduleIR`` describing the default lowering of ``spec``.
 
     The nodes mirror what the launch pattern + math IR + declared knobs produce:
@@ -118,7 +121,7 @@ def schedule_from_spec(spec: "KernelSpec", arch: str = "any") -> ScheduleIR:
     return _knobs_only(spec)
 
 
-def _knobs_only(spec: "KernelSpec") -> ScheduleIR:
+def _knobs_only(spec: KernelSpec) -> ScheduleIR:
     """The minimal schedule: one Knob node per declared specialization knob."""
     sched = ScheduleIR()
     for name, choices in _declared_knobs(spec):
@@ -127,7 +130,7 @@ def _knobs_only(spec: "KernelSpec") -> ScheduleIR:
     return sched
 
 
-def _declared_knobs(spec: "KernelSpec") -> list[tuple[str, tuple[int, ...]]]:
+def _declared_knobs(spec: KernelSpec) -> list[tuple[str, tuple[int, ...]]]:
     """The triton target's declared knob space (name -> choices), if any."""
     tgt = spec.targets.get("triton")
     if tgt is None:
@@ -135,7 +138,7 @@ def _declared_knobs(spec: "KernelSpec") -> list[tuple[str, tuple[int, ...]]]:
     return [(name, tuple(choices)) for name, choices in tgt.knobs.items()]
 
 
-def _schedule_tiled_2d(spec: "KernelSpec", arch: str) -> ScheduleIR:
+def _schedule_tiled_2d(spec: KernelSpec, arch: str) -> ScheduleIR:
     """The GEMM schedule: output + streaming tiles, an L5 MMA map, K-loop stages."""
     from .reference import trace_ir
 
@@ -169,7 +172,7 @@ def _schedule_tiled_2d(spec: "KernelSpec", arch: str) -> ScheduleIR:
     return sched
 
 
-def _schedule_rowwise(spec: "KernelSpec", arch: str) -> ScheduleIR:
+def _schedule_rowwise(spec: KernelSpec, arch: str) -> ScheduleIR:
     """The row-reduce schedule: a wave-level (L3) Reduce node per math Reduce."""
     from .ir.schedule import Reduce as SchedReduce
     from .reference import trace_ir

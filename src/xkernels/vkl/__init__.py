@@ -76,8 +76,6 @@ from .lower import triton as lower_triton
 from .lower.cuda import lower_to_cuda, register_dsl_cuda
 from .lower.triton import lower_to_triton, register_dsl
 from .override import OverrideCheck, check_override_math_ir, emit_override_card
-from .reference import make_inputs, run_reference, trace_ir
-from .schedule import PRECISION_KEY, precision_of, resolve_binding, schedule_from_spec
 from .profile import (
     ProfileMetrics,
     annotate_schedule,
@@ -88,6 +86,8 @@ from .profile import (
     route,
     route_of,
 )
+from .reference import make_inputs, run_reference, trace_ir
+from .schedule import PRECISION_KEY, precision_of, resolve_binding, schedule_from_spec
 from .surface import (
     AUTO_REFERENCE,
     KernelSpec,
@@ -129,7 +129,8 @@ __all__ = [
     "run_gate", "validate_kernel", "GateResult", "TraceEntry",
     "KernelIssue", "KernelValidation",
     # modules
-    "archdb", "auto", "cost", "edits", "emit", "gate", "override", "profile", "reference", "sweep", "tiles",
+    "archdb", "auto", "cost", "edits", "emit", "gate", "override", "profile",
+    "reference", "sweep", "tiles",
     # autotune sweep (Phase 2.2)
     "autotune", "SweepResult", "enumerate_configs", "schedule_from_card",
     # cost model + Phase 2 roofline gate (Phase 2.3)

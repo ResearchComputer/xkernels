@@ -500,7 +500,7 @@ def _tools() -> list[dict[str, Any]]:
                     },
                     "point": {
                         "type": "object",
-                        "description": "optional concrete sweep point (for the roofline cross-check)",
+                        "description": "optional sweep point (roofline cross-check)",
                     },
                 },
                 "required": ["spec_id", "arch", "profiler", "profile_text"],

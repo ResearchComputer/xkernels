@@ -50,6 +50,7 @@ from ..ir.math import (
     TensorRef,
     Unsqueeze,
 )
+from ..ir.schedule import ScheduleIR
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # §1  T — a handle over a math-IR tensor name, with operator overloads
@@ -1718,7 +1719,7 @@ def launch(
     out_dtype: str,
     *,
     pattern: str,
-    schedule: "ScheduleIR | None" = None,
+    schedule: ScheduleIR | None = None,
     **knobs: int | str,
 ) -> dict[str, torch.Tensor]:
     """Lower + launch the math IR per the launch ``pattern`` (tiled_2d | rowwise).

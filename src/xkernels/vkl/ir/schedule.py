@@ -236,7 +236,7 @@ class ScheduleIR:
             new_knobs = {**self.knobs, node.name: node}
         return replace(self, nodes=new_nodes, knobs=new_knobs)
 
-    def with_profile(self, profile: dict[str, "ProfileMetrics"]) -> ScheduleIR:
+    def with_profile(self, profile: dict[str, ProfileMetrics]) -> ScheduleIR:
         """Return a copy carrying ``profile`` (node-id -> measured metrics).
 
         The Phase C entry: ``annotate_schedule`` builds the side-table and returns

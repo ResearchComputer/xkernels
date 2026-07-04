@@ -28,8 +28,8 @@ from __future__ import annotations
 import pytest
 
 from xkernels.vkl import (
+    PRECISION_KEY,
     AddStage,
-    Knob,
     MapTo,
     MapTo_,
     Ok,
@@ -39,13 +39,12 @@ from xkernels.vkl import (
     SetMapPolicy,
     Stage,
     Tile,
-    PRECISION_KEY,
     precision_of,
     resolve_binding,
     schedule_from_spec,
+    spec_of,
 )
 from xkernels.vkl.examples import gemm_bf16
-from xkernels.vkl import spec_of
 
 # ─── GPU gating for the silicon-touching tests (matches test_vkl_lower_gemm) ──
 try:  # pragma: no cover - import guard
@@ -284,7 +283,7 @@ def test_tf32_edit_changes_compiled_source():
     cores). The edit changes what compiles — schedule IR is the source of truth.
     """
     pytest.importorskip("triton")
-    from xkernels.vkl.lower.mathbody import _TritonGen, _find_mma
+    from xkernels.vkl.lower.mathbody import _TritonGen
     from xkernels.vkl.reference import trace_ir
 
     spec = spec_of(gemm_bf16)
