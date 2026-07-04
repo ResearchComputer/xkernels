@@ -11,6 +11,8 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from xkernels.vkl.cli import (
     _extract_json,
     _remote_env,
@@ -22,6 +24,14 @@ from xkernels.vkl.cli import (
 )
 
 CANONICAL_TARGET = "xkernels.vkl.examples.gemm_bf16:gemm_bf16"
+
+# The remote-gpu pi extension (`extensions/remote-gpu.ts`) ships in a follow-up
+# PR -- it is the deferred WIP this PR scopes out under "extensions/". Tests
+# that need it on disk skip here and auto-enable once the extension lands.
+needs_remote_gpu_ext = pytest.mark.skipif(
+    not _remote_gpu_extension_path().exists(),
+    reason="extensions/remote-gpu.ts not in this PR (deferred WIP); lands in a follow-up",
+)
 
 
 def test_parse_target_requires_module_and_symbol():
@@ -381,6 +391,7 @@ def test_extract_json_handles_fences_prose_and_garbage():
 # ---------------------------------------------------------------------------
 
 
+@needs_remote_gpu_ext
 def test_remote_gpu_extension_path_resolves_to_repo_extensions():
     ext = _remote_gpu_extension_path()
     assert ext.name == "remote-gpu.ts"
@@ -419,6 +430,7 @@ def test_remote_env_pull_flag_enables_pull():
     assert env["XKL_REMOTE_NO_PULL"] == "0"  # --pull enables it
 
 
+@needs_remote_gpu_ext
 def test_implement_remote_dry_run_loads_extension_not_wraps_in_rcc(capsys):
     # Dry-run: pi runs locally with -e <ext>; the command is NOT wrapped in rcc,
     # and no push/pull happens. The extension is configured via env.
@@ -453,6 +465,7 @@ def test_implement_remote_dry_run_loads_extension_not_wraps_in_rcc(capsys):
     assert "YOU RUN LOCALLY" in out["prompt"]
 
 
+@needs_remote_gpu_ext
 def test_implement_remote_runs_local_pi_with_extension_env(monkeypatch, capsys):
     # Live run: pi runs locally; the child gets XKL_REMOTE_* env so the
     # extension reroutes GPU bash. No rcc push/pull is invoked by Python.
