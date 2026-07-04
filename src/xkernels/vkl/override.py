@@ -139,11 +139,17 @@ def check_override_math_ir(spec: KernelSpec, override: OverrideBody) -> Override
 # The native features an override declares it needs (→ ``arch.requires``). These
 # are the contract vocabulary the substrate already knows (impl_card.schema.json);
 # the override just names which ones its native body uses.
+#
+# NOTE: only entries for FULL matrix-engine overrides belong here. A live
+# correctness-first FMA override (the mechanism-validation bar — lower/cuda.py on
+# sm_121, lower/hip.py on amd_cdna3) uses NO matrix features, so it is honestly
+# ABSENT from this table (→ emit_override_card fills ``requires: []``). When a
+# real wgmma/MFMA override ships on an arch, add its (backend, arch) entry here
+# so its card declares the tensor/matrix features its body actually uses. (The
+# sm_90/sm_80 entries below are speculative — no live override ships there yet.)
 _ARCH_REQUIRES = {
     ("cuda", "nvidia_sm90"): ["tensor_cores", "tma", "clusters"],
     ("cuda", "nvidia_sm80"): ["tensor_cores"],
-    ("hip", "amd_cdna3"): ["matrix_cores", "mfma"],
-    ("hip", "amd_cdna2"): ["matrix_cores", "mfma"],
 }
 
 

@@ -150,7 +150,14 @@ class TestOverrideCardEmission:
         validate_impl_card(card)
         assert card["backend"] == "hip"
         assert card["arch"]["family"] == "amd_cdna3"
-        assert "mfma" in card["arch"]["requires"]
+        # Honest about the CURRENT body: a correctness-first wavefront-FMA override
+        # (mechanism validation, lower/hip.py) uses NO matrix features, so requires
+        # is empty — matching the live cuda/sm_121 FMA twin. The _ARCH_REQUIRES
+        # entry (matrix_cores/mfma) returns when a full v_mfma override ships on
+        # this arch; the cuda/sm_90 test above asserts that table-driven path for
+        # a synthetic FULL override.
+        assert card["arch"]["requires"] == []
+        assert card["uses_primitives"] == []
         assert card["arch"]["wave_size"] == 64  # AMD
         assert card["arch"]["scratch"]["kind"] == "lds"
 
