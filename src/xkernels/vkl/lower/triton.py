@@ -62,24 +62,31 @@ def lower_to_triton(spec: KernelSpec) -> Callable[..., Any]:
         # the form ``verify`` / ``dispatch`` / ``generate_inputs`` use). Bind to
         # input names; require contiguous row-major. Knob kwargs (BLOCK_M, ...) are
         # separated out and threaded to the lowering as the active specialization
-        # binding — the substrate's ``verify(knobs=...)`` autotune path.
+        # binding — the substrate's ``verify(knobs=...)`` autotune path. A
+        # ``schedule=`` kwarg carries an EDITED ScheduleIR (Phase A, doc-09): its
+        # resolved binding — including the MMA's ``input_precision`` policy — is
+        # the agent path that converges on the same launcher entry as the flat
+        # knob path.
+        schedule = kwargs.pop("schedule", None)
         inputs: dict[str, torch.Tensor] = {}
-        knobs: dict[str, int] = {}
+        knobs: dict[str, int | str] = {}
         if args:
             for name, val in zip(input_names, args, strict=True):
                 inputs[name] = val.contiguous()
         for name, val in kwargs.items():
             if name in spec.inputs:
                 inputs[name] = val.contiguous()
-            elif name in knob_names:
-                knobs[name] = int(val)
+            elif name in knob_names or name == "input_precision":
+                knobs[name] = val if isinstance(val, str) else int(val)
         missing = set(spec.inputs) - set(inputs)
         if missing:
             raise TypeError(f"missing required inputs: {sorted(missing)}")
         out_dtype = to_short_dtype(next(iter(inputs.values())).dtype)
         from . import mathbody
 
-        outs = mathbody.launch(ir, inputs, out_dtype, pattern=pattern, **knobs)
+        outs = mathbody.launch(
+            ir, inputs, out_dtype, pattern=pattern, schedule=schedule, **knobs
+        )
         return tuple(outs[name] for name in spec.outputs)
 
     return launcher

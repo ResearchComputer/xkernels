@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from . import archdb
-from .ir.schedule import ScheduleIR, Tile
+from .ir.schedule import PRECISION_POLICIES, ScheduleIR, Tile
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Result type — the gate's verdict
@@ -141,9 +141,11 @@ class Retile:
 class MapTo_:
     """Map a math node onto a hierarchy level + instruction (docs/brainstorm/10 §3).
 
-    Phase 2 primitive (needs matrix-engine lowering). Its check — instruction
-    legal for arch, native shape divides the L2 tile — is realized here so the
-    gate vocabulary is complete; ``apply`` is Phase 2.
+    The matrix-engine edit. Its check - instruction legal for arch, native shape
+    divides the L2 tile - is the L5 divisibility gate; its ``apply`` records the
+    mapping so the lowering + cost model read it. ``precision`` is carried through
+    so a full remap (e.g. ``map_to(mma, L5, wgmma, precision="tf32")``) sets the
+    MMA policy in one edit; a precision-only tweak uses ``SetMapPolicy``.
     """
 
     map_id: str
@@ -151,6 +153,7 @@ class MapTo_:
     level: str
     instruction: str
     instr_shape: tuple[int, ...] | None = None
+    precision: str | None = None
 
     def check(self, ir: ScheduleIR, arch: str) -> Result:
         if self.instruction not in archdb.legal_instructions(arch):
@@ -158,23 +161,37 @@ class MapTo_:
                 f"instruction {self.instruction!r} not legal for {arch} "
                 f"(have {list(archdb.legal_instructions(arch))})"
             )
+        if self.precision not in PRECISION_POLICIES:
+            return Reject(
+                f"precision {self.precision!r} not in {list(PRECISION_POLICIES)}"
+            )
         native = archdb.native_shape(arch, self.instruction)
         if native is not None:
             m_dim = native["m"]
             for t in ir.tiles():
-                if t.level == "L2" and t.shape and t.shape[0] % m_dim != 0:
+                # Only concrete-int leading dims are decidable at edit time; a
+                # symbolic knob-name dim (e.g. "BLOCK_M") is resolved at emit,
+                # so its divisibility is deferred to the launcher (consistent
+                # with Retile's no-L5-map-yet Ok).
+                if (
+                    t.level == "L2"
+                    and t.shape
+                    and isinstance(t.shape[0], int)
+                    and t.shape[0] % m_dim != 0
+                ):
                     return Reject(
                         f"L2 tile {t.id!r} M={t.shape[0]} not divisible by "
                         f"{self.instruction} native m={m_dim}"
                     )
         return Ok()
 
-    def apply(self, ir: ScheduleIR) -> ScheduleIR:  # pragma: no cover (Phase 2)
+    def apply(self, ir: ScheduleIR) -> ScheduleIR:
         from .ir.schedule import MapTo
 
         return ir.with_node(MapTo(
-            id=self.map_id, op_ref=self.op_ref, level=self.level,  # type: ignore[arg-type]
+            id=self.map_id, op_ref=self.op_ref, level=self.level,
             instruction=self.instruction, instr_shape=self.instr_shape,
+            precision=self.precision,
         ))
 
 
@@ -205,7 +222,7 @@ class AddStage:
             )
         return Ok()
 
-    def apply(self, ir: ScheduleIR) -> ScheduleIR:  # pragma: no cover (Phase 2)
+    def apply(self, ir: ScheduleIR) -> ScheduleIR:
         from .ir.schedule import Stage
 
         return ir.with_node(Stage(
@@ -214,5 +231,46 @@ class AddStage:
         ))
 
 
+@dataclass(frozen=True)
+class SetMapPolicy:
+    """Tweak one MMA policy field (``precision``) without remapping the op.
+
+    The doc-09 section 8 "map_to" step's lightweight twin: instead of replacing
+    the whole ``MapTo`` (which requires naming instruction + shape), this edits
+    the single ``precision`` field on an existing L5 map. The canonical use is the
+    fp32 GEMM's ``ieee``->``tf32`` swap - a one-field edit that changes what tl.dot
+    compiles to (CUDA-core FMA -> sm_80+ tensor cores), measurable on silicon.
+    Its check rejects an unknown policy or a ``map_id`` that isn't an L5 MapTo.
+    """
+
+    map_id: str
+    precision: str | None
+
+    def check(self, ir: ScheduleIR, arch: str) -> Result:
+        from .ir.schedule import MapTo as _MapTo
+
+        node = ir.by_id(self.map_id)
+        if node is None:
+            return Reject(f"no map node with id {self.map_id!r}")
+        if not isinstance(node, _MapTo):
+            return Reject(f"{self.map_id!r} is a {type(node).__name__}, not a MapTo")
+        if self.precision not in PRECISION_POLICIES:
+            return Reject(
+                f"precision {self.precision!r} not in {list(PRECISION_POLICIES)}"
+            )
+        return Ok()
+
+    def apply(self, ir: ScheduleIR) -> ScheduleIR:
+        from .ir.schedule import MapTo
+
+        node = ir.by_id(self.map_id)
+        assert isinstance(node, MapTo)
+        return ir.with_node(MapTo(
+            id=node.id, op_ref=node.op_ref, level=node.level,
+            instruction=node.instruction, instr_shape=node.instr_shape,
+            precision=self.precision,
+        ))
+
+
 # Any edit primitive implements this protocol (structural typing; no runtime cost).
-EditKind = Literal["set_knob", "retile", "map_to", "add_stage"]
+EditKind = Literal["set_knob", "retile", "map_to", "add_stage", "set_map_policy"]
