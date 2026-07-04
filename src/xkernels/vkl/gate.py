@@ -14,6 +14,7 @@ one line of outcome, ~6 entries to a context window.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -23,7 +24,17 @@ from .ir.schedule import ScheduleIR
 
 @dataclass(frozen=True)
 class TraceEntry:
-    """One step of a tuning trace (docs/brainstorm/10 §3)."""
+    """One step of a tuning trace (docs/brainstorm/10 §3).
+
+    The ``{edit, predicted, measured, rationale}`` triple (issue #73, track E):
+    ``edit`` is what was tried, ``predicted`` is the closed-form cost-model call
+    made BEFORE launch, ``measured`` is the on-device outcome (``verify`` perf,
+    ms-only first), and ``rationale`` is the free-text reason a later task reads
+    to skip a dead-end or reuse a winner. ``reason`` carries the gate's own
+    reject string (machine-stable); ``rationale`` carries the agent's human note.
+    A trace entry with ``check="reject"`` + a ``rationale`` is the structured
+    form of a dead-end the next run avoids without re-deriving it.
+    """
 
     step: int
     edit: str
@@ -31,6 +42,7 @@ class TraceEntry:
     args: dict[str, Any]
     check: str  # "ok" | "reject"
     reason: str = ""
+    rationale: str = ""
     predicted: dict[str, Any] = field(default_factory=dict)
     measured: dict[str, Any] = field(default_factory=dict)
 
@@ -44,6 +56,8 @@ class TraceEntry:
         }
         if self.reason:
             d["reason"] = self.reason
+        if self.rationale:
+            d["rationale"] = self.rationale
         if self.predicted:
             d["predicted"] = self.predicted
         if self.measured:
@@ -144,6 +158,7 @@ def run_gate(
     arch: str,
     *,
     start_step: int = 1,
+    predict: Callable[[ScheduleIR, str], dict[str, Any]] | None = None,
 ) -> GateResult:
     """Run an edit sequence; apply the passing ones, record every verdict.
 
@@ -151,6 +166,14 @@ def run_gate(
     (stateful — the load-bearing Phase 0 finding: a gate is a pure function of
     *(edit args, current IR, arch)*, so the sequence order matters and a later
     edit may become legal only after an earlier one applied).
+
+    ``predict`` (issue #73) is an optional closed-form hook
+    ``(applied_schedule, arch) -> dict`` that fills each OK entry's ``predicted``
+    field — the cost-model call made *before* the on-device measure. It keeps the
+    gate decoupled from ``cost.py`` (no import cycle) while letting the
+    predicted half of the {predicted, measured, rationale} triple flow into the
+    trace. Rejects get no prediction (the edit did not apply, so there is no
+    resulting schedule to cost).
     """
     current = ir
     trace: list[TraceEntry] = []
@@ -163,9 +186,10 @@ def run_gate(
         if is_ok(result):
             current = edit.apply(current)
             applied += 1
+            predicted = predict(current, arch) if predict is not None else {}
             entry = TraceEntry(
                 step=step, edit=_edit_kind(edit), target=target,
-                args=_edit_args(edit), check="ok",
+                args=_edit_args(edit), check="ok", predicted=predicted,
             )
         else:
             rejected += 1

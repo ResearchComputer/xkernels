@@ -283,12 +283,24 @@ no hidden server-side state to drift):
 
 ```
 vkl_validate_kernel(spec_id, arch)                        → {passed, issues[], counts}
-vkl_load_schedule(spec_id, arch)                          → structured schedule view
+vkl_load_schedule(spec_id, arch, shape?, dtype?)          → schedule view + prior_traces[]
 vkl_list_legal_edits(spec_id, arch, applied_edits)        → low-entropy next edits
 vkl_check_edit(spec_id, arch, applied_edits, edit)        → {ok, reason?}
 vkl_apply_edit(spec_id, arch, applied_edits, edit)        → {applied, schedule, applied_edits[]}
 vkl_read_cost(spec_id, arch, applied_edits, point?)       → schedule + cost + legal_edits
+record_trace(spec_id, arch, edit, {predicted,measured,rationale,point}) → persisted record
 ```
+
+`vkl_load_schedule`'s optional `shape`/`dtype` scope a **Phase E**
+`prior_traces[]` view onto the returned schedule — the cross-task read that lets
+an agent see what has already been tried at the point (the `{edit, check,
+reason, rationale, predicted, measured}` of each prior record) before it
+proposes its first edit (issue #73, [`trace.py`](../../../src/xkernels/vkl/trace.py)).
+`record_trace` is the matching write: it persists the
+`{edit, predicted, measured, rationale}` triple keyed by
+`(op, arch, shape, dtype, edit)`. The PREDICTED half is auto-filled from the
+closed-form cost model when omitted; the MEASURED half (`ms`/`tflops`/
+`achieved_bw_pct`) comes from `verify` and is GPU-gated (ms-only first).
 
 The serialized schedule view is JSON-safe: nodes (id/kind/key fields), the knob
 table, the resolved `binding`, and the MMA `precision`. Every field is a
@@ -390,6 +402,7 @@ over sequential on launch-bound chains. See [`examples/gemm_chain.py`](../../../
 | Native CUDA override codegen | `vkl/lower/cuda.py`, `vkl/override.py` |
 | **Schedule-IR spine (read-out + read-in)** | **`vkl/schedule.py`** |
 | **Phase C: profile feedback onto nodes** | **`vkl/profile.py`** |
+| **Phase E: persisted tuning_trace (cross-task)** | **`vkl/trace.py`** |
 | Edit primitives + the gate | `vkl/edits.py`, `vkl/gate.py` |
 | Cost model + arch facts | `vkl/cost.py`, `vkl/archdb.py` |
 | Graph capture | `vkl/graph.py` |
@@ -414,4 +427,9 @@ over sequential on launch-bound chains. See [`examples/gemm_chain.py`](../../../
   tools), awaiting the live ncu/rocprof profile that confirms the parsers on a
   GPU; HIP/MFMA codegen + the H1/H2 edit-frequency count (D); persisted
   `tuning_trace` records carrying `{edit, predicted, measured, rationale}` for
-  cross-task compounding (E).
+  cross-task compounding (E) — **plumbing landed in #73**
+  (`vkl/trace.py` + the `record_trace` MCP tool + the `prior_traces` surface on
+  `vkl_load_schedule`). The PREDICTED half (closed-form cost model) and the
+  reject-dead-end / predicted-optimal cross-task mechanism are CPU-tested; the
+  MEASURED half (real `verify` ms + the richer `tflops`/`achieved_bw_pct` once C
+  feeds them) is the GPU gate.
