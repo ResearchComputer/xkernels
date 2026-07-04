@@ -46,6 +46,18 @@ A100, sm_80)** — and now also holds the authoring reference for the CUTE DSL
    and the negative results. The API surface was reverse-engineered by grep
    + GPU probe (no tutorial docs exist) — this page is the map.
 
+**vkl Phase D (2026-07-04, native HIP codegen + the H1/H2 count, issue #75):**
+
+6. **[06-vkl-phased.md](06-vkl-phased.md)** — the native HIP `load_inline`
+   spellings (`__hip_bfloat16`, `at::cuda::getCurrentCUDAStream()`, the
+   `PYTORCH_ROCM_ARCH=gfx942` pin) that ship `lower/hip.py` at the FMA
+   mechanism-validation bar; the reverse-engineered MFMA codegen surface on
+   gfx942 (only `__builtin_amdgcn_mfma_f32_32x32x4bf16` exists; archdb's
+   `{m:32,k:16}` matches no instruction — the map for the MFMA follow-up); the
+   H1/H2 named-edit-frequency methodology (compute→BLAS vs bandwidth→DRAM-
+   roofline) and the empirical finding that H1 is needed only for compute-bound
+   ops; plus the drift-gate / no-sm_90-host / rcc-quote-stripping gotchas.
+
 ## Headline numbers
 
 | Kernel | MI300A opt (ms) | MI300A speedup | A100 opt (ms) | A100 speedup | Regime (measured) |
