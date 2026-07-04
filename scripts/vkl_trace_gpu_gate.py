@@ -39,7 +39,17 @@ import os
 import torch
 
 from xkernels import verify
-from xkernels.vkl import prior_traces, record_trace, register_dsl, spec_of
+from xkernels.vkl import (
+    cost as vkl_cost,
+)
+from xkernels.vkl import (
+    prior_traces,
+    record_trace,
+    register_dsl,
+    resolve_binding,
+    schedule_from_spec,
+    spec_of,
+)
 from xkernels.vkl.examples import gemm_bf16
 
 OP = "gemm_bf16@1.0.0"
@@ -102,10 +112,35 @@ def main() -> None:
         return
     print(f"perf.ms={perf['ms']:.4f}  (tflops/bw_pct stubbed to {perf.get('tflops')})")
 
+    # The PREDICTED half: closed-form, from the cost model on the edited
+    # schedule (the same call the MCP ``record_trace`` auto-fills). Replicated
+    # here with the public vkl API so the record carries the full triple even
+    # when called as a standalone script, not through the MCP dispatch.
+    spec = spec_of(gemm_bf16)
+    sched = schedule_from_spec(spec, arch=arch)
+    binding = resolve_binding(sched)
+    config = {k: int(v) for k, v in binding.items() if isinstance(v, int)}
+    pattern = getattr(getattr(spec, "launch", None), "pattern", "direct")
+    maps = [m for m in sched.maps()]
+    instruction = (maps[0].instruction if maps else None) or "fma"
+    predicted: dict = {
+        "pattern": pattern,
+        "instruction": instruction,
+        "scratch_bytes": vkl_cost.predict_scratch(pattern, config, POINT["dtype"], arch),
+        "overflows_scratch": vkl_cost.overflows_scratch(pattern, config, POINT["dtype"], arch),
+        "occupancy": vkl_cost.occupancy(pattern, config, POINT["dtype"], arch).to_dict(),
+    }
+    rf = vkl_cost.roofline(spec.id, POINT, arch, instruction=instruction)
+    if rf is not None:
+        predicted["roofline"] = rf.to_dict()
+    print(f"predicted: bottleneck={predicted.get('roofline', {}).get('bottleneck')} "
+          f"overflows_scratch={predicted['overflows_scratch']}")
+
     record = record_trace(
         OP, arch, EDIT,
         shape=shape, dtype=POINT["dtype"], point=POINT,
         check="ok",
+        predicted=predicted,
         measured={"ms": perf["ms"]},
         rationale=(
             f"GPU-measured baseline on {dev} (arch={arch}); BLOCK_M=128 default "
