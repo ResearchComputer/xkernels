@@ -1,6 +1,6 @@
 """xkernels — customized compute kernels across vendors and kernel types."""
 
-from . import registry
+from . import registry, vkl
 from ._dispatch import backend_diagnostics
 from .ops.activation import (
     gelu_and_mul,
@@ -99,4 +99,5 @@ __all__ = [
     "verify",
     "verify_parity",
     "registry",
+    "vkl",
 ]

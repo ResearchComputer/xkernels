@@ -50,6 +50,7 @@ from ..ir.math import (
     TensorRef,
     Unsqueeze,
 )
+from ..ir.schedule import ScheduleIR
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # §1  T — a handle over a math-IR tensor name, with operator overloads
@@ -717,9 +718,10 @@ class _TritonGen:
     # Default tile sizes (Phase 2.0a: correctness only; autotune is Phase 2.2).
     BLOCK_M, BLOCK_N, BLOCK_K = 64, 64, 32
 
-    def __init__(self, body: MathBody, out_dtype: str):
+    def __init__(self, body: MathBody, out_dtype: str, *, precision: str | None = None):
         self.body = body
         self.out_dtype = out_dtype
+        self.precision = precision  # the MMA's input_precision policy (None=dtype-default)
         self.mma = _find_mma(body.ir.nodes)
         self.roles = _dim_roles(self.mma, body)
         self.lines: list[str] = []
@@ -769,11 +771,18 @@ class _TritonGen:
         L.append(f"        b_ptrs = {b}_ptr + k_offs[:, None] * {bk} + offs_n[None, :] * {bn}")
         L.append(f"        b_mask = (k_offs[:, None] < {r['k']}) & (offs_n[None, :] < {r['n']})")
         L.append("        b_tile = tl.load(b_ptrs, mask=b_mask, other=0.0)")
-        # dot: fp32 accum; ieee precision for fp32 operands (no TF32), tensor cores for bf16
-        if self.out_dtype == "fp32":
-            L.append('        acc += tl.dot(a_tile, b_tile, input_precision="ieee")')
-        else:
-            L.append("        acc += tl.dot(a_tile, b_tile)")
+        # dot: fp32 accum. The input_precision policy comes from the schedule
+        # IR's MapTo node (None=dtype-default: ieee for fp32 so the kernel is
+        # bit-faithful to the fp32 reference; tensor cores for bf16). An agent
+        # ``SetMapPolicy("tf32")`` edit overrides fp32 to tensor-float-32
+        # (sm_80+ tensor cores, ~10x faster, ~1e-3 precision) - the one MMA-level
+        # lever that proves the schedule IR reaches silicon (docs/brainstorm/09).
+        dot_args = "a_tile, b_tile"
+        if self.precision is not None:
+            dot_args += f", input_precision={self.precision!r}"
+        elif self.out_dtype == "fp32":
+            dot_args += ', input_precision="ieee"'
+        L.append(f"        acc += tl.dot({dot_args})")
         # epilogue: walk post-MMA nodes (pointwise chain over acc) + the store.
         tile_vars = {self.mma.out.name: "acc"}
         # Resolve scalar markers (dim/lit) the epilogue's pointwise chain may
@@ -1562,12 +1571,18 @@ def _generated_dir() -> Path:
     return _GEN_DIR
 
 
-def _get_kernel(body: MathBody, out_dtype: str, *, pattern: str):
-    """Compile (and cache) the ``@triton.jit`` kernel for this IR + dtype + pattern."""
-    key = (id(body), out_dtype, pattern)
+def _get_kernel(body: MathBody, out_dtype: str, *, pattern: str, precision: str | None = None):
+    """Compile (and cache) the ``@triton.jit`` kernel for this IR + dtype + pattern.
+
+    The cache key includes ``precision`` because the MMA's ``input_precision`` is
+    baked into the generated source (ieee vs tf32 compile to different tl.dot
+    calls) - a ``SetMapPolicy`` edit that flips it must recompile, exactly like a
+    ``BLOCK_M`` change does.
+    """
+    key = (id(body), out_dtype, pattern, precision)
     if key not in _KERNEL_CACHE:
         if pattern == "tiled_2d":
-            gen = _TritonGen(body, out_dtype)
+            gen = _TritonGen(body, out_dtype, precision=precision)
         elif pattern == "rowwise":
             gen = _TritonGenRowwise(body, out_dtype)
         else:
@@ -1575,7 +1590,7 @@ def _get_kernel(body: MathBody, out_dtype: str, *, pattern: str):
         src = gen.kernel_source()
         path = (
             _generated_dir()
-            / f"mathbody_{pattern}_{abs(hash((id(body), out_dtype, pattern)))}.py"
+            / f"mathbody_{pattern}_{abs(hash((id(body), out_dtype, pattern, precision)))}.py"
         )
         path.write_text(src)
         ns: dict[str, Any] = {"__name__": path.stem}
@@ -1704,7 +1719,8 @@ def launch(
     out_dtype: str,
     *,
     pattern: str,
-    **knobs: int,
+    schedule: ScheduleIR | None = None,
+    **knobs: int | str,
 ) -> dict[str, torch.Tensor]:
     """Lower + launch the math IR per the launch ``pattern`` (tiled_2d | rowwise).
 
@@ -1714,7 +1730,23 @@ def launch(
     ignored these (hardcoded defaults); Phase 2.2a makes them live, so a
     ``verify(impl_card_id, knobs={...})`` sweep actually retargets the kernel —
     the substrate's ``autotune-knob-sweep`` skill driven by the schedule IR.
+
+    ``schedule`` (Phase A, docs/brainstorm/09) is the structured source of truth:
+    when an agent passes an *edited* schedule (load_schedule -> check_edit ->
+    apply_edit), its binding - including the MMA's ``input_precision`` policy -
+    overrides the flat ``knobs``. When absent, the flat ``knobs`` path is used
+    (backward compatible: ``verify(knobs=...)`` is unchanged). Either way the
+    launcher reads the same resolved binding.
     """
+    # The schedule is the source of truth when present: its resolved binding
+    # (knobs + MMA precision + stage depths) takes precedence, with any explicit
+    # ``knobs`` kwargs as overrides (e.g. a sweep pinning one knob).
+    if schedule is not None:
+        from ..schedule import resolve_binding
+
+        merged: dict[str, int | str] = dict(resolve_binding(schedule))
+        merged.update(knobs)
+        knobs = merged  # type: ignore[assignment]
     if pattern == "tiled_2d":
         return _launch_tiled_2d(body, inputs, out_dtype, **knobs)
     if pattern == "rowwise":
@@ -1726,12 +1758,16 @@ def launch(
     raise NotImplementedError(f"launch pattern {pattern!r}")
 
 
-def _meta_kwargs(knobs: dict[str, int]) -> dict[str, int]:
-    """Pull ``num_warps``/``num_stages`` from knobs; omit when unset (Triton auto-picks)."""
+def _meta_kwargs(knobs: dict[str, int | str]) -> dict[str, int]:
+    """Pull ``num_warps``/``num_stages`` from knobs; omit when unset (Triton auto-picks).
+
+    Non-int policy keys (``input_precision``) are NOT launch metas - they configure
+    codegen, consumed separately by ``_launch_tiled_2d`` -> ``_get_kernel``.
+    """
     meta: dict[str, int] = {}
     for k in TRITON_META_KNOBS:
         if k in knobs:
-            meta[k] = knobs[k]
+            meta[k] = int(knobs[k])  # type: ignore[arg-type]
     return meta
 
 
@@ -1756,15 +1792,22 @@ def _launch_tiled_2d(
     body: MathBody,
     inputs: dict[str, torch.Tensor],
     out_dtype: str,
-    **knobs: int,
+    **knobs: int | str,
 ) -> dict[str, torch.Tensor]:
     """Run the generated tiled Triton kernel; return the outputs (tiled_2d grid).
 
     Tile sizes come from the knob binding (``BLOCK_M/N/K``) with the Phase 2.0a
     defaults as fallback; ``num_warps``/``num_stages`` are passed as Triton launch
-    metas only when the binding sets them.
+    metas only when the binding sets them. The MMA's ``input_precision`` policy
+    (Phase A) is pulled out of the binding and threaded to the codegen - it is a
+    codegen setting (which ``tl.dot`` emits), not a launch meta.
     """
-    kernel = _get_kernel(body, out_dtype, pattern="tiled_2d")
+    # The MMA precision policy is a codegen setting, not a launch meta: pull it
+    # out before building the launch kwargs (Triton would reject it as unknown).
+    from ..schedule import PRECISION_KEY
+
+    precision = knobs.pop(PRECISION_KEY, None)  # type: ignore[attr-defined]
+    kernel = _get_kernel(body, out_dtype, pattern="tiled_2d", precision=precision)  # type: ignore[arg-type]
     mma = _find_mma(body.ir.nodes)
     r = _dim_roles(mma, body)
     out_name = next(iter(body.out_decls))

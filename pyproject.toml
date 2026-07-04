@@ -10,7 +10,7 @@ readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
 authors = [{ name = "Xiaozhe Yao" }]
-dependencies = ["torch>=2.1"]
+dependencies = ["torch>=2.1", "numpy>=1.24"]
 
 [project.optional-dependencies]
 triton = ["triton>=3.0"]
@@ -18,6 +18,9 @@ cute = ["nvidia-cutlass-dsl[cu13]"]  # NVIDIA CUTE DSL (CUTLASS Python). sm_80+;
 bench = ["pandas", "matplotlib"]
 dev = ["pytest>=7", "ruff>=0.4", "pre-commit", "jsonschema>=4", "pyyaml>=6"]
 mcp = ["mcp>=1.0"]
+
+[project.scripts]
+vkl = "xkernels.vkl.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

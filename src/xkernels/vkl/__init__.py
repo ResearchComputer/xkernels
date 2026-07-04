@@ -22,7 +22,7 @@ Importing this package is side-effect-free (no registry mutation, no emission).
 """
 from __future__ import annotations
 
-from . import archdb, auto, cost, edits, emit, gate, override, reference, sweep, tiles
+from . import archdb, auto, cost, edits, emit, gate, override, profile, reference, sweep, tiles
 from .cost import (
     GateVerdict,
     Occupancy,
@@ -34,9 +34,16 @@ from .cost import (
     roofline_gate,
     workload,
 )
-from .edits import AddStage, MapTo_, Ok, Reject, Retile, SetKnob
+from .edits import AddStage, MapTo_, Ok, Reject, Retile, SetKnob, SetMapPolicy
 from .emit import emit_card, emit_reference_card, emit_spec
-from .gate import GateResult, TraceEntry, run_gate
+from .gate import (
+    GateResult,
+    KernelIssue,
+    KernelValidation,
+    TraceEntry,
+    run_gate,
+    validate_kernel,
+)
 from .graph import (
     CapturedGraph,
     GraphCtx,
@@ -69,7 +76,18 @@ from .lower import triton as lower_triton
 from .lower.cuda import lower_to_cuda, register_dsl_cuda
 from .lower.triton import lower_to_triton, register_dsl
 from .override import OverrideCheck, check_override_math_ir, emit_override_card
+from .profile import (
+    ProfileMetrics,
+    annotate_schedule,
+    parse_ncu_report,
+    parse_omniperf_analyze,
+    parse_profile,
+    parse_rocprof_compute,
+    route,
+    route_of,
+)
 from .reference import make_inputs, run_reference, trace_ir
+from .schedule import PRECISION_KEY, precision_of, resolve_binding, schedule_from_spec
 from .surface import (
     AUTO_REFERENCE,
     KernelSpec,
@@ -101,11 +119,18 @@ __all__ = [
     "TensorRef", "Load", "Reduce", "MMA", "Pointwise", "Store", "MathIR",
     # schedule IR (editable)
     "Tile", "MapTo", "Stage", "CopyAtom", "Knob", "ScheduleIR",
+    "schedule_from_spec", "resolve_binding", "precision_of", "PRECISION_KEY",
+    # Phase C: profile feedback onto schedule nodes (issue #74)
+    "profile", "ProfileMetrics", "route", "route_of",
+    "parse_ncu_report", "parse_rocprof_compute", "parse_omniperf_analyze",
+    "parse_profile", "annotate_schedule",
     # edits + gate
-    "SetKnob", "Retile", "MapTo_", "AddStage", "Ok", "Reject",
-    "run_gate", "GateResult", "TraceEntry",
+    "SetKnob", "Retile", "MapTo_", "AddStage", "SetMapPolicy", "Ok", "Reject",
+    "run_gate", "validate_kernel", "GateResult", "TraceEntry",
+    "KernelIssue", "KernelValidation",
     # modules
-    "archdb", "auto", "cost", "edits", "emit", "gate", "override", "reference", "sweep", "tiles",
+    "archdb", "auto", "cost", "edits", "emit", "gate", "override", "profile",
+    "reference", "sweep", "tiles",
     # autotune sweep (Phase 2.2)
     "autotune", "SweepResult", "enumerate_configs", "schedule_from_card",
     # cost model + Phase 2 roofline gate (Phase 2.3)

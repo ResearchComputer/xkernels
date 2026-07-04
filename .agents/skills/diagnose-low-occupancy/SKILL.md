@@ -58,13 +58,17 @@ x-kernel-lib:
 > populated (median wall-clock via `do_bench`). `tflops` and `achieved_bw_pct` are
 > stubbed to `None` until an op-specific FLOP/byte model lands (open question
 > §11), and the normalized `stall_reasons`/`occupancy` vocabulary §10 describes
-> is not emitted either. This skill's ENTIRE input — the occupancy percentage and
-> the dominant stall reason — comes from an **external profiler** (`rocprof` /
-> `omniperf` on AMD, Nsight Compute on NVIDIA) that you map onto the vocabulary
-> in step 1; `verify()` cannot supply any of it. (When the §10 profiler layer
-> lands in `verify()`, this skill updates to read it directly.) `ms` is the only
-> in-harness signal, and it cannot distinguish occupancy from bandwidth from
-> compute — hence the external profile.
+> is not emitted by `verify()` either. This skill's ENTIRE input — the occupancy
+> percentage and the dominant stall reason — comes from an **external profiler**
+> (`rocprof` / `omniperf` on AMD, Nsight Compute on NVIDIA) that you map onto the
+> vocabulary in step 1. **Phase C (issue #74) bridge landed:** the normalized
+> vocabulary now exists in `xkernels.vkl.profile` (`ProfileMetrics` +
+> `route_of(sched)`), and `vkl_annotate_profile` keys the raw ncu/rocprof text to
+> the schedule's `MapTo` node. When the schedule IS annotated, step 0 below reads
+> the stall reason straight off the `MapTo` node and skips the manual mapping;
+> otherwise (no annotation yet) the external-profiler path in step 1 is unchanged.
+> `ms` is the only in-harness signal, and it cannot distinguish occupancy from
+> bandwidth from compute — hence the external profile.
 
 > **Run `verify` on ds5 (rcc + docker); profile on bristen/beverin.** The
 > `verify(arch, measure_perf=True)` half (correctness + `ms`) runs in the NGC
@@ -81,6 +85,24 @@ x-kernel-lib:
 > `meta/docs/usage/ds5-testbed.md`.
 
 ## Procedure
+
+0. **If the schedule is annotated, read the `MapTo` node directly.** When a DSL
+   kernel's schedule carries a Phase-C `profile` annotation (attached by the MCP
+   `vkl_annotate_profile` tool, or in-process via `xkernels.vkl.annotate_schedule`),
+   the dominant stall reason is already normalized onto the §10 vocabulary and
+   keyed to the heavy `MapTo` node — do NOT re-map the raw profiler text by hand.
+   Read it in one line:
+   ```python
+   from xkernels.vkl import route_of            # in-process
+   route_of(sched)                               # -> {node_id: 'mma0', skill, dominant_stall, ...}
+   # or, over MCP:
+   vkl_route_from_profile(spec_id, arch, applied_edits, profiler, profile_text)
+   ```
+   If `route_of(sched)['skill'] == 'diagnose-low-occupancy'`, the `MapTo` node's
+   `dominant_stall` is already one of `{dependency, scheduling, vgpr, scratch}`
+   — jump to step 2 with that reason. If it routes elsewhere (`diagnose-memory-bound`
+   / `map-to-matrix-cores`), this is the WRONG skill — hand off. (When no
+   annotation is present, fall through to step 1's external-profiler path.)
 
 1. **Get the profile from an EXTERNAL profiler** (the harness can't give you one
    yet). On AMD: `rocprof --stats` / `omniperf` for occupancy + the

@@ -9,6 +9,7 @@ path resolves. These are the inputs to ``tests/test_vkl_*.py``.
 Access a kernel's spec via ``examples.<name>_spec`` (the function and its module
 share a name, so we re-export the spec to dodge the ambiguity).
 """
+
 from __future__ import annotations
 
 # The KernelSpec for each example, re-exported for tests.

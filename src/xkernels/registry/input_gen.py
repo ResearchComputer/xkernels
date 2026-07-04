@@ -190,7 +190,9 @@ def _topk_softmax(point: dict[str, Any], seed: int, device: str) -> dict[str, An
     }
 
 
-def _probs_and_uniform(point: dict[str, Any], seed: int, device: str) -> tuple[torch.Tensor, torch.Tensor]:
+def _probs_and_uniform(
+    point: dict[str, Any], seed: int, device: str
+) -> tuple[torch.Tensor, torch.Tensor]:
     # A valid per-row probability distribution + one external uniform draw per
     # row. probs come from a fp32 softmax of seeded logits (sharpened so the
     # distribution is non-degenerate and the inverse-CDF crossing is
@@ -276,7 +278,9 @@ def _paged_attention_prefill(point: dict[str, Any], seed: int, device: str) -> d
     # give a random spread up to nk_max, staying >= nq_per
     for s in range(num_seqs):
         hi = max(int(nk_per[s]), int(nq_per[s]))
-        nk_per[s] = max(hi, int(torch.randint(hi, nk_max + 1, (1,), generator=g, device=device).item()))
+        nk_per[s] = max(
+            hi, int(torch.randint(hi, nk_max + 1, (1,), generator=g, device=device).item())
+        )
     cu_q = torch.zeros(num_seqs + 1, dtype=torch.int32, device=device)
     cu_q[1:] = torch.cumsum(nq_per, dim=0).to(torch.int32)
     cu_k = torch.zeros(num_seqs + 1, dtype=torch.int32, device=device)
