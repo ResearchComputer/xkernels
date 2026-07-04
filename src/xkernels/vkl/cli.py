@@ -603,7 +603,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     impl.add_argument(
         "target",
-        help="module_or_path:function, e.g. xkernels.ops.gemm.gemm_fp16:gemm",
+        help="module_or_path:function, e.g. xkernels.vkl.examples.gemm_bf16:gemm_bf16",
     )
     impl.add_argument("--backend", default="triton", help="requested backend/card family")
     impl.add_argument("--arch", default="any", help="target arch hint, e.g. nvidia_sm90")

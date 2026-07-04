@@ -19,7 +19,6 @@ from . import activation as _activation_mod  # noqa: F401  (side-effect: registe
 from . import dual_rmsnorm as _dual_rmsnorm_mod  # noqa: F401  (side-effect: register auto-ref)
 from . import gemm_bf16 as _gemm_bf16_mod  # noqa: F401  (side-effect: register auto-ref)
 from . import gemm_chain as _gemm_chain_mod  # noqa: F401  (side-effect: attach @graph)
-from . import gemm_fp16 as _gemm_fp16_mod  # noqa: F401  (side-effect: register auto-ref)
 from . import (
     paged_kv_gather as _paged_kv_gather_mod,  # noqa: F401  (side-effect: register auto-ref)
 )
@@ -31,7 +30,6 @@ from .activation import gelu_and_mul, packed_gelu_and_mul, packed_silu_and_mul, 
 from .dual_rmsnorm import dual_rmsnorm
 from .gemm_bf16 import gemm_bf16
 from .gemm_chain import gemm_chain
-from .gemm_fp16 import gemm_fp16
 from .paged_kv_gather import paged_kv_gather
 from .quant_fp8 import per_block_quant_fp8, per_token_group_quant_fp8
 from .rmsnorm import rmsnorm
@@ -41,7 +39,6 @@ from .softmax import rowwise_softmax, temperature_softmax
 dual_rmsnorm_spec = spec_of(dual_rmsnorm)
 gemm_bf16_spec = spec_of(gemm_bf16)
 gemm_chain_spec = graph_of(gemm_chain)
-gemm_fp16_spec = spec_of(gemm_fp16)
 rmsnorm_spec = spec_of(rmsnorm)
 silu_and_mul_spec = spec_of(silu_and_mul)
 gelu_and_mul_spec = spec_of(gelu_and_mul)
@@ -61,8 +58,6 @@ __all__ = [
     "gemm_bf16_spec",
     "gemm_chain",
     "gemm_chain_spec",
-    "gemm_fp16",
-    "gemm_fp16_spec",
     "rmsnorm",
     "rmsnorm_spec",
     "silu_and_mul",

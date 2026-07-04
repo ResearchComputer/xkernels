@@ -21,7 +21,7 @@ from xkernels.vkl.cli import (
     run_agent,
 )
 
-CANONICAL_TARGET = "xkernels.ops.gemm.gemm_fp16:gemm"
+CANONICAL_TARGET = "xkernels.vkl.examples.gemm_bf16:gemm_bf16"
 
 
 def test_parse_target_requires_module_and_symbol():
