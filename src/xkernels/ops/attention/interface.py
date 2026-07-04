@@ -11,14 +11,17 @@ from ..._backends import Backend
 from ..._dispatch import dispatch
 from . import (
     dsa_reference,  # noqa: F401  (registers dsa_indexer_logits REFERENCE)
-    paged_attention as _paged_attn_mod,  # noqa: F401  (registers paged_attention REFERENCE)
-    paged_attention_prefill as _paged_prefill_mod,  # noqa: F401  (registers paged_attention_prefill REFERENCE)
     reference,  # noqa: F401  (registers REFERENCE backend)
     sparse_mla_reference,  # noqa: F401  (registers sparse_mla_attention REFERENCE)
 )
+from . import (
+    paged_attention as _paged_attn_mod,  # noqa: F401  (registers paged_attention REFERENCE)
+)
+from . import (
+    paged_attention_prefill as _paged_prefill_mod,  # noqa: F401  (registers paged_attention_prefill REFERENCE)
+)
 from .dsa_reference import dsa_indexer_topk  # noqa: F401  (re-export thin helper)
 from .paged_attention import paged_attention  # noqa: F401  (public re-export)
-from .paged_attention_prefill import paged_attention_prefill  # noqa: F401  (public re-export)
 from .sparse_mla_decode import flash_mla_with_kvcache  # noqa: F401  (re-export decode)
 
 

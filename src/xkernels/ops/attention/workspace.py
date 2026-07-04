@@ -82,7 +82,7 @@ class PagedAttentionWorkspace:
     @classmethod
     def allocate(
         cls, B: int, H_q: int, D: int, *, device, dtype: torch.dtype
-    ) -> "PagedAttentionWorkspace":
+    ) -> PagedAttentionWorkspace:
         return cls(out=torch.empty(B, H_q, D, device=device, dtype=dtype))
 
     def matches(self, B: int, H_q: int, D: int, *, device, dtype: torch.dtype) -> bool:
@@ -113,7 +113,7 @@ class PagedAttentionPrefillWorkspace:
     @classmethod
     def allocate(
         cls, num_tokens: int, H_q: int, D: int, *, device, dtype: torch.dtype
-    ) -> "PagedAttentionPrefillWorkspace":
+    ) -> PagedAttentionPrefillWorkspace:
         return cls(
             out=torch.empty(num_tokens, H_q, D, device=device, dtype=dtype),
             seq_ids=torch.empty(num_tokens, device=device, dtype=torch.int32),
@@ -152,7 +152,7 @@ class SparseMlaAttentionWorkspace:
     @classmethod
     def allocate(
         cls, T: int, H: int, d_v: int, *, device, dtype: torch.dtype
-    ) -> "SparseMlaAttentionWorkspace":
+    ) -> SparseMlaAttentionWorkspace:
         return cls(
             out=torch.empty(T, H, d_v, device=device, dtype=dtype),
             lse=torch.empty(T, H, device=device, dtype=torch.float32),

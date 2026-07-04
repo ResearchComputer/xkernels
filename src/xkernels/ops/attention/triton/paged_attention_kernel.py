@@ -153,7 +153,8 @@ def paged_attention_triton(
 ) -> torch.Tensor:
     """Host launcher for the batched paged GQA decode kernel.
 
-    Args match the reference (:func:`xkernels.ops.attention.paged_attention.paged_attention_decode_ref`);
+    Args match the reference
+    (:func:`xkernels.ops.attention.paged_attention.paged_attention_decode_ref`);
     returns ``out [B, H_q, D]``.
 
     ``workspace`` (optional :class:`PagedAttentionWorkspace`): if provided and

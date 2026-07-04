@@ -117,7 +117,7 @@ class MoeAlignWorkspace:
         block_size: int,
         *,
         device,
-    ) -> "MoeAlignWorkspace":
+    ) -> MoeAlignWorkspace:
         max_pad = _align_max_pad(M, top_k, num_experts, block_size)
         max_blocks = _cdiv(max_pad, block_size)
         return cls(
@@ -193,7 +193,7 @@ class MoeInt4Workspace:
         *,
         dtype: torch.dtype,
         device,
-    ) -> "MoeInt4Workspace":
+    ) -> MoeInt4Workspace:
         return cls(
             combine_out=torch.empty((max_M, N), dtype=torch.float32, device=device),
             scratch=torch.empty((max_M * top_k, N), dtype=dtype, device=device),
@@ -258,7 +258,7 @@ class MoeMxfp4Workspace:
         *,
         dtype: torch.dtype,
         device,
-    ) -> "MoeMxfp4Workspace":
+    ) -> MoeMxfp4Workspace:
         max_pad = _align_max_pad(max_M, top_k, num_experts, block_size)
         return cls(
             act=torch.empty((max_pad, ispp), dtype=dtype, device=device),

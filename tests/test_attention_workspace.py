@@ -195,7 +195,7 @@ def test_decode_graph_capture_and_replay():
         paged_attention(backend="triton", workspace=ws, **inp)
     torch.cuda.synchronize()
     g = torch.cuda.CUDAGraph()
-    o_graph = paged_attention(backend="triton", workspace=ws, **inp)
+    paged_attention(backend="triton", workspace=ws, **inp)
     with torch.cuda.graph(g):
         o_capture = paged_attention(backend="triton", workspace=ws, **inp)
     # mutate inputs in place, replay, compare to a fresh-alloc run on new inputs

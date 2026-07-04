@@ -6,8 +6,9 @@ This is the hand-path complement to the DSL ``temperature_softmax`` op: that op
 produces a probability distribution, and *these* ops draw tokens from one. The
 family this module seeds (canonical_op ``sampling``):
 
-  * ``sampling_from_probs(probs, uniform_samples)``            -> token_ids   [inverse-CDF multinomial]
-  * ``top_k_sampling_from_probs(probs, uniform_samples, top_k)`` -> token_ids   [mask top-k, renorm, inverse-CDF]
+  * ``sampling_from_probs(probs, uniform_samples)`` -> token_ids [inverse-CDF multinomial]
+  * ``top_k_sampling_from_probs(probs, uniform_samples, top_k)``
+    -> token_ids [mask top-k, renorm, inverse-CDF]
 
 The remaining two flashinfer family members -- ``top_p_sampling_from_probs`` and
 ``top_k_top_p_sampling_from_probs`` -- need a device-side *sort* (the nucleus
