@@ -131,3 +131,21 @@ def gemm_bf16_cuda(ctx):
     b = ctx.load("b")
     acc = ctx.mma(a, b, accum_dtype=fp32)
     ctx.store("out", acc.cast(ctx.out_dtype()))
+
+
+# Phase D (issue #75): the native HIP override for amd_cdna3 (MI300A / gfx942).
+# Same math IR as the portable body (the oracle property — checked by
+# ``check_override_math_ir``), lowered to a native hipcc-compiled kernel
+# (``vkl.lower.hip``). Its load-bearing value TODAY is mechanism validation: it
+# proves a per-target HIP override compiles to a REAL native kernel, registers as
+# the ``hip`` backend, and passes ``verify`` on amd_cdna3 against the exact
+# oracle. Performance is correct-but-slow (wavefront FMA, NOT MFMA); the
+# ``v_mfma_*`` matrix-core ceiling is the ``map-to-matrix-cores`` follow-up
+# (parallel to the CUTLASS/wgmma follow-up on the CUDA side).
+@gemm_bf16.target("hip", arch="amd_cdna3")
+def gemm_bf16_hip(ctx):
+    """Same math IR as the portable body; lowered to native HIP by lower/hip.py."""
+    a = ctx.load("a")
+    b = ctx.load("b")
+    acc = ctx.mma(a, b, accum_dtype=fp32)
+    ctx.store("out", acc.cast(ctx.out_dtype()))

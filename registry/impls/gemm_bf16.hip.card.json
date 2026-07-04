@@ -1,0 +1,28 @@
+{
+  "id": "gemm_bf16.hip@1.0.0",
+  "implements": "gemm_bf16@1.0.0",
+  "backend": "hip",
+  "arch": {
+    "family": "amd_cdna3",
+    "requires": [],
+    "wave_size": 64,
+    "scratch": {
+      "kind": "lds",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "native override (full_body, wavefront-FMA mechanism validation) on amd_cdna3 — NOT the MFMA ceiling; v_mfma follow-up via map-to-matrix-cores",
+    "roofline": "compute_bound",
+    "measured": []
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "dsl",
+    "created": "2026-07-04T00:00:00+00:00",
+    "source_path": "xkernels.vkl:gemm_bf16#hip",
+    "derived_from": "gemm_bf16.triton@1.0.0"
+  }
+}

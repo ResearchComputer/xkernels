@@ -72,8 +72,10 @@ from .ir import (
     Tile,
 )
 from .lower import cuda as lower_cuda
+from .lower import hip as lower_hip
 from .lower import triton as lower_triton
 from .lower.cuda import lower_to_cuda, register_dsl_cuda
+from .lower.hip import lower_to_hip, register_dsl_hip
 from .lower.triton import lower_to_triton, register_dsl
 from .override import OverrideCheck, check_override_math_ir, emit_override_card
 from .profile import (
@@ -112,6 +114,7 @@ __all__ = [
     # reference + lowering (body -> torch / Triton)
     "make_inputs", "run_reference", "trace_ir", "lower_to_triton", "register_dsl",
     "lower_triton", "lower_to_cuda", "register_dsl_cuda", "lower_cuda",
+    "lower_to_hip", "register_dsl_hip", "lower_hip",
     # graphs (Phase 3: capture a composition into one CUDA/HIP graph launch)
     "graph", "graph_of", "GraphSpec", "GraphCtx", "capture", "run_graph",
     "CapturedGraph", "measure", "GraphPerf", "register_graph_node",
