@@ -224,6 +224,35 @@ def _schedule_cost(spec, sched, arch: str, point: dict[str, Any] | None = None) 
     return view
 
 
+def _prior_traces_view(
+    spec_id: str, arch: str, shape: dict[str, Any] | None, dtype: str | None
+) -> list[dict[str, Any]]:
+    """The cross-task read: prior tuning_trace records for the (op, arch[, shape, dtype]) point.
+
+    Phase E (issue #73): a thin projection of the persisted records into the
+    agent-readable fields an agent actually acts on — the edit + its verdict +
+    the rationale + the measured outcome — so ``vkl_load_schedule`` shows "what
+    has already been tried here, and why" without dumping the full key. Empty
+    when nothing has been recorded for the point yet (the cold-start case).
+    """
+    from .vkl import trace as _trace
+
+    records = _trace.prior_traces(spec_id, arch, shape=shape, dtype=dtype)
+    return [
+        {
+            "edit": rec.get("edit", {}),
+            "edit_key": rec.get("edit_key", ""),
+            "check": rec.get("check", ""),
+            "reason": rec.get("reason", ""),
+            "rationale": rec.get("rationale", ""),
+            "predicted": rec.get("predicted", {}),
+            "measured": rec.get("measured", {}),
+            "source": rec.get("source", ""),
+        }
+        for rec in records
+    ]
+
+
 # Lazy imports of the IR node types (avoid importing vkl at module load — it pulls
 # torch, which the MCP server's find_impl/verify tools don't need).
 _Tile = _MapTo = _Stage = _Knob = None  # type: ignore[assignment]
@@ -339,7 +368,11 @@ def _tools() -> list[dict[str, Any]]:
                 "(docs/brainstorm/09). Returns the nodes (Tile/MapTo/Stage/Knob), the "
                 "knobs, the binding the launcher reads, and the MMA precision policy. "
                 "This is the read-out half of the schedule-IR source-of-truth: the "
-                "agent edits this view by name, then check_edit/apply_edit reach silicon."
+                "agent edits this view by name, then check_edit/apply_edit reach silicon. "
+                "Phase E (issue #73): pass shape/dtype to also surface prior "
+                "tuning_trace records for the (op, arch, shape, dtype) point — the "
+                "cross-task read that lets an agent skip already-tuned points and cite "
+                "prior rationale before proposing its first edit."
             ),
             "inputSchema": {
                 "type": "object",
@@ -349,6 +382,17 @@ def _tools() -> list[dict[str, Any]]:
                         "description": "gemm_bf16 | gemm_bf16@1.0.0 | ...",
                     },
                     "arch": {"type": "string"},
+                    "shape": {
+                        "type": "object",
+                        "description": (
+                            "optional sweep-point shape; when present, prior_traces "
+                            "is scoped to this point"
+                        ),
+                    },
+                    "dtype": {
+                        "type": "string",
+                        "description": "optional sweep-point dtype; scopes prior_traces",
+                    },
                 },
                 "required": ["spec_id"],
             },
@@ -464,6 +508,83 @@ def _tools() -> list[dict[str, Any]]:
                     },
                 },
                 "required": ["spec_id", "arch"],
+            },
+        },
+        {
+            "name": "record_trace",
+            "description": (
+                "Phase E (issue #73): persist one "
+                "{edit, predicted, measured, rationale} triple into the "
+                "tuning_trace store, keyed by (op, arch, shape, dtype, edit). This "
+                "is the cross-task compounding artifact: a later task reads prior "
+                "traces via vkl_load_schedule (or the in-process prior_traces) to "
+                "skip already-tuned points and cite the prior rationale (the §6.2 "
+                "loop). The PREDICTED half is closed-form (vkl.cost) and is "
+                "auto-filled when omitted; the MEASURED half (ms/tflops/"
+                "achieved_bw_pct) comes from verify and is GPU-gated — land ms-only "
+                "first. Use this once an edit has been checked/measured so the next "
+                "task does not re-derive it."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "spec_id": {
+                        "type": "string",
+                        "description": "the op id, e.g. gemm_bf16@1.0.0",
+                    },
+                    "arch": {"type": "string"},
+                    "edit": {
+                        "type": "object",
+                        "description": (
+                            "the edit dict that was tried, e.g. "
+                            "{kind: set_knob, name: num_stages, value: 3}"
+                        ),
+                    },
+                    "applied_edits": {
+                        "type": "array", "items": {"type": "object"},
+                        "description": "prior edits edit was proposed on top of",
+                    },
+                    "shape": {"type": "object"},
+                    "dtype": {"type": "string"},
+                    "point": {
+                        "type": "object",
+                        "description": (
+                            "concrete sweep point; when present, supplies shape/dtype "
+                            "and drives the auto-predicted roofline"
+                        ),
+                    },
+                    "check": {
+                        "type": "string",
+                        "description": "ok | reject (was the edit applied or rejected?)",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "the gate reject string when check=reject",
+                    },
+                    "predicted": {
+                        "type": "object",
+                        "description": (
+                            "closed-form cost-model call; auto-filled from vkl.cost "
+                            "when omitted"
+                        ),
+                    },
+                    "measured": {
+                        "type": "object",
+                        "description": (
+                            "on-device outcome from verify: any subset of "
+                            "{ms, tflops, achieved_bw_pct}"
+                        ),
+                    },
+                    "rationale": {
+                        "type": "string",
+                        "description": "free-text agent note the next task cites",
+                    },
+                    "source": {
+                        "type": "string",
+                        "description": "reproducible run id (e.g. verify artifacts.run_id)",
+                    },
+                },
+                "required": ["spec_id", "arch", "edit"],
             },
         },
         {
@@ -616,8 +737,17 @@ def _dispatch(name: str, args: dict[str, Any]) -> Any:
     if name == "vkl_load_schedule":
         _ensure_ir_types()
         spec = _vkl_spec(args["spec_id"])
-        sched = _replay(spec, args.get("arch", "any"), [])
-        return _serialize_schedule(sched)
+        arch = args.get("arch", "any")
+        sched = _replay(spec, arch, [])
+        view = _serialize_schedule(sched)
+        # Phase E (issue #73): surface prior tuning_trace records for the
+        # (op, arch[, shape, dtype]) point so an agent loading a schedule sees
+        # what has already been tried — the cross-task read that lets it skip
+        # dead-ends and cite prior rationale before proposing a single edit.
+        shape = args.get("shape")
+        dtype = args.get("dtype")
+        view["prior_traces"] = _prior_traces_view(spec.id, arch, shape, dtype)
+        return view
     if name == "vkl_validate_kernel":
         from .vkl import validate_kernel
         spec = _vkl_spec(args["spec_id"])
@@ -706,6 +836,42 @@ def _dispatch(name: str, args: dict[str, Any]) -> Any:
     if name == "record_measurement":
         from .registry.writeback import record_measurement
         return record_measurement(**args)
+    if name == "record_trace":
+        _ensure_ir_types()
+        from .vkl import trace as _trace
+        spec = _vkl_spec(args["spec_id"])
+        arch = args["arch"]
+        point = args.get("point")
+        predicted = args.get("predicted")
+        check = args.get("check", "ok")
+        # Auto-fill the PREDICTED half (closed-form, CPU-doable) when the agent
+        # omitted it AND the edit applied — replay applied_edits + edit and read
+        # the cost model. A rejected edit has no resulting schedule to cost, so its
+        # predicted half stays empty (the reject `reason` + `rationale` carry the
+        # dead-end signal). The MEASURED half stays GPU-gated (ms-only first).
+        if predicted is None and check == "ok":
+            try:
+                prior = args.get("applied_edits") or []
+                sched = _replay(spec, arch, prior + [args["edit"]])
+                cost_view = _schedule_cost(spec, sched, arch, point)
+                predicted = cost_view.get("cost", {})
+            except Exception:
+                predicted = {}
+        return _trace.record_trace(
+            spec.id,
+            arch,
+            args["edit"],
+            applied_edits=args.get("applied_edits"),
+            shape=args.get("shape"),
+            dtype=args.get("dtype"),
+            point=point,
+            check=check,
+            reason=args.get("reason", ""),
+            predicted=predicted,
+            measured=args.get("measured"),
+            rationale=args.get("rationale", ""),
+            source=args.get("source"),
+        )
     if name == "record_outcome":
         from .registry.outcomes import record_outcome
         return record_outcome(**args)

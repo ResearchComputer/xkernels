@@ -22,7 +22,20 @@ Importing this package is side-effect-free (no registry mutation, no emission).
 """
 from __future__ import annotations
 
-from . import archdb, auto, cost, edits, emit, gate, override, profile, reference, sweep, tiles
+from . import (
+    archdb,
+    auto,
+    cost,
+    edits,
+    emit,
+    gate,
+    override,
+    profile,
+    reference,
+    sweep,
+    tiles,
+    trace,
+)
 from .cost import (
     GateVerdict,
     Occupancy,
@@ -104,6 +117,7 @@ from .surface import (
     targets,
 )
 from .sweep import SweepResult, autotune, enumerate_configs, schedule_from_card
+from .trace import prior_traces, record_trace
 
 __all__ = [
     # authoring surface
@@ -131,9 +145,11 @@ __all__ = [
     "SetKnob", "Retile", "MapTo_", "AddStage", "SetMapPolicy", "Ok", "Reject",
     "run_gate", "validate_kernel", "GateResult", "TraceEntry",
     "KernelIssue", "KernelValidation",
+    # Phase E: persisted tuning_trace for cross-task compounding (issue #73)
+    "trace", "record_trace", "prior_traces",
     # modules
     "archdb", "auto", "cost", "edits", "emit", "gate", "override", "profile",
-    "reference", "sweep", "tiles",
+    "reference", "sweep", "tiles", "trace",
     # autotune sweep (Phase 2.2)
     "autotune", "SweepResult", "enumerate_configs", "schedule_from_card",
     # cost model + Phase 2 roofline gate (Phase 2.3)
