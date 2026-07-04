@@ -281,10 +281,23 @@ def test_tf32_edit_changes_compiled_source():
     bit-faithful to the reference); after the edit the schedule's binding carries
     ``input_precision='tf32'`` and the codegen emits that instead (sm_80+ tensor
     cores). The edit changes what compiles — schedule IR is the source of truth.
+
+    The substring match is quote-tolerant (regex over single OR double quotes):
+    ``_TritonGen`` emits the policy via ``{value!r}`` for a set policy but
+    hardcodes ``"ieee"`` for the dtype-default, so the two paths use different
+    quote styles. Asserting the semantic fact ("ieee"/"tf32" is the policy) keeps
+    the test green on both codegen paths and both vendors (beverin gfx942,
+    ds5 sm_121) without coupling to the quote style.
     """
+    import re
+
     pytest.importorskip("triton")
     from xkernels.vkl.lower.mathbody import _TritonGen
     from xkernels.vkl.reference import trace_ir
+
+    # quote-tolerant: matches input_precision='ieee' OR input_precision="ieee"
+    _ieee = re.compile(r'''input_precision\s*=\s*["']ieee["']''')
+    _tf32 = re.compile(r'''input_precision\s*=\s*["']tf32["']''')
 
     spec = spec_of(gemm_bf16)
     body = trace_ir(spec)
@@ -292,13 +305,13 @@ def test_tf32_edit_changes_compiled_source():
     # default (None precision) on an fp32 output -> ieee (true fp32, no TF32)
     gen_ieee = _TritonGen(body, out_dtype="fp32", precision=None)
     src_ieee = gen_ieee.kernel_source()
-    assert "input_precision='ieee'" in src_ieee
+    assert _ieee.search(src_ieee)
 
     # the tf32 edit -> codegen emits tf32 (the silicon change)
     gen_tf32 = _TritonGen(body, out_dtype="fp32", precision="tf32")
     src_tf32 = gen_tf32.kernel_source()
-    assert "input_precision='tf32'" in src_tf32
-    assert "input_precision='ieee'" not in src_tf32
+    assert _tf32.search(src_tf32)
+    assert not _ieee.search(src_tf32)
 
 
 @_SKIP
@@ -324,3 +337,80 @@ def test_launch_consumes_schedule_binding():
     # threaded (tf32 -> tensor cores). Numerics are within the loose fp32 tol.
     (out,) = launch(**inputs, schedule=sched_tf32)
     assert out.shape == (128, 128) and out.dtype == __import__("torch").float32
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# §6  issue #75 (Phase D) — the schedule round-trip on amd_cdna3 (CPU-satisfiable)
+# ═══════════════════════════════════════════════════════════════════════════════
+# Phase D's three acceptance criteria: (#1) lower/hip.py + an MFMA kernel that
+# verifies on amd_cdna3; (#2) the schedule spine round-trips on AMD; (#3) the
+# H1/H2 named-edit-frequency count on both sm_90 and cdna3. #1 and #3 are
+# GPU-gated (beverin gfx942 + bristen sm_90); #2 is the one CPU-satisfiable half.
+# These lock the AMD read-out (mfma + the native shape) + the vendor-honest edit
+# gate on cdna3 so regressions surface here, and so the open Phase-D work is
+# precisely the two GPU halves.
+
+
+class TestScheduleRoundTripAmdCdna3:
+    """issue #75 criterion #2: the schedule spine round-trips on amd_cdna3."""
+
+    def test_read_out_picks_mfma_with_native_shape(self):
+        """schedule_from_spec(spec, 'amd_cdna3') -> L5 MapTo(instruction='mfma', (32,16)).
+
+        The arch-native matrix engine + the archdb native_shape (m=32, k=16) —
+        the AMD twin of the sm_90 wgmma read-out in TestScheduleFromSpec.
+        """
+        spec = spec_of(gemm_bf16)
+        m = schedule_from_spec(spec, arch="amd_cdna3").maps()[0]
+        assert m.level == "L5"
+        assert m.instruction == "mfma"          # arch-native on cdna3
+        assert tuple(m.instr_shape) == (32, 16)  # archdb.native_shape('amd_cdna3','mfma')
+
+    @pytest.mark.parametrize("arch,instr", [
+        ("amd_cdna3", "mfma"),
+        ("nvidia_sm90", "wgmma"),
+    ])
+    def test_read_out_is_vendor_native(self, arch, instr):
+        """Each vendor's read-out picks ITS own native matrix engine.
+
+        The portability stance (AGENTS.md): the same Op Spec lowers to mfma on
+        AMD and wgmma on NVIDIA — wave size / instruction never hardcoded.
+        """
+        spec = spec_of(gemm_bf16)
+        m = schedule_from_spec(spec, arch=arch).maps()[0]
+        assert m.instruction == instr
+
+    @pytest.fixture
+    def cdna3_sched(self):
+        return schedule_from_spec(spec_of(gemm_bf16), arch="amd_cdna3")
+
+    def test_mapto_check_accepts_mfma_on_cdna3(self, cdna3_sched):
+        mma0 = cdna3_sched.maps()[0]
+        r = MapTo_(map_id="mma0", op_ref=mma0.op_ref, level="L5",
+                   instruction="mfma", instr_shape=(32, 16)).check(cdna3_sched, "amd_cdna3")
+        assert isinstance(r, Ok)
+
+    def test_mapto_check_rejects_nvidia_instruction_on_cdna3(self, cdna3_sched):
+        """wgmma is NVIDIA-only: the gate is vendor-honest on AMD (no silent
+        cross-vendor map sneaking through)."""
+        mma0 = cdna3_sched.maps()[0]
+        r = MapTo_(map_id="mma0", op_ref=mma0.op_ref, level="L5",
+                   instruction="wgmma").check(cdna3_sched, "amd_cdna3")
+        assert isinstance(r, Reject) and "not legal for amd_cdna3" in r.reason
+
+    def test_mapto_check_rejects_free_literal_on_cdna3(self, cdna3_sched):
+        """A free-form instruction literal is rejected — only closed-enum names pass."""
+        mma0 = cdna3_sched.maps()[0]
+        r = MapTo_(map_id="mma0", op_ref=mma0.op_ref, level="L5",
+                   instruction="my_asm").check(cdna3_sched, "amd_cdna3")
+        assert isinstance(r, Reject) and "not legal for amd_cdna3" in r.reason
+
+    def test_setmappolicy_reaches_binding_on_cdna3(self, cdna3_sched):
+        """A SetMapPolicy('tf32') edit on cdna3 threads input_precision to the
+        launcher (resolve_binding) — the AMD half of the doc-09 'reaches silicon'
+        closure, decoupled from the GPU-gated HIP codegen that consumes it."""
+        ir2 = SetMapPolicy(map_id="mma0", precision="tf32").apply(cdna3_sched)
+        assert resolve_binding(ir2)[PRECISION_KEY] == "tf32"
+        assert precision_of(ir2) == "tf32"
+        # immutable: the original cdna3 read-out is still dtype-default
+        assert cdna3_sched.maps()[0].precision is None
