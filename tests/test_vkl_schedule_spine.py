@@ -281,10 +281,23 @@ def test_tf32_edit_changes_compiled_source():
     bit-faithful to the reference); after the edit the schedule's binding carries
     ``input_precision='tf32'`` and the codegen emits that instead (sm_80+ tensor
     cores). The edit changes what compiles — schedule IR is the source of truth.
+
+    The substring match is quote-tolerant (regex over single OR double quotes):
+    ``_TritonGen`` emits the policy via ``{value!r}`` for a set policy but
+    hardcodes ``"ieee"`` for the dtype-default, so the two paths use different
+    quote styles. Asserting the semantic fact ("ieee"/"tf32" is the policy) keeps
+    the test green on both codegen paths and both vendors (beverin gfx942,
+    ds5 sm_121) without coupling to the quote style.
     """
+    import re
+
     pytest.importorskip("triton")
     from xkernels.vkl.lower.mathbody import _TritonGen
     from xkernels.vkl.reference import trace_ir
+
+    # quote-tolerant: matches input_precision='ieee' OR input_precision="ieee"
+    _ieee = re.compile(r'''input_precision\s*=\s*["']ieee["']''')
+    _tf32 = re.compile(r'''input_precision\s*=\s*["']tf32["']''')
 
     spec = spec_of(gemm_bf16)
     body = trace_ir(spec)
@@ -292,13 +305,13 @@ def test_tf32_edit_changes_compiled_source():
     # default (None precision) on an fp32 output -> ieee (true fp32, no TF32)
     gen_ieee = _TritonGen(body, out_dtype="fp32", precision=None)
     src_ieee = gen_ieee.kernel_source()
-    assert "input_precision='ieee'" in src_ieee
+    assert _ieee.search(src_ieee)
 
     # the tf32 edit -> codegen emits tf32 (the silicon change)
     gen_tf32 = _TritonGen(body, out_dtype="fp32", precision="tf32")
     src_tf32 = gen_tf32.kernel_source()
-    assert "input_precision='tf32'" in src_tf32
-    assert "input_precision='ieee'" not in src_tf32
+    assert _tf32.search(src_tf32)
+    assert not _ieee.search(src_tf32)
 
 
 @_SKIP
