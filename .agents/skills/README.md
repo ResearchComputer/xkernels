@@ -38,6 +38,7 @@ in a namespaced `x-kernel-lib` block that non-standard consumers ignore (§7.1).
 
 | Skill | Scope | When |
 |---|---|---|
+| [`handle-an-issue`](handle-an-issue/SKILL.md) | agnostic | the issue-driven ENTRY/DISPATCH skill — read an issue with `gh` (body AND comments), classify it, route to the matching kernel skill (or answer directly), then CLOSE with evidence if the acceptance condition is met or COMMENT + stay open if partial/blocked. Fires whenever an agent is handed an issue by number or URL |
 | [`author-a-kernel-with-dsl`](author-a-kernel-with-dsl/SKILL.md) | agnostic | author a NEW op's whole contract (spec + reference + cards) from ONE `@kernel` source in the **vkl DSL** — the fast-path twin of `author-an-op-spec` for ops the math IR can express (gemm / norm / reduce / activation) |
 | [`author-an-op-spec`](author-an-op-spec/SKILL.md) | agnostic | author the contract BY HAND — the fallback when the op is not math-IR-expressible (attention masking, scatter/gather, collectives), or the gateway when you prefer the eight-artifact path |
 | [`tile-a-gemm`](tile-a-gemm/SKILL.md) | cuda, hip | build a tiled GEMM from primitives (the workhorse) |
