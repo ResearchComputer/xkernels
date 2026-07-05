@@ -21,6 +21,19 @@ the first native-CUDA cards were authored.
 - **Superseded iterations were deleted** during consolidation: `ds5_dsl_math_probe.py`
   (→ cited `…probe2.py`) and `ds5_jit_cache_probe.py` (→ cited `ds5_jitcache_probe.py`).
   The remaining `*_probe2.py` / `*_final*` / `*_solved*` files are the **cited keepers**.
+- **Scripts consolidated in from `scripts/` top level** during a later cleanup (the
+  `scripts/` surface was reduced to the Tier-A toolkit + the two load-bearing
+  gate/probe scripts documented in `scripts/README.md`): the rest of the `ds5_*`
+  probes (`ds5_check`, `ds5_dot_probe`, `ds5_fp32_compare`, `ds5_gemm_probe`,
+  `ds5_peak`, `ds5_test_runner`), the superseded ds5 shims (`ds5_run.sh`,
+  `ds5_build.sh` — now covered by `cluster.sh run/submit --host ds5`), the
+  early general DSL gate/parity drivers (`gpu_gate_dsl.py`, `gpu_parity_dsl.py`,
+  superseded by the cited op-specific `ds5_rmsnorm_gpu_gate.py`), and the Phase-3
+  graph-capture one-shots (`graph_speedup.py`, `ds5_rmsnorm_record_perf.py` —
+  the latter's write-back data is already in the `rmsnorm.triton` card). Pure
+  local debug scratch that was never committed (`ds5_capture_leak*.py`,
+  `ds5_fp32_isolate.py`, `ds5_fp32_truth.py`, `ds5_graph_native_repro.py`) was
+  deleted outright; their conclusions live in `meta/wiki/04-gotchas.md`.
 
 ## campaigns/
 

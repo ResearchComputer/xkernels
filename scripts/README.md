@@ -20,6 +20,8 @@ venv/CUDA_HOME) that a bare `rcc run` does not.
 scripts/
   cluster.sh                 THE entry point: push + run/submit on any host
   vkl_artifacts.py           emit/check registry JSON materialized from VKL sources
+  vkl_probe.py               the VKL "Phase 0" contract-native kill-experiment (CI-enforced: tests/test_vkl_probe.py loads it by path)
+  ds5_rmsnorm_gpu_gate.py    on-device verify+parity+perf gate for the DSL rmsnorm card (cited by the card, meta/wiki/04, ds5-testbed.md)
   profile-*.sh               per-profiler wrappers (ncu/nsys on bristen, rocprof-compute on beverin)
   setup-/stage-rocprof-*     one-time profiler install + lib staging on beverin
   bench_kernel_loop_bristen.sh   per-kernel isolation harness (see meta/wiki/04-gotchas.md)
@@ -52,6 +54,17 @@ For `run`, `--` separates `cluster.sh`'s flags from your command (optional unles
 the command's first token starts with `-`). bristen `run` honors the
 `BRISTEN_IMAGE` / `BRISTEN_PARTITION` / `BRISTEN_ACCOUNT` / `BRISTEN_GPU` /
 `BRISTEN_TIME` env overrides.
+
+## Gate & probe scripts (kept, load-bearing)
+
+Two scripts live at the top level because other artifacts depend on their path:
+
+| script                    | why it stays top-level                                                          |
+|---------------------------|--------------------------------------------------------------------------------|
+| `vkl_probe.py`            | The VKL "Phase 0" kill-experiment. `tests/test_vkl_probe.py` imports it **by path** (`scripts/vkl_probe.py`) and CI asserts every check passes, so it is effectively a tested Tier-A artifact. |
+| `ds5_rmsnorm_gpu_gate.py` | The on-device verify+parity+perf gate for the DSL `rmsnorm` card on ds5 (sm_121). Cited as the reproducible handle by the `rmsnorm.triton` card, `meta/wiki/04-gotchas.md`, and `meta/docs/usage/ds5-testbed.md`. |
+
+Everything else that was ever a probe/one-shot/shim has been consolidated under `archive/ds5-probes/` (see the lifecycle policy below).
 
 ## VKL registry artifacts
 
