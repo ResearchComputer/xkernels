@@ -301,9 +301,34 @@ def _paged_attention_prefill(point: dict[str, Any], seed: int, device: str) -> d
     }
 
 
+def _xielu(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
+    # Parametric xIELU (issue #80). ``x`` is the FFN intermediate; ``alpha_p`` /
+    # ``alpha_n`` are the raw LOG-SPACE params (1-element tensors, the checkpoint
+    # form) — softplus is applied inside the kernel/reference. The pairs below
+    # cover the softplus regimes that matter: near-init (small), moderate, and
+    # the **overflow regime** (> ~88, where the naive log(1+exp(z)) blows up fp32).
+    # alpha_p=166.0 / alpha_n=40.75 are the actual layer-0 checkpoint values of
+    # swiss-ai/Apertus-8B-Instruct-2509 — they MUST be exercised to catch the
+    # numerically-stable-softplus regression (the triton kernel originally used
+    # the naive form and silently produced inf, poisoning the whole forward).
+    dt = to_torch_dtype(point["dtype"])
+    x = _gen(device, dt, point["M"], point["K"], seed=seed)
+    _ALPHA_PAIRS = [
+        (0.3, 0.4),       # near init
+        (5.0, 2.0),       # moderate
+        (166.0, 40.75),   # Apertus-8B checkpoint (overflow regime)
+        (88.0, 20.0),     # softplus overflow boundary (~log(1+exp(88))=88)
+    ]
+    ap_val, an_val = _ALPHA_PAIRS[(point["M"] + point["K"]) % len(_ALPHA_PAIRS)]
+    alpha_p = torch.tensor([ap_val], device=device, dtype=dt)
+    alpha_n = torch.tensor([an_val], device=device, dtype=dt)
+    return {"x": x, "alpha_p": alpha_p, "alpha_n": alpha_n, "beta": 0.5, "eps": -1e-6}
+
+
 _GENERATORS: dict[str, Callable[[dict, int, str], dict[str, Any]]] = {
     "fused_ffn@1.0.0": _ffn,
     "dual_rmsnorm@1.0.0": _dual_rmsnorm,
+    "xielu@1.0.0": _xielu,
     "moe_sum_reduce@1.0.0": _moe_sum_reduce,
     "mha_merge_state@1.0.0": _mha_merge_state,
     "moe_align_block_size@1.0.0": _moe_align_block_size,

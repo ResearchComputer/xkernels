@@ -7,6 +7,7 @@ from .ops.activation import (
     packed_gelu_and_mul,
     packed_silu_and_mul,
     silu_and_mul,
+    xielu,
 )
 from .ops.attention import (
     apply_rope,
@@ -73,6 +74,7 @@ __all__ = [
     "mhc_pre",
     "mhc_post",
     "mha_merge_state",
+    "xielu",
     "dsa_indexer_logits",
     "dsa_indexer_topk",
     "sparse_mla_attention",

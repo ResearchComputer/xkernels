@@ -1,0 +1,27 @@
+{
+  "id": "xielu.reference@1.0.0",
+  "implements": "xielu@1.0.0",
+  "backend": "reference",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": {
+      "kind": "none",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "pure-torch oracle: softplus + where + expm1 over fp32 x. Bit-identical to transformers.XIELUActivation.",
+    "roofline": "latency_bound",
+    "measured": []
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-07-04T00:00:00+00:00",
+    "source_path": "xkernels.ops.activation.reference:xielu"
+  }
+}

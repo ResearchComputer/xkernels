@@ -1,0 +1,28 @@
+{
+  "id": "xielu.triton@1.0.0",
+  "implements": "xielu@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": {
+      "kind": "registers",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "memory-bound flat-1D elementwise; one kernel/one pass. softplus of the scalar params + the piecewise nonlinearity are computed per lane in fp32. Portable Triton runs on amd_cdna3 (gfx942) and NVIDIA; a wider BLOCK + vectorized loads are the tune-for-cdna lever.",
+    "roofline": "memory_bound",
+    "measured": []
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "notes": "Hand-written (not DSL-generated): the vkl math IR has no value-comparison primitive (> / <) and no log, so xIELU's where(x>0,...) branch-on-sign and the param softplus are not expressible in the DSL (author-an-op-spec SKILL.md hand-written fallback). The internal BLOCK=2048 / num_warps=8 tile is selected inside the JIT launcher and is NOT accepted by the entry signature, so it is not a specialization_knob (documented here per §1.2).",
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-07-04T00:00:00+00:00",
+    "source_path": "xkernels.ops.activation.triton.xielu_kernel:xielu_triton"
+  }
+}

@@ -11,11 +11,13 @@ this package is the thin dispatch surface that exposes them as
 """
 from ..._backends import Backend
 from ..._dispatch import backend_registration_guard
+from . import reference  # noqa: F401  (registers the REFERENCE backend for `xielu`)
 from .interface import (
     gelu_and_mul,
     packed_gelu_and_mul,
     packed_silu_and_mul,
     silu_and_mul,
+    xielu,
 )
 
 # Register the DSL-generated Triton backend for its dispatch side effect. Unlike
@@ -30,4 +32,21 @@ with backend_registration_guard(
 ):  # pragma: no cover - hardware dependent
     from .triton import activation_kernel  # noqa: F401
 
-__all__ = ["silu_and_mul", "gelu_and_mul", "packed_silu_and_mul", "packed_gelu_and_mul"]
+# Register the HAND-WRITTEN Triton backend for the parametric `xielu` activation
+# (issue #80). Unlike the DSL gated activations, xIELU's where(x>0,...) sign
+# branch and the param softplus are not expressible in the vkl math IR (no
+# value-comparison primitive, no log), so this is the author-an-op-spec hand
+# fallback — same pattern as the hand-written ``dual_rmsnorm_kernel``. The import
+# binds stock ``triton`` (the kernel JIT-imports it), so it routes through
+# ``triton_import_ctx`` (tokenspeed redirect when running inside tokenspeed).
+with backend_registration_guard(
+    "xielu",
+    Backend.TRITON,
+    source="xkernels.ops.activation.triton.xielu_kernel",
+):  # pragma: no cover - requires triton
+    from ..._triton_compat import triton_import_ctx
+
+    with triton_import_ctx():
+        from .triton import xielu_kernel  # noqa: F401
+
+__all__ = ["silu_and_mul", "gelu_and_mul", "packed_silu_and_mul", "packed_gelu_and_mul", "xielu"]
