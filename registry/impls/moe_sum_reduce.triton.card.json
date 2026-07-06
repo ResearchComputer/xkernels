@@ -50,7 +50,8 @@
   "provenance": {
     "authored_by": "human",
     "created": "2026-06-25T00:00:00Z",
-    "source_path": "src/xkernels/ops/moe/triton/sum_reduce_kernel.py"
+    "source_path": "src/xkernels/ops/moe/triton/sum_reduce_kernel.py",
+    "issue": [82]
   },
   "notes": "Portable Triton reduce over the top-k axis."
 }

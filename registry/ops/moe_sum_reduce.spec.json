@@ -26,11 +26,11 @@
     "atol": 1e-2,
     "reduce_dtype": "fp32",
     "by_dtype": {
-      "fp32": { "rtol": 1e-5, "atol": 1e-6 },
+      "fp32": { "rtol": 1e-5, "atol": 1e-4 },
       "bf16": { "rtol": 1.6e-2, "atol": 1e-2 }
     },
     "cross_backend_rtol": 1.6e-2,
-    "notes": "Accumulate the top-k sum in fp32; cast back to y.dtype."
+    "notes": "Accumulate the top-k sum in fp32; cast back to y.dtype. fp32 atol is 1e-4 (not 1e-6): the weighted top-k sum cancels to near-zero for some (m,h) (mixed-sign expert partials), where the reference's torch.sum tree reduction and the Triton kernel's sequential k-loop diverge by a few e-6 abs (a correct-vs-correct fp32 reduction-order difference); the previous atol=1e-6 rejected that floor (issue #82)."
   },
   "shape_sweep": "moe_sum_reduce",
   "composes_with": ["fused_ffn@1.0.0"]

@@ -22,9 +22,14 @@ def _swiglu_kernel(g_ptr, u_ptr, out_ptr, n_elements, BLOCK: tl.constexpr):
     pid = tl.program_id(axis=0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     mask = offs < n_elements
-    g = tl.load(g_ptr + offs, mask=mask)
-    u = tl.load(u_ptr + offs, mask=mask)
-    out = (g * tl.sigmoid(g.to(tl.float32)).to(g.dtype)) * u
+    # Accumulate the SwiGLU activation silu(g)*u = g*sigmoid(g)*u in fp32 per the
+    # Op Spec's numerics.reduce_dtype, matching the reference bit-for-bit (the
+    # reference upcasts to fp32 too). Storing auto-converts to the output dtype.
+    # Computing in input dtype diverged from the reference by a last-ULP that the
+    # down-projection's cancellation amplified to rel~2.5 (issue #82).
+    g = tl.load(g_ptr + offs, mask=mask).to(tl.float32)
+    u = tl.load(u_ptr + offs, mask=mask).to(tl.float32)
+    out = (g * tl.sigmoid(g)) * u
     tl.store(out_ptr + offs, out, mask=mask)
 
 

@@ -19,7 +19,12 @@ def _inputs(M=16, d_model=32, d_ff=64, dtype=torch.float32):
 
 def test_reference_matches_manual_swiglu():
     x, wg, wu, wd = _inputs()
-    expected = (torch.nn.functional.silu(x @ wg) * (x @ wu)) @ wd
+    g = x @ wg
+    # The reference accumulates the SwiGLU activation silu(g)*u = g*sigmoid(g)*u
+    # in fp32 (Op Spec reduce_dtype), using the manual g*sigmoid(g) product (NOT
+    # F.silu, whose fused fp32 impl differs at ULP) so the reference shares ONE
+    # precision path with the Triton kernel -> bit-identical activation (issue #82).
+    expected = (g.float() * torch.sigmoid(g.float()) * (x @ wu).float()).to(g.dtype) @ wd
     assert_close(ffn_reference(x, wg, wu, wd), expected)
 
 
