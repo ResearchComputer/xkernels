@@ -511,7 +511,7 @@ def _moe_int4_w4a16_triton(
     # ``align_block_m(M)`` (the default config's BLOCK_SIZE_M), so the sort/pad
     # granularity and the kernel tile M stay consistent.
     if fused_combine and config is None:
-        config = get_default_config(M)
+        config = get_default_config(M, N=N, K=K, group_size=group_size)
     if fused_combine:
         # Fused weighted top-k combine: the kernel atomic-accumulates into a single
         # [M, N] fp32 buffer, so there is no [M*top_k, N] scratch and no separate

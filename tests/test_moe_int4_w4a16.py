@@ -48,7 +48,7 @@ def _pin_single_config():
 
 def _ref_grouped(A, packed, scale, topk_ids, topk_w, group_size, mul_routed):
     """fp32/bf16 grouped-MoE oracle reduced to ``[M, N]`` (kept in fp32)."""
-    W = dequant_w4a16(packed, scale, group_size).to(A.dtype)
+    W = dequant_w4a16(packed, scale, group_size, out_dtype=A.dtype)
     M, topk = topk_ids.shape
     out = torch.zeros(M, W.shape[1], dtype=torch.float32, device=A.device)
     for m in range(M):

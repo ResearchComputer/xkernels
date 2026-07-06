@@ -190,7 +190,20 @@ def align_block_m(M: int) -> int:
     return 16 if M <= 32 else 64
 
 
-def get_default_config(M: int) -> dict:
+def _largest_pow2_le(cap: int, lo: int = 16) -> int:
+    """Largest power of two in ``[lo, cap]`` (clamped to ``lo`` when ``cap < lo``).
+
+    Used to size ``BLOCK_SIZE_K`` / ``BLOCK_SIZE_N`` so the tile never exceeds the
+    problem dimension while staying a power of two (``tl.arange`` requires it).
+    """
+    b = lo
+    while b * 2 <= cap:
+        b *= 2
+    return b
+
+
+def get_default_config(M: int, N: int | None = None, K: int | None = None,
+                       group_size: int = 32) -> dict:
     """A safe, fixed launch config for the production (non-autotuned) path.
 
     Mirrors ``mxfp4_configs.get_default_config``. The fused-MoE ``combine=True``
@@ -204,23 +217,42 @@ def get_default_config(M: int) -> dict:
     the kernel's per-block ``expert_ids`` indexing agree. Both regimes pick a real
     entry from :func:`get_autotune_configs` (so the config is known-runnable on
     every backend; the AMD knobs are ignored on NVIDIA, per ``_cfg``'s docstring).
-    ``BLOCK_SIZE_K=128`` is a multiple of both the pack factor (8) and the group
-    size (32); for ``K < 128`` the kernel runs one masked K-iteration
-    (``EVEN_K=False``), which is correct.
+    ``BLOCK_SIZE_K`` is a power of two and a multiple of both the pack factor (8)
+    and the group size (32), **capped at ``K``** so the contraction tile never
+    exceeds the contraction dim — a 128-wide ``BLOCK_K`` on ``K=64`` stages the
+    dequant + GEMM tiles at ~64 KiB LDS for bf16 and overflowed the 64
+    KiB/workgroup cap on MI300A at 72 KiB for fp32 (issue #85). For ``K >= 128``
+    the cap is inert and the decode/prefill default ``BLOCK_K=128`` is kept.
+    ``BLOCK_SIZE_N`` is likewise capped at ``2*N`` (mirroring :func:`prune_configs`)
+    so tiny ``N`` does not over-tile.
 
     This is a *correctness* default, not a perf-tuned one — offline-tuned winners
     in ``tuned_configs/`` take precedence when present (``get_moe_int4_config``).
     """
     bm = align_block_m(M)
+    # BLOCK_K: power of two in [group_size, 128], multiple of 32 (pack 8 x group
+    # 32). Capped at 128 (the production decode/prefill default) and at K so the
+    # contraction tile never exceeds the contraction dim -- a 128-wide BLOCK_K on
+    # K=64 stages the dequant + GEMM tiles at ~64 KiB LDS for bf16 and overflowed
+    # the 64 KiB/workgroup cap on MI300A at 72 KiB for fp32 (issue #85).
+    # group_size is the floor so GROUPS_PER_BLOCK >= 1.
+    k_cap = min(128, max(K, group_size)) if K else 128
+    bk = _largest_pow2_le(k_cap, lo=group_size)
+    # BLOCK_N: power of two capped at 2*N (prune_configs' over-tile allowance).
+    bn = min(128, _largest_pow2_le(2 * N if N else 128, lo=16))
+    # tiny N -> no L2 super-grouping to find; tiny M -> none to exploit.
+    gm = 1 if (M <= 32 or (N is not None and N <= 128)) else 8
+    # num_warps scales down for the smallest N tiles (2 for bn<=64, else 4).
+    nw = 2 if bn <= 64 else 4
     if M <= 32:  # decode: tiny M, wide N to amortize scale + launch overhead
         return {
-            "BLOCK_SIZE_M": bm, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 1, "num_warps": 4, "num_stages": 2,
+            "BLOCK_SIZE_M": bm, "BLOCK_SIZE_N": bn, "BLOCK_SIZE_K": bk,
+            "GROUP_SIZE_M": gm, "num_warps": nw, "num_stages": 2,
             "waves_per_eu": 3, "matrix_instr_nonkdim": 16, "kpack": 2,
         }
     return {  # prefill: larger M, balanced tile
-        "BLOCK_SIZE_M": bm, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 128,
-        "GROUP_SIZE_M": 8, "num_warps": 4, "num_stages": 2,
+        "BLOCK_SIZE_M": bm, "BLOCK_SIZE_N": bn, "BLOCK_SIZE_K": bk,
+        "GROUP_SIZE_M": gm, "num_warps": nw, "num_stages": 2,
         "waves_per_eu": 2, "matrix_instr_nonkdim": 16, "kpack": 2,
     }
 

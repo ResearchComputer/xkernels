@@ -52,7 +52,7 @@ def moe_w4a16_ref(
     Returns:
         ``[M, N]`` output in ``A.dtype`` (fp32 accumulation).
     """
-    W = dequant_w4a16(packed, scale, group_size)  # [E_local, N, K] bf16
+    W = dequant_w4a16(packed, scale, group_size, out_dtype=A.dtype)  # [E_local, N, K]
     M, topk = topk_ids.shape
     out = torch.zeros(M, W.shape[1], dtype=torch.float32, device=A.device)
     emap = None if expert_map is None else expert_map.to(A.device)

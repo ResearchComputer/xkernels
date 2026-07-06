@@ -37,7 +37,7 @@
       "fp32": { "rtol": 1e-3, "atol": 1e-3 }
     },
     "cross_backend_rtol": 2e-2,
-    "notes": "Weights are dequantized (uint4b8 -> bf16 via the group scale) identically by both backends, then the grouped GEMM accumulates in fp32. Divergence is fp32 accumulation order. bf16 atol/rtol 2e-2 matches the issue #1 / #26 acceptance bar."
+    "notes": "Weights are dequantized (uint4b8 -> out_dtype via the bf16 group scale) by both backends at the ACTIVATION dtype: fp32 activations keep the full-precision dequant product (no lossy bf16 round), bf16 activations round to bf16. The Triton kernel casts the dequant to a.dtype; the reference dequant_w4a16(out_dtype=A.dtype) matches it. The grouped GEMM accumulates in fp32. Divergence is fp32 accumulation order only. bf16 atol/rtol 2e-2 matches the issue #1 / #26 acceptance bar; the fp32 path was previously broken by an unconditional bf16 round in the reference that made it ~bf16-eps less precise than the kernel (#85)."
   },
   "shape_sweep": "moe_int4_w4a16",
   "composes_with": ["moe_align_block_size@1.0.0", "moe_sum_reduce@1.0.0"]
