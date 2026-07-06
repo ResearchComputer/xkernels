@@ -61,7 +61,8 @@
   "provenance": {
     "authored_by": "human",
     "created": "2026-06-25T00:00:00Z",
-    "source_path": "src/xkernels/ops/ffn/triton/ffn_kernel.py"
+    "source_path": "src/xkernels/ops/ffn/triton/ffn_kernel.py",
+    "issue": [82]
   },
   "notes": "Portable Triton (runs on NVIDIA and AMD). The three projection GEMMs are torch.matmul; only the SwiGLU activation is a Triton kernel, so wave-size (32 vs 64) is not load-bearing here."
 }
