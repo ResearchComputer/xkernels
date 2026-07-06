@@ -40,7 +40,8 @@
   "provenance": {
     "authored_by": "human",
     "created": "2026-06-25T00:00:00Z",
-    "source_path": "src/xkernels/ops/mhc/triton/prenorm_gemm_kernel.py"
+    "source_path": "src/xkernels/ops/mhc/triton/prenorm_gemm_kernel.py",
+    "issue": [84]
   },
   "notes": "Portable Triton. The split-K parallelization is for occupancy at small T; its correctness contract is the SUM invariant (gemm_out_mul.sum(0) == F.linear(a,fn)), so the mandatory sweep pins n_splits=1 where the per-split tensor equals the sum and is element-wise comparable. Internal BLOCK_M/BLOCK_K/BLOCK_N autotune tiles are not exposed at the entry callable (hc_prenorm_gemm_triton only takes n_splits), so they are not declared as knobs here. wave_size not load-bearing at this metadata tier."
 }
