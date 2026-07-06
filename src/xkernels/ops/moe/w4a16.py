@@ -19,18 +19,26 @@ __all__ = [
 
 
 def dequant_w4a16(
-    packed: torch.Tensor, scale: torch.Tensor, group_size: int = 32
+    packed: torch.Tensor, scale: torch.Tensor, group_size: int = 32,
+    *, out_dtype: torch.dtype | None = None,
 ) -> torch.Tensor:
-    """Unpack + dequantize compressed-tensors W4A16 weights to bf16.
+    """Unpack + dequantize compressed-tensors W4A16 weights.
 
     Args:
         packed: ``[E, N, K // 8]`` int32 holding 8 ``uint4b8`` nibbles per int32,
             low nibble = lowest K index.
         scale: ``[E, N, K // group_size]`` group scales (bf16).
         group_size: quant group size along K.
+        out_dtype: dequantized-weight dtype. Defaults to ``bf16`` (the legacy W4A16
+            contract). Pass the *activation* dtype so the reference dequant
+            precision matches the Triton kernel, which casts the dequant product
+            to ``a.dtype``: ``fp32`` activations keep the full-precision product
+            (no lossy bf16 round), ``bf16`` activations round to bf16 (issue #85:
+            the old unconditional ``.to(bf16)`` made the fp32-mode reference LESS
+            precise than the kernel, diverging by ~bf16 eps).
 
     Returns:
-        ``[E, N, K]`` bf16 dequantized weights, where
+        ``[E, N, K]`` dequantized weights of ``out_dtype``, where
         ``W[e,n,k] = (((packed[e,n,k//8] >> (4*(k%8))) & 0xF) - 8) * scale[e,n,k//g]``.
     """
     E, N, kp = packed.shape
@@ -39,7 +47,7 @@ def dequant_w4a16(
     K = kp * 8
     w = (nib.float() - 8.0).view(E, N, K // group_size, group_size)
     w = w * scale.float().unsqueeze(-1)
-    return w.view(E, N, K).to(torch.bfloat16)
+    return w.view(E, N, K).to(out_dtype or torch.bfloat16)
 
 
 def moe_align_block_size_ref(
