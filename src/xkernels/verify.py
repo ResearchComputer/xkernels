@@ -21,7 +21,7 @@ from .registry import backend_callable, get_card, get_spec, load_shape_sweep, re
 from .registry.archs import vendor_of as _vendor_of
 from .registry.input_gen import generate_inputs
 from .registry.models import ImplCard, OpSpec
-from .utils.benchmarking import benchmark
+from .utils.benchmarking import benchmark_repeat
 
 DEFAULT_SEED = 1729
 
@@ -291,7 +291,11 @@ def _measure_perf(
         call = lambda: _apply_knobs(fn, inputs, knobs)[0]  # noqa: E731
     else:
         call = lambda: fn(**inputs)  # noqa: E731
-    ms = benchmark(call)
+    # Spread-aware timing (issue #89): single-shot do_bench for sub-100us kernels
+    # on ROCm is high-variance across runs (clock state). Take the median of
+    # n_repeat invocations and expose p10/p90 so callers can flag noisy points.
+    bench = benchmark_repeat(call)
+    ms = bench["ms"]
 
     # Fill the two DERIVED metrics (tflops, achieved_bw_pct) when an analytical
     # cost model is registered for this op — the roofline signal an agent needs
@@ -316,7 +320,11 @@ def _measure_perf(
             f"(flops={flops}, bytes={bytes_rw}) against arch "
             f"{_arch_of(op, card)!r} peaks (fp32={peak_flops}TF, BW={peak_bw}GB/s)."
         )
-    return {"ms": ms, "tflops": tflops, "achieved_bw_pct": achieved_bw_pct, "note": note}
+    return {
+        "ms": ms, "tflops": tflops, "achieved_bw_pct": achieved_bw_pct, "note": note,
+        "median": bench["median"], "ms_p10": bench["p10"], "ms_p90": bench["p90"],
+        "ms_spread_ratio": bench["spread_ratio"], "ms_n_repeat": bench["n_repeat"],
+    }
 
 
 def _arch_of(op: OpSpec, card: ImplCard) -> str:
