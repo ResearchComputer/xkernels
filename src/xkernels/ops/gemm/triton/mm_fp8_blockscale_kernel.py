@@ -94,10 +94,18 @@ def mm_fp8_blockscale_kernel(
         # bf16 MFMA path on CDNA3 — far faster than an fp32 dot — while the
         # accumulator stays fp32. ``DOT_BF16=False`` keeps the fp32 dot (exact
         # parity with the reference) for environments that prefer it.
+        #
+        # input_precision="ieee" on the fp32 path is load-bearing on NVIDIA: Triton
+        # *defaults* an fp32 ``tl.dot`` to TF32 (10-bit mantissa) on NVIDIA, while
+        # AMD keeps it full fp32. The reference is a true fp32 matmul, so without
+        # this the kernel would match on MI300A and systematically diverge by
+        # ~1e-2 (sign-flipping near-zero outputs, rel ~1e2) on Blackwell (sm121) /
+        # A100 (sm80) — issue #86 (NOT the fp8 format mismatch the issue body
+        # guessed; the operands are already the correct e4m3fn on NVIDIA).
         if DOT_BF16:
             acc += tl.dot(a_tile.to(tl.bfloat16), b_tile.to(tl.bfloat16))
         else:
-            acc += tl.dot(a_tile, b_tile)
+            acc += tl.dot(a_tile, b_tile, input_precision="ieee")
 
     tl.store(
         c_ptr + rows[:, None] * stride_cm + cols[None, :] * stride_cn,

@@ -156,7 +156,15 @@ def mm_fp8_blockscale_ref(
         )
     a_deq = _dequant_a(a_fp8, a_scales, block)
     b_deq = _dequant_b(b_fp8, b_scales, block)
-    out = a_deq @ b_deq.t()
+    # The reference is the high-precision oracle (library.md §10): force true fp32
+    # so torch's CUDA TF32 default does NOT silently truncate the matmul on
+    # NVIDIA (AMD has no TF32, so this is a no-op there). Without it the oracle is
+    # arch-dependent -- TF32 on Blackwell/A100, fp32 on MI300A -- and every fp32
+    # backend card false-fails parity on NVIDIA (issue #86).
+    from ...utils import no_tf32
+
+    with no_tf32():
+        out = a_deq @ b_deq.t()
     return out.to(out_dtype)
 
 

@@ -76,7 +76,10 @@
   "provenance": {
     "authored_by": "human",
     "created": "2026-06-25T00:00:00Z",
-    "source_path": "src/xkernels/ops/gemm/triton/entry.py"
+    "source_path": "src/xkernels/ops/gemm/triton/entry.py",
+    "issue": [
+      86
+    ]
   },
-  "notes": "Portable Triton (runs on NVIDIA and AMD); one program per (row-tile, col-tile), dequant in registers (operands never materialized in DRAM). Internal autotune tile space (BLOCK_M/BLOCK_N/BLOCK_K, num_warps, num_stages) lives inside the @triton.autotune kernels and is not exposed at the entry callable, so it is intentionally NOT declared in specialization_knobs (the harness would report it unapplied); it will be plumbed when a GPU measurement lands. wave_size is not load-bearing at this metadata tier (arch-specific tile math is encoded in the JIT kernels)."
+  "notes": "Portable Triton (runs on NVIDIA and AMD); one program per (row-tile, col-tile), dequant in registers (operands never materialized in DRAM). Internal autotune tile space (BLOCK_M/BLOCK_N/BLOCK_K, num_warps, num_stages) lives inside the @triton.autotune kernels and is not exposed at the entry callable, so it is intentionally NOT declared in specialization_knobs (the harness would report it unapplied); it will be plumbed when a GPU measurement lands. wave_size is not load-bearing at this metadata tier (arch-specific tile math is encoded in the JIT kernels). A100 (sm80) is missing_arch: no fp8 units, so the Triton fp8 load does not compile (CompilationError at the fp8 tl.load) \u2014 expected, not a bug (issue #86)."
 }
