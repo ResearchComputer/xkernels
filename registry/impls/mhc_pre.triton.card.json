@@ -41,7 +41,8 @@
   "provenance": {
     "authored_by": "human",
     "created": "2026-06-25T00:00:00Z",
-    "source_path": "src/xkernels/ops/mhc/triton/pre_post_kernel.py"
+    "source_path": "src/xkernels/ops/mhc/triton/pre_post_kernel.py",
+    "issue": [83]
   },
   "notes": "Portable Triton (runs on NVIDIA and AMD); a drop-in replacement for the TileLang fusion. The near-twin mhc_post (sinkhorn-mixed residual + gated block update) shares this Op Spec family and could be added as its own op/spec by the same procedure. wave_size not load-bearing at this metadata tier."
 }

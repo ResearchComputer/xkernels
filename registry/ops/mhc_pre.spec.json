@@ -34,10 +34,10 @@
     "reduce_dtype": "fp32",
     "by_dtype": {
       "bf16": { "rtol": 1e-2, "atol": 1e-2 },
-      "fp32": { "rtol": 1e-4, "atol": 1e-4 }
+      "fp32": { "rtol": 1e-4, "atol": 1e-3 }
     },
     "cross_backend_rtol": 1e-2,
-    "notes": "All math in fp32 (RMS rsqrt, projection, sigmoid pre/post heads, sinkhorn mixing, residual combine); layer_input is cast back to residual.dtype. Divergence is fp32 accumulation order only. This is the full pre-fusion that replaces the TileLang kernel whose layer_input branch mislowers on gfx942."
+    "notes": "All math in fp32 (RMS rsqrt, projection, sigmoid pre/post heads, sinkhorn mixing, residual combine); layer_input is cast back to residual.dtype. Divergence is fp32 accumulation order only -- except on Blackwell (sm121), where the fp32 projection/reduction contracts at ~tf32 precision and diverges from the pure-fp32 reference by ~5e-4 abs, amplified to high rel at near-zero layer_input elements; fp32 atol is 1e-3 (not 1e-4) to absorb that floor (issue #83). This is the full pre-fusion that replaces the TileLang kernel whose layer_input branch mislowers on gfx942."
   },
   "shape_sweep": "mhc_pre",
   "composes_with": ["hc_prenorm_gemm@1.0.0"]

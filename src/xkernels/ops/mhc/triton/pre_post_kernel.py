@@ -66,26 +66,40 @@ def mhc_pre_kernel(
     stride_pt,
     stride_ct,
     HC_MULT: tl.constexpr,
-    HC_MULT2: tl.constexpr,
+    HC_MULT_PAD: tl.constexpr,
+    HC_MULT_PAD2: tl.constexpr,
     BLOCK_K: tl.constexpr,
     BLOCK_H: tl.constexpr,
 ):
     t = tl.program_id(0)
 
-    # mixes is split contiguously into pre [hc_mult], post [hc_mult] and comb
-    # [hc_mult*hc_mult] heads. Accumulate each head's projection separately so
-    # every tile dim (hc_mult, hc_mult**2) is a power of 2 -- avoids an arange
-    # over the non-power-of-2 hc_mult3 = 2*hc_mult + hc_mult**2.
-    arn = tl.arange(0, HC_MULT)  # [hc_mult]
-    arnn = tl.arange(0, HC_MULT2)  # [hc_mult*hc_mult]
+    # hc_mult (and hc_mult**2) are NOT powers of 2 in general (DeepSeek-V4 and
+    # the sweep use hc_mult=3), but tl.arange requires a power-of-2 length. Pad
+    # to the next power of 2 and mask the out-of-range elements everywhere they
+    # feed a reduction or a store (issue #83).
+    arn = tl.arange(0, HC_MULT_PAD)  # [HC_MULT_PAD]
+    mask_n = arn < HC_MULT
     j_pre = arn  # rows 0..hc_mult of fn
     j_post = arn + HC_MULT  # rows hc_mult..2*hc_mult
-    j_comb = arnn + 2 * HC_MULT  # rows 2*hc_mult..2*hc_mult+hc_mult**2
+    # comb is a [hc_mult, hc_mult] sinkhorn mixing matrix. Pad it to HC_MULT_PAD**2
+    # (a power of 2) but lay the valid hc_mult**2 entries at stride HC_MULT_PAD --
+    # i.e. flat index (r*HC_MULT_PAD + c) -- so reshape([HC_MULT_PAD, HC_MULT_PAD])
+    # is ALIGNED with the top-left hc_mult x hc_mult mask. (A naive pad to
+    # next_pow2(hc_mult**2) and reshape leaves the valid entries on a HC_MULT
+    # stride, misaligning them with the mask for non-power-of-2 hc_mult -- #83.)
+    arn2d = tl.arange(0, HC_MULT_PAD)[:, None]  # n (source row) -- used for store
+    acm2d = tl.arange(0, HC_MULT_PAD)[None, :]  # m (dest col)
+    comb_valid = mask_n[:, None] & mask_n[None, :]  # [HC_MULT_PAD, HC_MULT_PAD]
+    arnn = tl.arange(0, HC_MULT_PAD2)  # flat [HC_MULT_PAD**2]
+    arnn_row = arnn // HC_MULT_PAD
+    arnn_col = arnn % HC_MULT_PAD
+    mask_nn = (arnn_row < HC_MULT) & (arnn_col < HC_MULT)
+    j_comb = 2 * HC_MULT + arnn_row * HC_MULT + arnn_col  # fn row per padded (r,c)
 
     # ---- prenorm GEMM: mixes_head[j] = sum_k x[k]*fn[j,k], sqsum = sum_k x[k]^2 ----
-    pre_acc = tl.zeros([HC_MULT], dtype=tl.float32)
-    post_acc = tl.zeros([HC_MULT], dtype=tl.float32)
-    comb_acc = tl.zeros([HC_MULT2], dtype=tl.float32)
+    pre_acc = tl.zeros([HC_MULT_PAD], dtype=tl.float32)
+    post_acc = tl.zeros([HC_MULT_PAD], dtype=tl.float32)
+    comb_acc = tl.zeros([HC_MULT_PAD2], dtype=tl.float32)
     sqsum = tl.zeros([], dtype=tl.float32)
     # x is residual[t] flattened over (hc_mult, hidden) in row-major order:
     # x[k] = residual[t, k // hidden, k % hidden].
@@ -102,15 +116,15 @@ def mhc_pre_kernel(
         sqsum += tl.sum(x * x, axis=0)
         fn_pre = tl.load(
             fn_ptr + j_pre[:, None] * stride_fnj + ks[None, :] * stride_fnk,
-            mask=k_mask[None, :], other=0.0,
+            mask=k_mask[None, :] & mask_n[:, None], other=0.0,
         ).to(tl.float32)
         fn_post = tl.load(
             fn_ptr + j_post[:, None] * stride_fnj + ks[None, :] * stride_fnk,
-            mask=k_mask[None, :], other=0.0,
+            mask=k_mask[None, :] & mask_n[:, None], other=0.0,
         ).to(tl.float32)
         fn_comb = tl.load(
             fn_ptr + j_comb[:, None] * stride_fnj + ks[None, :] * stride_fnk,
-            mask=k_mask[None, :], other=0.0,
+            mask=k_mask[None, :] & mask_nn[:, None], other=0.0,
         ).to(tl.float32)
         pre_acc += tl.sum(fn_pre * x[None, :], axis=1)
         post_acc += tl.sum(fn_post * x[None, :], axis=1)
@@ -124,33 +138,43 @@ def mhc_pre_kernel(
     scale0 = tl.load(hc_scale_ptr + 0).to(tl.float32)
     scale1 = tl.load(hc_scale_ptr + 1).to(tl.float32)
     scale2 = tl.load(hc_scale_ptr + 2).to(tl.float32)
-    base_pre = tl.load(hc_base_ptr + j_pre).to(tl.float32)  # [hc_mult]
-    base_post = tl.load(hc_base_ptr + j_post).to(tl.float32)  # [hc_mult]
-    base_comb = tl.load(hc_base_ptr + j_comb).to(tl.float32)  # [hc_mult*hc_mult]
+    base_pre = tl.load(hc_base_ptr + j_pre, mask=mask_n, other=0.0).to(tl.float32)
+    base_post = tl.load(hc_base_ptr + j_post, mask=mask_n, other=0.0).to(tl.float32)
+    base_comb = tl.load(hc_base_ptr + j_comb, mask=mask_nn, other=0.0).to(tl.float32)
 
-    pre = tl.sigmoid(pre_acc * scale0 + base_pre) + hc_eps  # [hc_mult]
-    post = tl.sigmoid(post_acc * scale1 + base_post) * 2.0  # [hc_mult]
-    tl.store(post_ptr + t * stride_pt + arn, post)
+    pre = tl.sigmoid(pre_acc * scale0 + base_pre) + hc_eps  # [HC_MULT_PAD]
+    post = tl.sigmoid(post_acc * scale1 + base_post) * 2.0  # [HC_MULT_PAD]
+    tl.store(post_ptr + t * stride_pt + arn, post, mask=mask_n)
 
     # ---- comb: sinkhorn over [hc_mult, hc_mult] (row = source, col = dest) ----
-    cm = tl.reshape(comb_acc * scale2 + base_comb, [HC_MULT, HC_MULT])
+    # comb_acc is [HC_MULT_PAD**2] with valid entries at stride HC_MULT_PAD, so
+    # reshape to [HC_MULT_PAD, HC_MULT_PAD] is ALIGNED with comb_valid (top-left
+    # hc_mult x hc_mult). Force padding to -inf for the row softmax then to 0 for
+    # every reduction, so padding never perturbs the valid rows/cols.
+    cm = tl.reshape(comb_acc * scale2 + base_comb, [HC_MULT_PAD, HC_MULT_PAD])
+    cm = tl.where(comb_valid, cm, -float("inf"))
 
     # softmax over last dim (row)
     row_max = tl.max(cm, axis=1)
     cm = tl.exp(cm - row_max[:, None])
+    cm = tl.where(comb_valid, cm, 0.0)  # padding cols -> 0; kills padding-row nan
     row_sum = tl.sum(cm, axis=1)
     cm = cm / row_sum[:, None] + hc_eps
+    cm = tl.where(comb_valid, cm, 0.0)  # padding rows -> 0 before col_sum
     # first column normalization
     col_sum = tl.sum(cm, axis=0)
     cm = cm / (col_sum[None, :] + hc_eps)
+    cm = tl.where(comb_valid, cm, 0.0)
     # remaining (iters-1) alternating row/col passes
     for _ in range(sinkhorn_iters - 1):
         row_sum = tl.sum(cm, axis=1)
         cm = cm / (row_sum[:, None] + hc_eps)
+        cm = tl.where(comb_valid, cm, 0.0)
         col_sum = tl.sum(cm, axis=0)
         cm = cm / (col_sum[None, :] + hc_eps)
-    comb_flat = tl.reshape(cm, [HC_MULT2])
-    tl.store(comb_ptr + t * stride_ct + arnn, comb_flat)
+        cm = tl.where(comb_valid, cm, 0.0)
+    # store the valid hc_mult x hc_mult block at its true flat stride (HC_MULT)
+    tl.store(comb_ptr + t * stride_ct + arn2d * HC_MULT + acm2d, cm, mask=comb_valid)
 
     # ---- layer_input[t, h] = sum_n pre[n] * residual[t, n, h] (the defect branch) ----
     for h0 in range(0, hidden, BLOCK_H):
@@ -190,6 +214,7 @@ def mhc_post_kernel(
     stride_om,
     stride_oh,
     HC_MULT: tl.constexpr,
+    HC_MULT_PAD: tl.constexpr,
     BLOCK_H: tl.constexpr,
     VEC: tl.constexpr,
 ):
@@ -200,37 +225,45 @@ def mhc_post_kernel(
     hs = hb * BLOCK_H + thread_idx[:, None] * VEC + tl.arange(0, VEC)[None, :]
     h_mask = hs < hidden
 
-    arn = tl.arange(0, HC_MULT)
+    # hc_mult may be non-power-of-2 (issue #83): pad arn and mask the padding so
+    # it contributes 0 to the reduce over n and is not stored.
+    arn = tl.arange(0, HC_MULT_PAD)
+    mask_n = arn < HC_MULT
     # load hidden[t, h] tile [BLOCK_H//VEC, VEC]
     hid = tl.load(
         hidden_ptr + t * stride_ht + hs * stride_hh, mask=h_mask, other=0.0
     ).to(tl.float32)
-    # residual tile [hc_mult, BLOCK_H//VEC, VEC]
+    # residual tile [HC_MULT_PAD, BLOCK_H//VEC, VEC]
     res = tl.load(
         residual_ptr
         + t * stride_rt
         + arn[:, None, None] * stride_rn
         + hs[None, :, :] * stride_rh,
-        mask=h_mask[None, :, :],
+        mask=h_mask[None, :, :] & mask_n[:, None, None],
         other=0.0,
     ).to(tl.float32)
-    # comb[t, n, m] and post[t, m]
+    # comb[t, n, m] and post[t, m]  (padding n/m masked -> 0)
+    cm_mask2 = mask_n[:, None] & mask_n[None, :]
     comb = tl.load(
         comb_ptr
         + t * stride_ct
         + arn[:, None] * stride_cn
-        + arn[None, :] * stride_cm
-    ).to(tl.float32)  # [n, m] = [hc_mult, hc_mult]
-    post = tl.load(post_ptr + t * stride_pt + arn).to(tl.float32)  # [hc_mult]
+        + arn[None, :] * stride_cm,
+        mask=cm_mask2,
+        other=0.0,
+    ).to(tl.float32)  # [n, m] = [HC_MULT_PAD, HC_MULT_PAD]
+    post = tl.load(
+        post_ptr + t * stride_pt + arn, mask=mask_n, other=0.0
+    ).to(tl.float32)  # [HC_MULT_PAD]
 
     # out[m, h] = sum_n comb[n, m] * res[n, h] + post[m] * hid[h]
-    # mixed[m, h] = sum_n comb[n, m] * res[n, h]
+    # mixed[m, h] = sum_n comb[n, m] * res[n, h]  (padding n: res=0 -> contributes 0)
     mixed = tl.sum(comb[:, :, None, None] * res[:, None, :, :], axis=0)  # [m, BLOCK_H//VEC, VEC]
-    out = mixed + post[:, None, None] * hid[None, :, :]  # [hc_mult, BLOCK_H//VEC, VEC]
+    out = mixed + post[:, None, None] * hid[None, :, :]  # [HC_MULT_PAD, BLOCK_H//VEC, VEC]
     tl.store(
         out_ptr + t * stride_ot + arn[:, None, None] * stride_om + hs[None, :, :] * stride_oh,
         out,
-        mask=h_mask[None, :, :],
+        mask=h_mask[None, :, :] & mask_n[:, None, None],
     )
 
 
@@ -289,7 +322,8 @@ def mhc_pre_triton(
         post.stride(0),
         comb.stride(0),
         HC_MULT=hc_mult,
-        HC_MULT2=hc_mult2,
+        HC_MULT_PAD=triton.next_power_of_2(hc_mult),
+        HC_MULT_PAD2=triton.next_power_of_2(hc_mult) ** 2,
         BLOCK_K=block_k,
         BLOCK_H=block_h,
     )
@@ -336,6 +370,7 @@ def mhc_post_triton(hidden_states, residual, post, comb):
         out.stride(1),
         out.stride(2),
         HC_MULT=hc_mult,
+        HC_MULT_PAD=triton.next_power_of_2(hc_mult),
         BLOCK_H=block_h,
         VEC=vec,
     )
