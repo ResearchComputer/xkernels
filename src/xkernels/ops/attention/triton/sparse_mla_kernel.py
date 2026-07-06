@@ -16,7 +16,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ...._backends import Backend
+from ...._backends import Backend, detect_vendor
 from ...._dispatch import register
 from .sparse_mla_config import resolve_sparse_mla_config
 
@@ -163,13 +163,18 @@ def sparse_mla_attention_triton(
     # (BLOCK_N=64). BLOCK_N is a pure perf knob — the flash reduction is exact
     # for any chunk size (see sparse_mla_config.py).
     cfg = resolve_sparse_mla_config(num_query_tokens=T)
-    # AMD-only lowering kwargs: read by the Triton AMD backend, ignored elsewhere
-    # (and under TRITON_INTERPRET=1), so the same call stays portable.
-    amd_knobs = {
-        "waves_per_eu": int(cfg.get("waves_per_eu", 0)),
-        "matrix_instr_nonkdim": int(cfg.get("matrix_instr_nonkdim", 16)),
-        "kpack": int(cfg.get("kpack", 2)),
-    }
+    # AMD-CDNA-only lowering kwargs. NVIDIA's Triton rejects them at launch
+    # (KeyError: "waves_per_eu was specified but unrecognised"), so emit them
+    # only on AMD -- or on CPU / TRITON_INTERPRET=1, which accept them. This
+    # keeps the arch.family:any card reachable on NVIDIA (issue #84).
+    if detect_vendor() == "nvidia":
+        amd_knobs = {}
+    else:
+        amd_knobs = {
+            "waves_per_eu": int(cfg.get("waves_per_eu", 0)),
+            "matrix_instr_nonkdim": int(cfg.get("matrix_instr_nonkdim", 16)),
+            "kpack": int(cfg.get("kpack", 2)),
+        }
     sparse_mla_kernel[(T, H)](
         q,
         kv,

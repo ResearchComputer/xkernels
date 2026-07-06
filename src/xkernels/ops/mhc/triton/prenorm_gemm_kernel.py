@@ -19,7 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ...._backends import Backend
+from ...._backends import Backend, detect_vendor
 from ...._dispatch import register
 from .configs import resolve_mhc_gemm_config
 
@@ -111,13 +111,18 @@ def hc_prenorm_gemm_out_triton(a, fn, gemm_out_mul, gemm_out_sqrsum, *, n_splits
     BLOCK_N = max(16, triton.next_power_of_2(N))
     num_kblocks = triton.cdiv(K, BLOCK_K)
     grid = (n_splits, triton.cdiv(T, BLOCK_M))
-    # AMD-only lowering kwargs: read by the Triton AMD backend, ignored elsewhere
-    # (and under TRITON_INTERPRET=1), so the same call stays portable.
-    amd_knobs = {
-        "waves_per_eu": int(cfg.get("waves_per_eu", 0)),
-        "matrix_instr_nonkdim": int(cfg.get("matrix_instr_nonkdim", 16)),
-        "kpack": int(cfg.get("kpack", 2)),
-    }
+    # AMD-CDNA-only lowering kwargs. NVIDIA's Triton rejects them at launch
+    # (KeyError: "waves_per_eu was specified but unrecognised"), so emit them
+    # only on AMD -- or on CPU / TRITON_INTERPRET=1, which accept them. This
+    # keeps the arch.family:any card reachable on NVIDIA (issue #84).
+    if detect_vendor() == "nvidia":
+        amd_knobs = {}
+    else:
+        amd_knobs = {
+            "waves_per_eu": int(cfg.get("waves_per_eu", 0)),
+            "matrix_instr_nonkdim": int(cfg.get("matrix_instr_nonkdim", 16)),
+            "kpack": int(cfg.get("kpack", 2)),
+        }
     hc_prenorm_gemm_kernel[grid](
         a, fn, gemm_out_mul, gemm_out_sqrsum,
         T, K, N, n_splits, num_kblocks,
