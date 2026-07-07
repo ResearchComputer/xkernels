@@ -1,0 +1,893 @@
+[
+  {
+    "op": "apply_rope@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.007463,
+        "n_points": 5,
+        "ms": 0.013183999825268983,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.007519,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "dual_rmsnorm@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.007812,
+        "n_points": 5,
+        "ms": 0.006193919982761145,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; tflops/bw derived from the op cost model (flops=163840, bytes=263168) against arch 'any' peaks (fp32=0.0TF,",
+        "knobs_unapplied": [],
+        "error": null
+      },
+      "cuda": {
+        "compiled": false,
+        "correct": false,
+        "max_rel_err": 0.0,
+        "n_points": 5,
+        "ms": null,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "perf not measured (set measure_perf=True on a GPU device)",
+        "knobs_unapplied": [],
+        "error": "KeyError: \"backend 'CUDA' not registered for kernel 'dual_rmsnorm'; have ['REFERENCE', 'TRITON']\""
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.007812,
+      "per_backend_runnable": {
+        "CUDA": false,
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "fused_ffn@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": false,
+        "max_rel_err": 2.542289,
+        "n_points": 6,
+        "ms": null,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "perf not measured (set measure_perf=True on a GPU device)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": false,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 2.777778,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "gelu_and_mul@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.000636,
+        "n_points": 5,
+        "ms": 0.007783999996415029,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.000636,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "gemm_bf16@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.029787,
+        "n_points": 5,
+        "ms": 0.013114666799083352,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      },
+      "cuda": {
+        "compiled": false,
+        "correct": false,
+        "max_rel_err": 0.0,
+        "n_points": 5,
+        "ms": null,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "perf not measured (set measure_perf=True on a GPU device)",
+        "knobs_unapplied": [],
+        "error": "KeyError: \"backend 'CUDA' not registered for kernel 'gemm_bf16'; have ['REFERENCE', 'TRITON']\""
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.030702,
+      "per_backend_runnable": {
+        "CUDA": false,
+        "HIP": false,
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "hc_prenorm_gemm@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": false,
+        "correct": false,
+        "max_rel_err": 0.0,
+        "n_points": 4,
+        "ms": null,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "perf not measured (set measure_perf=True on a GPU device)",
+        "knobs_unapplied": [],
+        "error": "KeyError: 'Keyword argument waves_per_eu was specified but unrecognised'"
+      },
+      "cuda": {
+        "compiled": false,
+        "correct": false,
+        "max_rel_err": 0.0,
+        "n_points": 4,
+        "ms": null,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "perf not measured (set measure_perf=True on a GPU device)",
+        "knobs_unapplied": [],
+        "error": "KeyError: \"backend 'CUDA' not registered for kernel 'hc_prenorm_gemm'; have ['REFERENCE', 'TRITON']\""
+      }
+    },
+    "parity": {
+      "agree": null,
+      "inconclusive": true,
+      "n_runnable": 1,
+      "max_pairwise_rel_err": 0.0,
+      "per_backend_runnable": {
+        "CUDA": false,
+        "REFERENCE": true,
+        "TRITON": false
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "mha_merge_state@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.041667,
+        "n_points": 5,
+        "ms": 0.050920000610252224,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; tflops/bw derived from the op cost model (flops=4194304, bytes=6389760) against arch 'any' peaks (fp32=0.0T",
+        "knobs_unapplied": [],
+        "error": null
+      },
+      "cuda": {
+        "compiled": false,
+        "correct": false,
+        "max_rel_err": 0.0,
+        "n_points": 5,
+        "ms": null,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "perf not measured (set measure_perf=True on a GPU device)",
+        "knobs_unapplied": [],
+        "error": "KeyError: \"backend 'CUDA' not registered for kernel 'mha_merge_state'; have ['REFERENCE', 'TRITON']\""
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.043478,
+      "per_backend_runnable": {
+        "CUDA": false,
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "mhc_pre@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": false,
+        "correct": false,
+        "max_rel_err": 0.0,
+        "n_points": 4,
+        "ms": null,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "perf not measured (set measure_perf=True on a GPU device)",
+        "knobs_unapplied": [],
+        "error": "CompilationError: at 35:10:\n    HC_MULT: tl.constexpr,\n    HC_MULT2: tl.constexpr,\n    BLOCK_K: tl.constexpr,\n    BLOCK_H: tl.constexpr,\n):\n    t = tl.program_id(0)\n\n    # mixes is split contiguously into pre [hc_mult], post [hc_mult] and comb\n    # [hc_mult*hc_mult] heads. Accumulate each head's projection separately so\n    # every tile dim (hc_mult, hc_mult**2) is a power of 2 -- avoids an arange\n    # over the non-power-of-2 hc_mult3 = 2*hc_mult + hc_mult**2.\n    arn = tl.arange(0, HC_MULT)  # [hc_mult]\n          ^\narange's range must be a power of 2"
+      }
+    },
+    "parity": {
+      "agree": null,
+      "inconclusive": true,
+      "n_runnable": 1,
+      "max_pairwise_rel_err": 0.0,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": false
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "mm_fp8_blockscale@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": false,
+        "max_rel_err": 96.522385,
+        "n_points": 5,
+        "ms": null,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "perf not measured (set measure_perf=True on a GPU device)",
+        "knobs_unapplied": [],
+        "error": null
+      },
+      "cuda": {
+        "compiled": false,
+        "correct": false,
+        "max_rel_err": 0.0,
+        "n_points": 5,
+        "ms": null,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "perf not measured (set measure_perf=True on a GPU device)",
+        "knobs_unapplied": [],
+        "error": "KeyError: \"backend 'CUDA' not registered for kernel 'mm_fp8_blockscale'; have ['REFERENCE', 'TRITON']\""
+      }
+    },
+    "parity": {
+      "agree": false,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 11.105263,
+      "per_backend_runnable": {
+        "CUDA": false,
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "moe_align_block_size@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.0,
+        "n_points": 6,
+        "ms": 0.028428444794068735,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.0,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "moe_int4_w4a16@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": false,
+        "max_rel_err": 9.066895,
+        "n_points": 4,
+        "ms": null,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "perf not measured (set measure_perf=True on a GPU device)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": false,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 1.644531,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "moe_sum_reduce@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": false,
+        "max_rel_err": 1.257285,
+        "n_points": 5,
+        "ms": null,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "perf not measured (set measure_perf=True on a GPU device)",
+        "knobs_unapplied": [],
+        "error": null
+      },
+      "cuda": {
+        "compiled": false,
+        "correct": false,
+        "max_rel_err": 0.0,
+        "n_points": 5,
+        "ms": null,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "perf not measured (set measure_perf=True on a GPU device)",
+        "knobs_unapplied": [],
+        "error": "KeyError: \"backend 'CUDA' not registered for kernel 'moe_sum_reduce'; have ['REFERENCE', 'TRITON']\""
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 1.283603,
+      "per_backend_runnable": {
+        "CUDA": false,
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "packed_gelu_and_mul@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.00069,
+        "n_points": 5,
+        "ms": 0.008013333387983343,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.000691,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "packed_silu_and_mul@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.00091,
+        "n_points": 5,
+        "ms": 0.007597333344165236,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.000909,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "paged_attention@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.018868,
+        "n_points": 8,
+        "ms": 0.013640000019222498,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.019231,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "paged_attention_prefill@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 1.570312,
+        "n_points": 7,
+        "ms": 0.0557915424661977,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 2.753425,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "paged_kv_gather@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.0,
+        "n_points": 6,
+        "ms": 0.013592000002972782,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.0,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "per_block_quant_fp8@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.0,
+        "n_points": 5,
+        "ms": 0.008010240104049444,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.0,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "per_token_group_quant_fp8@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.0,
+        "n_points": 5,
+        "ms": 0.004501759996637702,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.0,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "rmsnorm@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.0,
+        "n_points": 5,
+        "ms": 0.03169999970123172,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.0,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "rowwise_softmax@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.0,
+        "n_points": 5,
+        "ms": 0.004718079976737499,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.0,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "sampling_from_probs@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.0,
+        "n_points": 7,
+        "ms": 0.00408666660465921,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.0,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "silu_and_mul@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.000601,
+        "n_points": 5,
+        "ms": 0.007239679973572492,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.000601,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "sparse_mla_attention@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": false,
+        "correct": false,
+        "max_rel_err": 0.0,
+        "n_points": 4,
+        "ms": null,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "perf not measured (set measure_perf=True on a GPU device)",
+        "knobs_unapplied": [],
+        "error": "KeyError: 'Keyword argument waves_per_eu was specified but unrecognised'"
+      }
+    },
+    "parity": {
+      "agree": null,
+      "inconclusive": true,
+      "n_runnable": 1,
+      "max_pairwise_rel_err": 0.0,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": false
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "temperature_softmax@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 1e-06,
+        "n_points": 5,
+        "ms": 0.007212800122797489,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 1e-06,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "top_k_sampling_from_probs@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.0,
+        "n_points": 7,
+        "ms": 0.008327999928345283,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.0,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "topk_softmax@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.0,
+        "n_points": 6,
+        "ms": 0.004222719995304942,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.0,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  },
+  {
+    "op": "xielu@1.0.0",
+    "arch": "nvidia_sm121",
+    "backends": {
+      "triton": {
+        "compiled": true,
+        "correct": true,
+        "max_rel_err": 0.189189,
+        "n_points": 6,
+        "ms": 0.12123408784037051,
+        "tflops": null,
+        "achieved_bw_pct": null,
+        "perf_note": "ms measured; no FLOP/byte model for this op (derived metrics None)",
+        "knobs_unapplied": [],
+        "error": null
+      }
+    },
+    "parity": {
+      "agree": true,
+      "inconclusive": false,
+      "n_runnable": 2,
+      "max_pairwise_rel_err": 0.159091,
+      "per_backend_runnable": {
+        "REFERENCE": true,
+        "TRITON": true
+      },
+      "device": "cuda"
+    }
+  }
+]

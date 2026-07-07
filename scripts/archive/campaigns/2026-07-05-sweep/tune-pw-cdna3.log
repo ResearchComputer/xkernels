@@ -1,0 +1,25 @@
+host=AMD Instinct MI300A arch=amd_cdna3
+/capstor/scratch/cscs/xyao/xkernels/src/xkernels/verify.py:199: UserWarning: arch 'amd_cdna3' is an AMD target but the available CUDA device is NVIDIA; running anyway (everything is torch). The arch label reflects the REQUESTED target, not the host.
+  device = _as_device(arch)
+
+=== silu_and_mul@1.0.0 (arch=amd_cdna3) ===
+  default: correct=True ms=0.03664537501754239
+/capstor/scratch/cscs/xyao/xkernels/src/xkernels/verify.py:199: UserWarning: arch 'amd_cdna3' is an AMD target but the available CUDA device is NVIDIA; running anyway (everything is torch). The arch label reflects the REQUESTED target, not the host.
+  device = _as_device(arch)
+  BEST: {'BLOCK': 4096, 'num_warps': 1, 'num_stages': 2, 'unapplied': []} -> ms=0.01824  (2.0x vs default 0.03664537501754239)
+
+=== gelu_and_mul@1.0.0 (arch=amd_cdna3) ===
+  default: correct=True ms=0.006771543747163378
+  no knob config improved / ran
+
+=== packed_silu_and_mul@1.0.0 (arch=amd_cdna3) ===
+  default: correct=True ms=0.038750389636224694
+  no knob config improved / ran
+
+=== packed_gelu_and_mul@1.0.0 (arch=amd_cdna3) ===
+  default: correct=True ms=0.039603368168615774
+  no knob config improved / ran
+
+=== apply_rope@1.0.0 (arch=amd_cdna3) ===
+  default: correct=True ms=0.24926735576271086
+  no knob config improved / ran
