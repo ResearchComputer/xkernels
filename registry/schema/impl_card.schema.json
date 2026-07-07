@@ -166,6 +166,11 @@
         "params": { "type": "array", "items": { "type": "string" }, "description": "Runtime-varying args → graph parameter nodes." }
       }
     },
+    "persistent": {
+      "type": "object",
+      "description": "Optional namespaced block for persistent-grid / on-chip dataflow orchestration metadata (e.g. warp roles, register budget, pipeline stages, defused edges) for fused or persistent-grid kernels. Peer of `launch` (which covers CUDA/HIP-graph capture); the bottom JSON tier ignores it. additionalProperties left open because this structure is in flux (WIP mega-kernel cards), so no sub-field types are pinned here.",
+      "additionalProperties": true
+    },
     "notes": {
       "type": "string",
       "description": "Free-form agent/human notes (e.g. portability caveats: wave-size 32 vs 64 is not load-bearing here)."
