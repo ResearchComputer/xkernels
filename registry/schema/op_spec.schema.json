@@ -130,6 +130,11 @@
         "source_path": {
           "type": "string",
           "description": "Repo-relative source path or source handle that generated this Op Spec."
+        },
+        "issue": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 },
+          "description": "GitHub issue number(s) this Op Spec resolves or refs (AGENTS.md)."
         }
       }
     }

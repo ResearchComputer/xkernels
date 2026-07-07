@@ -134,6 +134,7 @@
         },
         "skill_used": { "type": "array", "items": { "type": "string" } },
         "derived_from": { "type": "string", "description": "Impl card id this was ported/derived from." },
+        "issue": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "description": "GitHub issue number(s) this card resolves or refs (AGENTS.md: record the issue number in any new/changed card's provenance.issue)." },
         "created": { "type": "string", "description": "ISO-8601 timestamp." },
         "source_path": { "type": "string", "description": "Repo-relative path to the source the card describes." },
         "tuning_trace": {
