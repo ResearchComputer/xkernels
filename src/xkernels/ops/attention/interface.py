@@ -20,7 +20,7 @@ from . import (
 from . import (
     paged_attention_prefill as _paged_prefill_mod,  # noqa: F401  (registers paged_attention_prefill REFERENCE)
 )
-from .dsa_reference import dsa_indexer_topk  # noqa: F401  (re-export thin helper)
+from .dsa_reference import dsa_indexer_topk_from_logits  # noqa: F401  (re-export diagnostics helper)
 from .paged_attention import paged_attention  # noqa: F401  (public re-export)
 from .sparse_mla_decode import flash_mla_with_kvcache  # noqa: F401  (re-export decode)
 
@@ -50,14 +50,63 @@ def dsa_indexer_logits(
         backend: ``"auto"`` or a ``Backend`` / its string value.
 
     Returns:
-        ``logits [T, K]`` fp32. Pair with :func:`dsa_indexer_topk` to obtain the
-        top-k KV indices.
+        ``logits [T, K]`` fp32. Pair with :func:`dsa_indexer_topk_from_logits` to obtain the
+        top-k KV indices, or call :func:`dsa_indexer_topk` for the fused path.
     """
     return dispatch(
         "dsa_indexer_logits",
         q,
         k,
         weights,
+        lengths=lengths,
+        row_starts=row_starts,
+        backend=backend,
+    )
+
+
+def dsa_indexer_topk(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    weights: torch.Tensor,
+    *,
+    topk: int,
+    lengths: torch.Tensor | None = None,
+    row_starts: torch.Tensor | None = None,
+    backend: Backend | str = "auto",
+) -> torch.Tensor:
+    """Fused DSA indexer top-k (issue #54): weighted ReLU MQA logits + top-k
+    selection in one pass, without materializing the full ``[T, K]`` fp32 logits.
+
+    ``indices[t, :] = topk_w(mask(sum_h weights[t,h] * relu(q[t,h,:] . k[j,:])))``
+    in **descending logit order** (ties by ascending KV id).
+
+    This is the fused replacement for the two-step path
+    (``dsa_indexer_logits`` + ``dsa_indexer_topk_from_logits``): a streaming
+    Triton kernel computes logits tile-by-tile and keeps a running top-k
+    candidate buffer, writing only the selected ``[T, topk]`` int32 indices.
+
+    Args:
+        q: ``[T, H, D]`` indexer queries (``H = index_n_heads``, ``D = index_head_dim``).
+        k: ``[K, D]`` single shared indexer key per KV position (MQA).
+        weights: ``[T, H]`` (or ``[T, H, 1]``) per-head combine weights.
+        topk: number of KV positions to select per query (``1 <= topk <= K``).
+        lengths: optional ``[T]`` int — valid KV columns per query.
+        row_starts: optional ``[T]`` int — first valid KV column per query
+            (defaults to 0). Columns outside the window are masked to ``-inf``
+            and never selected.
+        backend: ``"auto"`` or a ``Backend`` / its string value.
+
+    Returns:
+        ``indices [T, topk]`` int32 in descending-logit order (ties by ascending
+        KV id). See registry/ops/dsa_indexer_topk.spec.json numerics.notes for the
+        boundary-discontinuity caveat on bf16/fp16 near-ties.
+    """
+    return dispatch(
+        "dsa_indexer_topk",
+        q,
+        k,
+        weights,
+        topk=topk,
         lengths=lengths,
         row_starts=row_starts,
         backend=backend,

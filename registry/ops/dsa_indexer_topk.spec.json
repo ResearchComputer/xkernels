@@ -1,0 +1,49 @@
+{
+  "id": "dsa_indexer_topk@1.0.0",
+  "name": "fused DSA indexer top-k (weighted ReLU MQA logits + top-k selection)",
+  "version": "1.0.0",
+  "kernel": "dsa_indexer_topk",
+  "op": {
+    "signature": "indices[T, topk] int32 = topk_w(mask(sum_h weights[t,h] * relu(q[t,h,:] . k[j,:])))",
+    "canonical_op": "index",
+    "fusions": ["weighted_relu_mqa_logits", "topk_selection", "causal_mask"]
+  },
+  "inputs": {
+    "q":       { "dtype": ["bf16", "fp16", "fp32"], "layout": "row_major", "rank": 3, "shape_symbols": ["T", "H", "D"], "contiguous": true },
+    "k":       { "dtype": ["bf16", "fp16", "fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["K", "D"], "contiguous": true },
+    "weights": { "dtype": ["fp32"], "layout": "row_major", "rank": 2, "shape_symbols": ["T", "H"], "contiguous": true }
+  },
+  "outputs": {
+    "indices": { "dtype": ["int32"], "layout": "row_major", "rank": 2, "shape_symbols": ["T", "topk"] }
+  },
+  "constraints": [
+    "dtype(q) == dtype(k)"
+  ],
+  "preconditions": [
+    "1 <= topk <= K (topk is a dispatch kwarg, not a tensor shape, so it cannot bind in the decidable constraint mini-language; the reference asserts it at runtime)",
+    "indices are returned in DESCENDING logit order within each row, with ties broken by ASCENDING KV id (a stable descending argsort). This is a CONTRACT requirement, not an implementation detail: bf16/fp16 inputs quantize many KV positions to the same fp32 score (exact ties are NOT measure-zero), and every backend must agree. NOT torch.topk(sorted=False) — its tie-break is unspecified and diverges from tl.argmax (which returns the lowest index on ties), false-failing element-wise parity.",
+    "columns outside the causal window [row_starts, row_starts + lengths) are masked to -inf BEFORE the top-k and are never selected. lengths/row_starts are optional (no mask when absent); when lengths is given, row_starts defaults to 0.",
+    "the weighted ReLU MQA score is computed in fp32 (inputs upcast): logits[t,j] = sum_h weights[t,h] * relu(q[t,h,:] . k[j,:]). The ReLU clamps negative dot products to zero (a gate, not a softplus). weights are non-negative in production (the V4 indexer produces softplus-ish values).",
+    "the top-k SELECTION is integer-exact (rtol=atol=0): a different KV position is abs_err >= 1 and fails any tolerance. BUT the selection has an inherent boundary discontinuity — for bf16/fp16 inputs, a 1-ULP fp32-accumulation-order difference between the full-materialization reference and a streaming fused kernel can swap a near-tie position. Element-wise verify may therefore report correctness.passed=False on bf16 near-ties even when the selected SET is correct; the real correctness gate for such cases is set-equality (see tests/test_dsa_indexer_topk.py). For fp32 inputs with well-separated scores, the selection is bit-exact."
+  ],
+  "numerics": {
+    "reference": "xkernels.ops.attention.dsa_reference:dsa_indexer_topk_ref",
+    "rtol": 0,
+    "atol": 0,
+    "reduce_dtype": "fp32",
+    "cross_backend_rtol": 0,
+    "by_dtype": {
+      "fp32": { "rtol": 0, "atol": 0 },
+      "bf16": { "rtol": 0, "atol": 0 },
+      "fp16": { "rtol": 0, "atol": 0 }
+    },
+    "notes": "Integer-exact top-k selection (rtol=atol=0, matching sampling_from_probs / top_k_sampling_from_probs): the output is [T, topk] int32 indices, so a different KV position is abs_err >= 1 and fails any tolerance — rtol/atol on int indices is semantically wrong (index 5 vs 6 is a different position, not 'off by 1'). The reference computes the full [T,K] fp32 logits (dsa_indexer_logits_ref) then applies a canonical descending argsort (stable=True, ties by ascending KV id), NOT torch.topk(sorted=False) whose tie-break is unspecified and diverges from the Triton kernel's tl.argmax (false-failing element-wise parity on bf16 inputs where quantization makes exact ties common — see registry/ops/topk_softmax.spec.json for the same precedent). BOUNDARY DISCONTINUITY (honest, not a bug): a fused streaming kernel computes scores in a different fp32 accumulation order than the full-materialization reference (tiled tl.dot + tl.sum vs torch.einsum). For bf16/fp16 inputs, a 1-ULP rounding flip can swap a near-tie KV position in/out of the top-k. Element-wise verify with rtol=atol=0 therefore reports correctness.passed=False on such near-ties even when the selected SET is correct; the real cross-backend / kernel-vs-reference gate for near-tie cases is SET EQUALITY (tests/test_dsa_indexer_topk.py). For fp32 inputs with well-separated scores (the sweep's fp32 points), no near-ties exist and the selection is bit-exact. Cross-backend rtol=0 is correct: a different selected KV POSITION is always a discrepancy (set-equality is the gate, not float-tolerance)."
+  },
+  "shape_sweep": "dsa_indexer_topk",
+  "composes_with": ["dsa_indexer_logits@1.0.0", "sparse_mla_attention@1.0.0"],
+  "provenance": {
+    "authored_by": "human",
+    "source_path": "src/xkernels/ops/attention/dsa_reference.py",
+    "issue": [54]
+  }
+}

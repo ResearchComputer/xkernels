@@ -19,6 +19,12 @@ shared ``k : [K, D]`` per KV position (MQA), and per-head combine ``weights :
 out-of-range columns to ``-inf`` before the top-k. This mirrors the upstream
 torch oracle ``_indexer_topk_reference`` exactly (``einsum('thd,kd->thk').relu()``,
 weight, sum over heads, mask, ``torch.topk``).
+
+The **fused** ``dsa_indexer_topk`` (issue #54) computes the same weighted ReLU
+MQA logits and selects the top-k KV indices in ONE pass, without materializing
+the full ``[T, K]`` fp32 logits tensor. Its reference (:func:`dsa_indexer_topk_ref`)
+uses a canonical descending argsort (ties by ascending KV id), NOT
+``torch.topk(sorted=False)`` whose tie-break is unspecified.
 """
 
 from __future__ import annotations
@@ -28,7 +34,7 @@ import torch
 from ..._backends import Backend
 from ..._dispatch import register
 
-__all__ = ["dsa_indexer_logits_ref", "dsa_indexer_topk"]
+__all__ = ["dsa_indexer_logits_ref", "dsa_indexer_topk_ref", "dsa_indexer_topk_from_logits"]
 
 _NEG_INF = float("-inf")
 
@@ -80,17 +86,62 @@ def dsa_indexer_logits_ref(
     return _apply_causal_mask(logits, lengths, row_starts)
 
 
-def dsa_indexer_topk(
+def dsa_indexer_topk_from_logits(
     logits: torch.Tensor,
     topk: int,
 ) -> torch.Tensor:
-    """Top-``topk`` KV indices per query from indexer logits.
+    """Top-``topk`` KV indices per query from **precomputed** indexer logits.
 
-    Returns ``[T, topk]`` int32 (unsorted, matching the upstream
-    ``torch.topk(..., sorted=False)`` indexer selection).
+    This is the *diagnostics* selection path kept for reference parity (issue #54):
+    callers that already hold the full ``[T, K]`` logits (e.g. from
+    :func:`dsa_indexer_logits`) can select the top-k without re-running the
+    scorer. Returns ``[T, topk]`` int32 in **canonical descending order** (ties
+    broken by ascending KV id), NOT ``torch.topk(sorted=False)`` whose tie-break
+    is unspecified and diverges from the Triton kernel's ``tl.argmax`` (see
+    :func:`dsa_indexer_topk_ref` numerics notes).
     """
     k = min(topk, logits.shape[-1])
-    return torch.topk(logits, k=k, dim=-1, sorted=False).indices.to(torch.int32)
+    order = torch.argsort(logits, dim=1, descending=True, stable=True)
+    return order[:, :k].to(torch.int32).contiguous()
+
+
+def dsa_indexer_topk_ref(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    weights: torch.Tensor,
+    *,
+    topk: int,
+    lengths: torch.Tensor | None = None,
+    row_starts: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Fused DSA indexer top-k: weighted ReLU MQA logits + canonical top-k selection.
+
+    Computes :func:`dsa_indexer_logits_ref` ``(q, k, weights, lengths, row_starts)``
+    then selects the top-``topk`` KV indices per query using a **canonical
+    descending argsort** (ties broken by ascending KV id), NOT ``torch.topk``
+    (whose tie-break is unspecified — see registry/ops/dsa_indexer_topk.spec.json
+    numerics.notes). This is the backend-neutral oracle every Impl Card is
+    checked against (issue #54).
+
+    Args:
+        q: ``[T, H, D]`` indexer queries (``H = index_n_heads``, ``D = index_head_dim``).
+        k: ``[K, D]`` single shared indexer key per KV position (MQA).
+        weights: ``[T, H]`` (or ``[T, H, 1]``) per-head combine weights.
+        topk: number of KV positions to select per query (``1 <= topk <= K``).
+        lengths: optional ``[T]`` int — valid KV columns per query.
+        row_starts: optional ``[T]`` int — first valid KV column per query.
+
+    Returns:
+        ``indices [T, topk]`` int32 in descending-logit order (ties by ascending
+        KV id). Out-of-window columns (masked to ``-inf``) are never selected.
+    """
+    logits = dsa_indexer_logits_ref(q, k, weights, lengths=lengths, row_starts=row_starts)
+    K = logits.shape[-1]
+    if not (1 <= int(topk) <= K):
+        raise ValueError(f"topk must satisfy 1 <= topk <= K (got topk={topk}, K={K})")
+    order = torch.argsort(logits, dim=1, descending=True, stable=True)
+    return order[:, : int(topk)].to(torch.int32).contiguous()
 
 
 register("dsa_indexer_logits", Backend.REFERENCE)(dsa_indexer_logits_ref)
+register("dsa_indexer_topk", Backend.REFERENCE)(dsa_indexer_topk_ref)

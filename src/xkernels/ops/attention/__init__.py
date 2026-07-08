@@ -15,6 +15,7 @@ from .interface import (
     apply_rope,
     dsa_indexer_logits,
     dsa_indexer_topk,
+    dsa_indexer_topk_from_logits,
     flash_mla_sparse_fwd,
     flash_mla_with_kvcache,
     get_mla_metadata,
@@ -35,6 +36,16 @@ from .workspace import (
 # ``xkernels/_triton_compat.py``.
 with backend_registration_guard(
     "dsa_indexer_logits",
+    Backend.TRITON,
+    source="xkernels.ops.attention.triton.dsa_indexer_kernel",
+):  # pragma: no cover - requires triton
+    from ..._triton_compat import triton_import_ctx
+
+    with triton_import_ctx():
+        from .triton import dsa_indexer_kernel  # noqa: F401
+
+with backend_registration_guard(
+    "dsa_indexer_topk",
     Backend.TRITON,
     source="xkernels.ops.attention.triton.dsa_indexer_kernel",
 ):  # pragma: no cover - requires triton
@@ -107,6 +118,7 @@ __all__ = [
     "mha_merge_state",
     "dsa_indexer_logits",
     "dsa_indexer_topk",
+    "dsa_indexer_topk_from_logits",
     "sparse_mla_attention",
     "flash_mla_sparse_fwd",
     "flash_mla_with_kvcache",

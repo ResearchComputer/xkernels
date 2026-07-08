@@ -1,0 +1,19 @@
+{
+  "id": "dsa_indexer_topk.reference@1.0.0",
+  "implements": "dsa_indexer_topk@1.0.0",
+  "backend": "reference",
+  "arch": { "family": "any", "wave_size": 0, "scratch": { "kind": "none", "bytes": 0 } },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "pure-torch oracle: full [T,K] fp32 logits (einsum + relu + weighted sum + causal mask) then torch.argsort(descending=True, stable=True)[:, :topk].to(int32). Two logical passes (logits, argsort) over the full K axis — the unfused baseline a streaming Triton card replaces (issue #54).",
+    "roofline": "latency_bound"
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-07-07T00:00:00Z",
+    "source_path": "src/xkernels/ops/attention/dsa_reference.py",
+    "issue": [54]
+  }
+}
