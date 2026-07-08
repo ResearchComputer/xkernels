@@ -23,7 +23,6 @@ from xkernels import dsa_indexer_topk
 from xkernels._backends import Backend
 from xkernels._dispatch import registered_backends
 from xkernels.ops.attention.dsa_reference import (
-    dsa_indexer_logits_ref,
     dsa_indexer_topk_ref,
 )
 from xkernels.utils.testing import gpu_device_or_skip as _device

@@ -336,14 +336,18 @@ def _dsa_indexer_topk(point: dict[str, Any], seed: int, device: str) -> dict[str
     q = _gen(device, dt, T, H, D, seed=seed)
     k = _gen(device, dt, K, D, seed=seed + 1)
     wg = torch.Generator(device=device).manual_seed(seed + 2)
-    weights = (torch.rand(T, H, generator=wg, device=device, dtype=torch.float32) + 0.1).contiguous()
+    weights = (
+        torch.rand(T, H, generator=wg, device=device, dtype=torch.float32) + 0.1
+    ).contiguous()
     out = {"q": q, "k": k, "weights": weights, "topk": topk}
     if bool(point.get("has_mask", False)):
         lg = torch.Generator(device=device).manual_seed(seed + 3)
         lengths = torch.randint(1, K + 1, (T,), generator=lg, device=device, dtype=torch.int32)
         rg = torch.Generator(device=device).manual_seed(seed + 4)
         max_start = (K - lengths).clamp(min=0)
-        row_starts = (max_start.float() * torch.rand(T, generator=rg, device=device)).to(torch.int32)
+        row_starts = (
+            max_start.float() * torch.rand(T, generator=rg, device=device)
+        ).to(torch.int32)
         out["lengths"] = lengths
         out["row_starts"] = row_starts
     return out

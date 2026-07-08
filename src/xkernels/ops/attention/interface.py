@@ -20,7 +20,9 @@ from . import (
 from . import (
     paged_attention_prefill as _paged_prefill_mod,  # noqa: F401  (registers paged_attention_prefill REFERENCE)
 )
-from .dsa_reference import dsa_indexer_topk_from_logits  # noqa: F401  (re-export diagnostics helper)
+from .dsa_reference import (
+    dsa_indexer_topk_from_logits,  # noqa: F401  (re-export diagnostics helper)
+)
 from .paged_attention import paged_attention  # noqa: F401  (public re-export)
 from .sparse_mla_decode import flash_mla_with_kvcache  # noqa: F401  (re-export decode)
 
