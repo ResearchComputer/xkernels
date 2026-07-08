@@ -325,6 +325,34 @@ def _xielu(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
     return {"x": x, "alpha_p": alpha_p, "alpha_n": alpha_n, "beta": 0.5, "eps": -1e-6}
 
 
+def _dsa_indexer_topk(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
+    # Seeded DSA indexer inputs (issue #54): q [T,H,D], k [K,D] (MQA, same
+    # dtype), non-negative weights [T,H] fp32 (softplus-ish, as the V4 indexer
+    # produces). When has_mask is true, lengths/row_starts define a per-query
+    # causal window [row_starts, row_starts+lengths) within [0, K).
+    dt = to_torch_dtype(point["dtype"])
+    T, H, D = int(point["T"]), int(point["H"]), int(point["D"])
+    K, topk = int(point["K"]), int(point["topk"])
+    q = _gen(device, dt, T, H, D, seed=seed)
+    k = _gen(device, dt, K, D, seed=seed + 1)
+    wg = torch.Generator(device=device).manual_seed(seed + 2)
+    weights = (
+        torch.rand(T, H, generator=wg, device=device, dtype=torch.float32) + 0.1
+    ).contiguous()
+    out = {"q": q, "k": k, "weights": weights, "topk": topk}
+    if bool(point.get("has_mask", False)):
+        lg = torch.Generator(device=device).manual_seed(seed + 3)
+        lengths = torch.randint(1, K + 1, (T,), generator=lg, device=device, dtype=torch.int32)
+        rg = torch.Generator(device=device).manual_seed(seed + 4)
+        max_start = (K - lengths).clamp(min=0)
+        row_starts = (
+            max_start.float() * torch.rand(T, generator=rg, device=device)
+        ).to(torch.int32)
+        out["lengths"] = lengths
+        out["row_starts"] = row_starts
+    return out
+
+
 _GENERATORS: dict[str, Callable[[dict, int, str], dict[str, Any]]] = {
     "fused_ffn@1.0.0": _ffn,
     "dual_rmsnorm@1.0.0": _dual_rmsnorm,
@@ -336,6 +364,7 @@ _GENERATORS: dict[str, Callable[[dict, int, str], dict[str, Any]]] = {
     "hc_prenorm_gemm@1.0.0": _hc_prenorm_gemm,
     "moe_int4_w4a16@1.0.0": _moe_int4_w4a16,
     "sparse_mla_attention@1.0.0": _sparse_mla_attention,
+    "dsa_indexer_topk@1.0.0": _dsa_indexer_topk,
     "mhc_pre@1.0.0": _mhc_pre,
     "temperature_softmax@1.0.0": _temperature_softmax,
     "topk_softmax@1.0.0": _topk_softmax,

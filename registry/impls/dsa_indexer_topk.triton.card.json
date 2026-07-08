@@ -1,0 +1,41 @@
+{
+  "id": "dsa_indexer_topk.triton@1.0.0",
+  "implements": "dsa_indexer_topk@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": {
+      "kind": "registers",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "One program per query token: streams KV in BLOCK_K chunks, computing the weighted ReLU MQA logits tile in registers (fp32), and maintains a running top-k candidate buffer (merged per chunk) — writes ONLY the selected [T, topk] int32 indices, never materializing the full [T, K] fp32 logits (issue #54). Memory-bound on the q[H,D] + k[K,D] reads; fuses logits + causal mask + top-k into one launch (the reference is two passes over K). num_warps=4.",
+    "roofline": "memory_bound",
+    "measured": [
+      {
+        "arch": "nvidia_sm121",
+        "shape": {"dtype": "bf16", "T": 2, "H": 64, "D": 128, "K": 1024, "topk": 512, "has_mask": true},
+        "dtype": "bf16",
+        "knobs": {},
+        "source": "run:ds5-gb10-2026-07-07",
+        "ms": 0.374
+      }
+    ]
+  },
+  "uses_primitives": [
+    "reduce.relu_mqa_logits",
+    "reduce.topk_streaming"
+  ],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-07-07T00:00:00Z",
+    "source_path": "src/xkernels/ops/attention/triton/dsa_indexer_kernel.py",
+    "issue": [54]
+  },
+  "notes": "Fused streaming top-k (issue #54): computes weighted ReLU MQA logits tile-by-tile and keeps a running top-k candidate buffer, avoiding the [T,K] fp32 materialization + separate torch.topk launch of the unfused path. Verified on ds5 (GB10/sm_121, Triton 3.7.1): 6/7 sweep points pass element-wise verify (rtol=atol=0); 1 fp32+mask point reports correctness.passed=False due to the documented boundary discontinuity (einsum vs tl.dot fp32 accumulation order flips a near-tie — the selected SET matches, confirmed by tests/test_dsa_indexer_topk.py set-equality). TOPK compiled as tl.constexpr with tl.static_range (unrolled, matching topk_softmax_kernel — tl.range does not correctly accumulate the loop-carried selected mask). Masked positions use -1e30 sentinel (not -inf) so the iterative argmax can distinguish selected (-inf) from masked (-1e30) when topk > num_valid_positions (e.g. a causal window narrower than topk). MI300A perf + the headline memory-traffic win vs the unfused path (dsa_indexer_logits + torch.topk) is a beverin follow-up. BLOCK_K_TOTAL=next_pow2(K) so the full per-query logits row fits in one register buffer for Phase 2."
+}

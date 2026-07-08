@@ -15,7 +15,7 @@ import os
 import pytest
 import torch
 
-from xkernels import dsa_indexer_logits, dsa_indexer_topk
+from xkernels import dsa_indexer_logits, dsa_indexer_topk_from_logits
 from xkernels._backends import Backend
 from xkernels._dispatch import registered_backends
 from xkernels.ops.attention.dsa_reference import dsa_indexer_logits_ref
@@ -82,8 +82,8 @@ def test_topk_selection_matches_reference():
     q, k, weights = _inputs(T, H, D, K, dtype, dev, seed=7)
     got_logits = dsa_indexer_logits(q, k, weights, backend=Backend.TRITON)
     ref_logits = dsa_indexer_logits_ref(q, k, weights)
-    got_idx = dsa_indexer_topk(got_logits, topk)
-    ref_idx = dsa_indexer_topk(ref_logits, topk)
+    got_idx = dsa_indexer_topk_from_logits(got_logits, topk)
+    ref_idx = dsa_indexer_topk_from_logits(ref_logits, topk)
     # top-k is order-independent and robust to small logit noise: compare as sets.
     got_sets = [set(row.tolist()) for row in got_idx.cpu()]
     ref_sets = [set(row.tolist()) for row in ref_idx.cpu()]
