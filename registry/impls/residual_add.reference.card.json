@@ -1,0 +1,20 @@
+{
+  "id": "residual_add.reference@1.0.0",
+  "implements": "residual_add@1.0.0",
+  "backend": "reference",
+  "arch": { "family": "any", "wave_size": 0, "scratch": { "kind": "none", "bytes": 0 } },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "pure-torch oracle AND the standalone implementation: out = (x.float() + residual.float()).to(dtype). A separate Triton kernel for x+residual would LOSE to torch.add (launch overhead > the add), so the reference is what a standalone call runs. The op's value is the contract a fused/persistent card references as an on-chip stage — not a kernel to launch.",
+    "roofline": "memory_bound"
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "notes": "Deliberately reference-only: no triton/cuda card. A bare residual add is torch.add; emitting a kernel for it violates 'compose over generate' (library.md §1.2). The Op Spec exists so a persistent-grid megakernel can name the residual step as a first-class on-chip stage with a defined precision path (megakernel-blockers.md (b) point 4). verify_parity is inconclusive (single backend) — honest, not a gap.",
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-07-08T00:00:00+00:00",
+    "source_path": "src/xkernels/ops/comm/fused.py",
+    "issue": [80]
+  }
+}

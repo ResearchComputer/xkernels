@@ -40,4 +40,42 @@ def ffn_reference(
     return h @ w_down
 
 
+def xielu_ffn_reference(
+    x: torch.Tensor,
+    w_up: torch.Tensor,
+    w_down: torch.Tensor,
+    alpha_p: torch.Tensor,
+    alpha_n: torch.Tensor,
+    *,
+    beta: float = 0.5,
+    eps: float = -1e-6,
+) -> torch.Tensor:
+    """Non-gated xIELU FFN: ``down_proj( xIELU( up_proj(x) ) )``.
+
+    Apertus (``swiss-ai/Apertus-8B-Instruct-2509``) uses a non-gated FFN
+    ``up_proj -> xIELU -> down_proj`` (issue #80) — there is no ``gate_proj``, so
+    this is NOT SwiGLU (cf. :func:`ffn_reference`). The parametric xIELU
+    nonlinearity (arXiv:2411.13010) is evaluated in fp32 then cast to the input
+    dtype, exactly as the standalone ``xielu@1.0.0`` reference does.
+
+    The activation is delegated to the standalone reference
+    (:func:`xkernels.ops.activation.reference.xielu`) so this oracle and every
+    backend card share ONE activation precision path -> bit-identical activation,
+    and only the projections (identical ``torch.matmul``) plus the
+    triton-vs-torch xIELU fp32-ULP differ. The down-projection sums a mixed-sign
+    intermediate over the contracted dim ``N`` (Apertus ``N=21504``), so the same
+    catastrophic-cancellation analysis as issue #82 applies (fp32 rtol=1e-4, the
+    cancellation floor — not a looseness).
+    """
+    # Reuse the standalone xielu reference so the activation math is defined
+    # exactly once (xkernels.ops.activation.reference:xielu) and cannot drift
+    # from the xielu@1.0.0 op this FFN is built from.
+    from ..activation.reference import xielu as _xielu
+
+    h = x @ w_up
+    a = _xielu(h, alpha_p, alpha_n, beta=beta, eps=eps)
+    return a @ w_down
+
+
 register("ffn", Backend.REFERENCE)(ffn_reference)
+register("xielu_ffn", Backend.REFERENCE)(xielu_ffn_reference)

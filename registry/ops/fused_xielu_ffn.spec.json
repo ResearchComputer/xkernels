@@ -1,0 +1,53 @@
+{
+  "id": "fused_xielu_ffn@1.0.0",
+  "name": "fused non-gated xIELU FFN (Apertus)",
+  "version": "1.0.0",
+  "kernel": "xielu_ffn",
+  "op": {
+    "signature": "down_proj( xIELU( up_proj(x); alpha_p, alpha_n, beta, eps ) )",
+    "canonical_op": "activation",
+    "fusions": ["xielu"]
+  },
+  "inputs": {
+    "x":       { "dtype": ["fp32", "fp16", "bf16"], "layout": "row_major", "rank": 2, "shape_symbols": ["M", "K"] },
+    "w_up":    { "dtype": ["fp32", "fp16", "bf16"], "layout": "row_major", "rank": 2, "shape_symbols": ["K", "N"] },
+    "w_down":  { "dtype": ["fp32", "fp16", "bf16"], "layout": "row_major", "rank": 2, "shape_symbols": ["N", "K"] },
+    "alpha_p": { "dtype": ["fp32", "fp16", "bf16"], "layout": "row_major", "rank": 1, "shape_symbols": ["1"] },
+    "alpha_n": { "dtype": ["fp32", "fp16", "bf16"], "layout": "row_major", "rank": 1, "shape_symbols": ["1"] }
+  },
+  "outputs": {
+    "out": { "dtype": ["fp32", "fp16", "bf16"], "layout": "row_major", "rank": 2, "shape_symbols": ["M", "K"] }
+  },
+  "constraints": [
+    "dtype(x) == dtype(w_up)",
+    "dtype(x) == dtype(w_down)",
+    "dtype(x) == dtype(alpha_p)",
+    "dtype(x) == dtype(alpha_n)"
+  ],
+  "preconditions": [
+    "x, w_up, w_down are contiguous row-major",
+    "alpha_p, alpha_n are 1-element tensors on x's device",
+    "alpha_p, alpha_n are the raw LOG-SPACE params (checkpoint form): effective scales are softplus(alpha_p) and beta + softplus(alpha_n)",
+    "beta = 0.5, eps = -1e-6 (Apertus defaults); passed as python scalars, not tensors"
+  ],
+  "numerics": {
+    "reference": "xkernels.ops.ffn.reference:xielu_ffn_reference",
+    "rtol": 1.6e-2,
+    "atol": 1e-2,
+    "reduce_dtype": "fp32",
+    "by_dtype": {
+      "fp32": { "rtol": 1e-4, "atol": 1e-5 },
+      "fp16": { "rtol": 1e-3, "atol": 1e-3 },
+      "bf16": { "rtol": 1.6e-2, "atol": 1e-2 }
+    },
+    "cross_backend_rtol": 1.6e-2,
+    "notes": "Apertus (swiss-ai/Apertus-8B-Instruct-2509) uses a NON-GATED FFN: up_proj -> xIELU -> down_proj, with no gate_proj (unlike fused_ffn@1.0.0's SwiGLU). The xIELU activation (arXiv:2411.13010, issue #80) is parametric (learned alpha_p/alpha_n log-space + fixed beta/eps) and piecewise on sign(x); it is evaluated in fp32 then cast to the input dtype, matching xielu@1.0.0. The reference reuses the standalone xielu reference (xkernels.ops.activation.reference:xielu) so reference and triton card share ONE activation precision path -> bit-identical activation, and only the projections (identical torch.matmul) plus the triton-vs-torch xIELU fp32-ULP differ. The down-projection sums a mixed-sign intermediate over the contracted dim N (Apertus N=21504, larger than fused_ffn's typical N), so the same catastrophic-cancellation analysis as issue #82 applies: a last-ULP activation difference is amplified to ~1e-5..1e-4 at moderate-magnitude outputs, so fp32 rtol is 1e-4 (not 1e-5) — the cancellation floor, not a looseness. bf16/fp16 bars match the fused_ffn / xielu family (1.6e-2 / 1e-3)."
+  },
+  "shape_sweep": "xielu_ffn",
+  "composes_with": ["rmsnorm@1.0.0"],
+  "provenance": {
+    "authored_by": "human",
+    "source_path": "src/xkernels/ops/ffn/reference.py",
+    "issue": [80, 82]
+  }
+}

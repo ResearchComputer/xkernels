@@ -1,0 +1,31 @@
+{
+  "id": "fused_xielu_ffn.triton@1.0.0",
+  "implements": "fused_xielu_ffn@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "any",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": {
+      "kind": "none",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "GEMM-bound: the two projection matmuls (up_proj [M,K]x[K,N], down_proj [M,N]x[N,K]) dominate and are torch.matmul in both paths, so the fused xIELU activation wins little end-to-end (≈1×, same as fused_ffn). The win is in launch overhead + one fewer DRAM round-trip of the [M,N] intermediate.",
+    "roofline": "compute_bound",
+    "measured": []
+  },
+  "uses_primitives": [
+    "elementwise.xielu"
+  ],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-07-08T00:00:00+00:00",
+    "source_path": "src/xkernels/ops/ffn/triton/xielu_ffn_kernel.py",
+    "issue": [80, 82]
+  },
+  "notes": "Hand-written (not DSL-generated): xIELU's where(x>0,...) branch-on-sign and the param softplus need a value-comparison primitive and log — neither is in the vkl math IR (see xielu.triton.card.json). The two projections are torch.matmul; only the xIELU activation is a Triton kernel, reused from xielu@1.0.0 (xkernels.ops.activation.triton.xielu_kernel) so this card shares ONE activation precision path with the reference and the standalone op. Portable Triton (runs on NVIDIA and amd_cdna3 / gfx942); wave-size (32 vs 64) is not load-bearing here (the GEMMs are torch.matmul). The xielu kernel's internal BLOCK=2048 / num_warps=8 tile is selected inside the JIT launcher and is NOT accepted by the entry signature, so it is not a specialization_knob (documented here per §1.2); a wider BLOCK + vectorized loads are the tune-for-cdna lever."
+}

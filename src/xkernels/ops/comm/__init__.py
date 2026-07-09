@@ -10,6 +10,7 @@ process groups rather than through the ``Backend`` registry.
 from .fused import (
     add_rmsnorm_ref,
     hierarchical_all_reduce_residual_rmsnorm,
+    residual_add,
     residual_rmsnorm,
 )
 from .hierarchical import hierarchical_all_reduce
@@ -22,6 +23,7 @@ __all__ = [
     "flat_all_reduce",
     "hierarchical_all_reduce",
     "residual_rmsnorm",
+    "residual_add",
     "add_rmsnorm_ref",
     "hierarchical_all_reduce_residual_rmsnorm",
 ]

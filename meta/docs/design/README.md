@@ -9,8 +9,11 @@ design (the *what landed* and *where it lives*).
 ```
 meta/docs/design/
 ├── README.md          ← you are here (the index)
-└── vkl.md             ← how vkl works: surface, IR, lowering, schedule spine,
+├── vkl.md             ← how vkl works: surface, IR, lowering, schedule spine,
                          edit gate, cost model, MCP agent surface, graphs
+└── megakernel-blockers.md  ← the Apertus-8B whole-layer megakernel path:
+                            blockers (b) persistent substrate + (c) hand-written
+                            attention, and the contract-faithful interim
 ```
 
 ## What vkl is (in one paragraph)

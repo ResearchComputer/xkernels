@@ -1,0 +1,44 @@
+{
+  "id": "residual_add@1.0.0",
+  "name": "residual add (the on-chip FFN/attention residual step)",
+  "version": "1.0.0",
+  "kernel": "residual_add",
+  "op": {
+    "signature": "out[M,K] = (x.float() + residual.float()).to(dtype), fp32 promotion then cast",
+    "canonical_op": "elementwise",
+    "fusions": ["residual_add"]
+  },
+  "inputs": {
+    "x":        { "dtype": ["fp32", "fp16", "bf16"], "layout": "row_major", "rank": 2, "shape_symbols": ["M", "K"] },
+    "residual": { "dtype": ["fp32", "fp16", "bf16"], "layout": "row_major", "rank": 2, "shape_symbols": ["M", "K"] }
+  },
+  "outputs": {
+    "out": { "dtype": ["fp32", "fp16", "bf16"], "layout": "row_major", "rank": 2, "shape_symbols": ["M", "K"] }
+  },
+  "constraints": [
+    "dtype(x) == dtype(residual)"
+  ],
+  "preconditions": [
+    "x, residual share shape [M,K] and are contiguous row-major",
+    "the add is promoted to fp32 then cast to the input dtype (matches xkernels.ops.comm.fused.add_rmsnorm_ref's residual convention); a fused megakernel stage performs the same promotion on-chip"
+  ],
+  "numerics": {
+    "reference": "xkernels.ops.comm.fused:residual_add_ref",
+    "rtol": 1.6e-2,
+    "atol": 1e-2,
+    "cross_backend_rtol": 1.6e-2,
+    "by_dtype": {
+      "fp32": { "rtol": 1e-05, "atol": 1e-06 },
+      "bf16": { "rtol": 1.6e-2, "atol": 1e-2 },
+      "fp16": { "rtol": 1e-3, "atol": 1e-3 }
+    },
+    "notes": "Pure pointwise binary add. There is NO reduction, so reduce_dtype is intentionally absent — the fp32 promotion is a precision choice (matches the existing residual op xkernels.ops.comm.fused.add_rmsnorm_ref: hf = x.float() + residual.float(); out = hf.to(x.dtype)), not an accumulation. The op exists as a FIRST-CLASS CONTRACT so a persistent-grid megakernel can name the residual step as an on-chip stage with a defined precision path instead of hand-waving 'just add them' (megakernel-blockers.md (b) point 4). A standalone Triton kernel is deliberately NOT shipped: a separate launch for x+residual would LOSE to torch.add (launch overhead > the add), so the reference IS the implementation for a standalone call, and the contract is what a fused card references. This is the 'compose over generate' stance (library.md §1.2) — don't emit a kernel for what torch.add already does."
+  },
+  "shape_sweep": "residual_add",
+  "composes_with": ["rmsnorm@1.0.0", "fused_xielu_ffn@1.0.0"],
+  "provenance": {
+    "authored_by": "human",
+    "source_path": "src/xkernels/ops/comm/fused.py",
+    "issue": [80]
+  }
+}

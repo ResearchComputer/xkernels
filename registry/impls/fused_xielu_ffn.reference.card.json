@@ -1,0 +1,19 @@
+{
+  "id": "fused_xielu_ffn.reference@1.0.0",
+  "implements": "fused_xielu_ffn@1.0.0",
+  "backend": "reference",
+  "arch": { "family": "any", "wave_size": 0, "scratch": { "kind": "none", "bytes": 0 } },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "pure-torch oracle; two sequential matmuls + the standalone xIELU reference (softplus + where + expm1 over fp32). Bit-identical to transformers.XIELUActivation for the activation, torch.matmul for the projections. Not optimized — the correctness baseline, not a performance target.",
+    "roofline": "latency_bound"
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "human",
+    "created": "2026-07-08T00:00:00+00:00",
+    "source_path": "src/xkernels/ops/ffn/reference.py",
+    "issue": [80, 82]
+  }
+}

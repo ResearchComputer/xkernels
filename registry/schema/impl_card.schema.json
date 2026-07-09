@@ -168,8 +168,57 @@
     },
     "persistent": {
       "type": "object",
-      "description": "Optional namespaced block for persistent-grid / on-chip dataflow orchestration metadata (e.g. warp roles, register budget, pipeline stages, defused edges) for fused or persistent-grid kernels. Peer of `launch` (which covers CUDA/HIP-graph capture); the bottom JSON tier ignores it. additionalProperties left open because this structure is in flux (WIP mega-kernel cards), so no sub-field types are pinned here.",
-      "additionalProperties": true
+      "description": "Optional namespaced block for persistent-grid / on-chip dataflow orchestration metadata for fused or persistent-grid (mega)kernels. Peer of `launch` (which covers CUDA/HIP-graph capture); the bottom JSON tier ignores it. The sub-fields below are NOW PINNED (meta/docs/design/megakernel-blockers.md (b) point 1) so a megakernel card can declare its on-chip dataflow contract honestly and an agent can reason about applicability from metadata — but additionalProperties stays open so new orchestration modes stream-add without a schema bump (the structure is still in flux). Vocabulary mirrors the vkl schedule IR (Stage(id, producer_ref, space, depth) in vkl/schedule.py) and cost model (predict_scratch / register-half occupancy in vkl/cost.py).",
+      "additionalProperties": true,
+      "properties": {
+        "residency": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "The intermediate tensor names this kernel keeps ON-CHIP (registers/LDS) for the whole persistent grid — i.e. they never round-trip to DRAM. The defining property of a megakernel vs a graph of separate launches; empty means a single-op kernel (no cross-op staging)."
+        },
+        "warp_roles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Named roles warps play in the persistent grid (e.g. 'producer', 'consumer', 'epilogue', 'reducer'). Lets an agent reason about the partitioning without reading the kernel source."
+        },
+        "register_budget": {
+          "type": "object",
+          "description": "The register half of the occupancy model (vkl/cost.py keeps this profile-calibrated). regs/thread and whether the budget forces spills.",
+          "additionalProperties": true,
+          "properties": {
+            "regs_per_thread": { "type": "integer", "minimum": 0 },
+            "spills": { "type": "boolean", "description": "True if the budget forces register spills to scratch." }
+          }
+        },
+        "lds_budget": {
+          "type": "object",
+          "description": "The on-chip scratch footprint (LDS on AMD, shared memory on NVIDIA), in bytes, for the persistent grid's staged tiles (vkl/cost.py predict_scratch). Peer of arch.scratch but for the whole staged pipeline.",
+          "additionalProperties": true,
+          "properties": {
+            "bytes": { "type": "integer", "minimum": 0 },
+            "stages": { "type": "integer", "minimum": 0, "description": "Pipeline depth the staged tiles are buffered at (num_stages)." }
+          }
+        },
+        "pipeline_stages": {
+          "type": "array",
+          "description": "The staged tiles (vkl schedule IR: Stage(id, producer_ref, space, depth)). Each entry is one buffer a producer warp fills and a consumer warp drains.",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "id": { "type": "string" },
+              "producer_ref": { "type": "string", "description": "The tile/operand this stage buffers." },
+              "space": { "type": "string", "description": "Memory space: 'scratch' (LDS/smem) or 'registers'." },
+              "depth": { "description": "Pipeline depth — a concrete int, or a knob name resolved at emit. Untyped on purpose (int OR string)." }
+            }
+          }
+        },
+        "defused_edges": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Producer->consumer edges in the dataflow that are deliberately NOT fused (the intermediate IS written to DRAM and read back), named 'producer->consumer'. The complement of `residency`: a megakernel minimizes this set; empty `defused_edges` with non-empty `residency` is a fully on-chip persistent kernel."
+        }
+      }
     },
     "notes": {
       "type": "string",

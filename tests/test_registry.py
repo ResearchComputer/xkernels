@@ -153,6 +153,13 @@ def test_find_impl_cuda_card_rejected_on_amd_target():
 
 @pytest.mark.parametrize("card_id", [
     "fused_ffn.reference@1.0.0",
+    # Non-gated xIELU FFN (Apertus, issue #80): up_proj -> xIELU -> down_proj,
+    # no gate. Reference reuses the standalone xielu op's activation math.
+    "fused_xielu_ffn.reference@1.0.0",
+    # Bare residual add (megakernel-blockers.md (b) point 4): the on-chip
+    # residual step as a first-class contract. Reference-only (no separate
+    # kernel — torch.add wins); the op exists to be named by a persistent card.
+    "residual_add.reference@1.0.0",
     "dual_rmsnorm.reference@1.0.0",
     "moe_sum_reduce.reference@1.0.0",
     "mha_merge_state.reference@1.0.0",
@@ -322,6 +329,66 @@ def test_impl_card_schema_rejects_missing_provenance():
     import jsonschema
     with pytest.raises(jsonschema.ValidationError):
         validate_impl_card(bad)
+
+
+def test_impl_card_schema_pins_persistent_block():
+    """The persistent block's sub-fields are PINNED (megakernel-blockers.md (b)).
+
+    A megakernel card declares its on-chip dataflow contract via residency,
+    warp_roles, register_budget, lds_budget, pipeline_stages, defused_edges.
+    This test is the anti-regression guard: if someone unpins a field or loosens
+    a type, a synthetic honest megakernel card must still validate and a
+    type-violating card must still reject.
+    """
+    pytest.importorskip("jsonschema")
+    import jsonschema
+    from xkernels.registry.schemas import validate_impl_card
+
+    honest_megakernel = {
+        "id": "fake_layer.triton@1.0.0", "implements": "fake_layer@1.0.0",
+        "backend": "triton",
+        "arch": {"family": "amd_cdna3", "wave_size": 64,
+                 "scratch": {"kind": "lds", "bytes": 49152}},
+        "specialization_knobs": {}, "perf": {"roofline": "compute_bound"},
+        "provenance": {"authored_by": "human", "created": "2026-07-08T00:00:00+00:00", "source_path": "fake"},
+        "persistent": {
+            "residency": ["attn_out", "ffn_hidden"],
+            "warp_roles": ["producer", "consumer", "epilogue"],
+            "register_budget": {"regs_per_thread": 128, "spills": False},
+            "lds_budget": {"bytes": 32768, "stages": 3},
+            "pipeline_stages": [
+                {"id": "qkv", "producer_ref": "x_tile", "space": "scratch", "depth": 2},
+                {"id": "score", "producer_ref": "q", "space": "registers", "depth": "num_stages"}
+            ],
+            "defused_edges": ["attn_out->ffn_proj"]
+        },
+    }
+    # Well-formed honest megakernel card validates.
+    validate_impl_card(honest_megakernel)
+
+    # (1) regs_per_thread must be an integer, not a string.
+    bad_regs = {"id": "x.triton@1.0.0", "implements": "x@1.0.0", "backend": "triton",
+                "arch": {"family": "any"}, "specialization_knobs": {},
+                "perf": {"roofline": "memory_bound"},
+                "provenance": {"authored_by": "human", "source_path": "fake"},
+                "persistent": {"register_budget": {"regs_per_thread": "lots"}}}
+    with pytest.raises(jsonschema.ValidationError):
+        validate_impl_card(bad_regs)
+
+    # (2) residency must be a string array, not a number array.
+    bad_res = {"id": "x.triton@1.0.0", "implements": "x@1.0.0", "backend": "triton",
+               "arch": {"family": "any"}, "specialization_knobs": {},
+               "perf": {"roofline": "memory_bound"},
+               "provenance": {"authored_by": "human", "source_path": "fake"},
+               "persistent": {"residency": [42]}}
+    with pytest.raises(jsonschema.ValidationError):
+        validate_impl_card(bad_res)
+
+    # (3) unknown sub-fields still stream-add (additionalProperties stays open).
+    extended = dict(honest_megakernel)
+    extended["persistent"] = {**honest_megakernel["persistent"],
+                              "barrier_sync": "named_pipe"}
+    validate_impl_card(extended)
 
 
 def test_op_spec_schema_rejects_missing_numerics():

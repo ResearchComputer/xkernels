@@ -21,6 +21,31 @@ def _gen(device: str, dtype: torch.dtype, *shape: int, seed: int) -> torch.Tenso
     return torch.randn(*shape, generator=g, device=device, dtype=dtype)
 
 
+# Parametric xIELU (issue #80) log-space alpha pairs, shared by the standalone
+# xielu@1.0.0 generator and the fused_xielu_ffn@1.0.0 generator so the two can
+# never drift. Covers: near-init (small), moderate, and the **overflow regime**
+# (> ~88, where the naive log(1+exp(z)) blows up fp32). alpha_p=166.0 /
+# alpha_n=40.75 are the actual layer-0 checkpoint values of
+# swiss-ai/Apertus-8B-Instruct-2509 — they MUST be exercised to catch the
+# numerically-stable-softplus regression (the triton kernel originally used the
+# naive form and silently produced inf, poisoning the whole forward).
+_XIELU_ALPHA_PAIRS: list[tuple[float, float]] = [
+    (0.3, 0.4),       # near init
+    (5.0, 2.0),       # moderate
+    (166.0, 40.75),   # Apertus-8B checkpoint (overflow regime)
+    (88.0, 20.0),     # softplus overflow boundary (~log(1+exp(88))=88)
+]
+
+
+def _xielu_alpha_pair(point: dict[str, Any]) -> tuple[float, float]:
+    """Pick a (alpha_p, alpha_n) log-space pair from the sweep point.
+
+    Indexed by ``(M + K) % len(_XIELU_ALPHA_PAIRS)`` so every sweep exercises a
+    different softplus regime, including the Apertus-8B overflow checkpoint.
+    """
+    return _XIELU_ALPHA_PAIRS[(point["M"] + point["K"]) % len(_XIELU_ALPHA_PAIRS)]
+
+
 def _ffn(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
     dt = to_torch_dtype(point["dtype"])
     s = seed
@@ -304,25 +329,53 @@ def _paged_attention_prefill(point: dict[str, Any], seed: int, device: str) -> d
 def _xielu(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
     # Parametric xIELU (issue #80). ``x`` is the FFN intermediate; ``alpha_p`` /
     # ``alpha_n`` are the raw LOG-SPACE params (1-element tensors, the checkpoint
-    # form) — softplus is applied inside the kernel/reference. The pairs below
-    # cover the softplus regimes that matter: near-init (small), moderate, and
-    # the **overflow regime** (> ~88, where the naive log(1+exp(z)) blows up fp32).
-    # alpha_p=166.0 / alpha_n=40.75 are the actual layer-0 checkpoint values of
-    # swiss-ai/Apertus-8B-Instruct-2509 — they MUST be exercised to catch the
-    # numerically-stable-softplus regression (the triton kernel originally used
-    # the naive form and silently produced inf, poisoning the whole forward).
+    # form) — softplus is applied inside the kernel/reference. The alpha pair is
+    # selected by _xielu_alpha_pair (shared with fused_xielu_ffn) so the softplus
+    # regimes that matter (near-init, moderate, the Apertus-8B overflow
+    # checkpoint 166.0/40.75, the ~88 boundary) are all exercised.
     dt = to_torch_dtype(point["dtype"])
     x = _gen(device, dt, point["M"], point["K"], seed=seed)
-    _ALPHA_PAIRS = [
-        (0.3, 0.4),       # near init
-        (5.0, 2.0),       # moderate
-        (166.0, 40.75),   # Apertus-8B checkpoint (overflow regime)
-        (88.0, 20.0),     # softplus overflow boundary (~log(1+exp(88))=88)
-    ]
-    ap_val, an_val = _ALPHA_PAIRS[(point["M"] + point["K"]) % len(_ALPHA_PAIRS)]
+    ap_val, an_val = _xielu_alpha_pair(point)
     alpha_p = torch.tensor([ap_val], device=device, dtype=dt)
     alpha_n = torch.tensor([an_val], device=device, dtype=dt)
     return {"x": x, "alpha_p": alpha_p, "alpha_n": alpha_n, "beta": 0.5, "eps": -1e-6}
+
+
+def _fused_xielu_ffn(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
+    # Non-gated xIELU FFN (issue #80): out = down_proj( xIELU( up_proj(x) ) ).
+    # x [M,K], w_up [K,N], w_down [N,K]; the alpha pair reuses the SAME
+    # _xielu_alpha_pair selection so fused_xielu_ffn and the standalone xielu
+    # op exercise identical log-space params for a given (M,K) — the operands
+    # are byte-identical across the two ops' activation inputs.
+    dt = to_torch_dtype(point["dtype"])
+    s = seed
+    x = _gen(device, dt, point["M"], point["K"], seed=s)
+    w_up = _gen(device, dt, point["K"], point["N"], seed=s + 1)
+    w_down = _gen(device, dt, point["N"], point["K"], seed=s + 2)
+    ap_val, an_val = _xielu_alpha_pair(point)
+    alpha_p = torch.tensor([ap_val], device=device, dtype=dt)
+    alpha_n = torch.tensor([an_val], device=device, dtype=dt)
+    return {
+        "x": x,
+        "w_up": w_up,
+        "w_down": w_down,
+        "alpha_p": alpha_p,
+        "alpha_n": alpha_n,
+        "beta": 0.5,
+        "eps": -1e-6,
+    }
+
+
+def _residual_add(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
+    # Bare residual add (residual_add@1.0.0): out = (x + residual).to(dtype).
+    # x and residual share shape [M, K]; the add is promoted to fp32 then cast
+    # (the xkernels.ops.comm.fused.add_rmsnorm_ref convention). Both operands
+    # are seeded so the reference and any future fused card consume identical
+    # bits — the op is exact pointwise, so the only divergence is the final cast.
+    dt = to_torch_dtype(point["dtype"])
+    x = _gen(device, dt, point["M"], point["K"], seed=seed)
+    residual = _gen(device, dt, point["M"], point["K"], seed=seed + 1)
+    return {"x": x, "residual": residual}
 
 
 def _dsa_indexer_topk(point: dict[str, Any], seed: int, device: str) -> dict[str, Any]:
@@ -355,6 +408,8 @@ def _dsa_indexer_topk(point: dict[str, Any], seed: int, device: str) -> dict[str
 
 _GENERATORS: dict[str, Callable[[dict, int, str], dict[str, Any]]] = {
     "fused_ffn@1.0.0": _ffn,
+    "fused_xielu_ffn@1.0.0": _fused_xielu_ffn,
+    "residual_add@1.0.0": _residual_add,
     "dual_rmsnorm@1.0.0": _dual_rmsnorm,
     "xielu@1.0.0": _xielu,
     "moe_sum_reduce@1.0.0": _moe_sum_reduce,

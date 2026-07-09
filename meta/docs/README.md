@@ -13,8 +13,9 @@ meta/docs/
 ├── adding-a-kernel.md      ← the card-driven contribution checklist
 ├── design/                 ← how the vkl authoring language works (as shipped)
 │   ├── README.md           ← the index
-│   └── vkl.md              ← surface, two-layer IR, lowering, schedule spine,
-│                            edit gate, cost model, MCP agent surface, graphs
+│   ├── vkl.md              ← surface, two-layer IR, lowering, schedule spine,
+│   │                        edit gate, cost model, MCP agent surface, graphs
+│   └── megakernel-blockers.md  ← Apertus-8B whole-layer megakernel path
 ├── usage/                  ← how to use the library
 │   ├── README.md
 │   ├── clusters.md         ← beverin (MI300A) + bristen (A100): bench + profile
