@@ -13,6 +13,7 @@ from ..._backends import Backend
 from ..._dispatch import backend_registration_guard
 from .interface import (
     apply_rope,
+    apply_rope_gqa,
     dsa_indexer_logits,
     dsa_indexer_topk,
     dsa_indexer_topk_from_logits,
@@ -81,11 +82,12 @@ with backend_registration_guard(
     with triton_import_ctx():
         from .triton import sparse_mla_kernel  # noqa: F401
 
-# Import the DSL-generated Triton backend for ``apply_rope`` (issue #68) for its
-# registration side effect. Optional. DSL path (no triton_import_ctx needed --
-# register_dsl builds only the host launcher; wiki §13).
+# Import the DSL-generated Triton backend for ``apply_rope`` (issue #68) and the
+# GQA-native ``apply_rope_gqa`` (issue #104) for their registration side effect.
+# Optional. DSL path (no triton_import_ctx needed -- register_dsl builds only
+# the host launcher; wiki §13). ``rope_kernel`` registers BOTH kernels.
 with backend_registration_guard(
-    "apply_rope",
+    ["apply_rope", "apply_rope_gqa"],
     Backend.TRITON,
     source="xkernels.ops.attention.triton.rope_kernel",
 ):  # pragma: no cover - requires triton
@@ -124,6 +126,7 @@ __all__ = [
     "flash_mla_with_kvcache",
     "get_mla_metadata",
     "apply_rope",
+    "apply_rope_gqa",
     "paged_attention",
     "paged_attention_prefill",
     "PagedAttentionWorkspace",

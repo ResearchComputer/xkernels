@@ -1,0 +1,27 @@
+{
+  "id": "apply_rope_gqa.triton@1.0.0",
+  "implements": "apply_rope_gqa@1.0.0",
+  "backend": "triton",
+  "arch": {
+    "family": "nvidia_sm121",
+    "requires": [],
+    "wave_size": 0,
+    "scratch": {
+      "kind": "registers",
+      "bytes": 0
+    }
+  },
+  "specialization_knobs": {},
+  "perf": {
+    "regime": "per-token cos/sin-cache gather + rotate-half pointwise over BOTH the Hq query heads and the Hk key heads in one launch. Memory-bound (one cache read per token, broadcast over heads). Verified on GB10 (sm_121): verify 5/5, verify_parity agree. The multi-dim codegen (_TritonGenMultiDim/_launch_multidim) gives each Store its own coord decomposition + ``offs < numel_<out>`` mask so different-sized outputs (Hq != Hk) do not OOB (#104).",
+    "roofline": "memory_bound",
+    "measured": []
+  },
+  "uses_primitives": [],
+  "supersedes": [],
+  "provenance": {
+    "authored_by": "dsl",
+    "created": "2026-07-09T09:38:28+00:00",
+    "source_path": "xkernels.vkl:apply_rope_gqa"
+  }
+}

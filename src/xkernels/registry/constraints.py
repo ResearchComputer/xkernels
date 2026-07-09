@@ -141,12 +141,17 @@ def validate_decidable(expr: str) -> None:
     except SyntaxError as e:
         raise UndecidableConstraintError(f"invalid syntax: {e}") from e
     _check_grammar(tree, expr)
-    _lenient_visit(tree)  # dry-run: surfaces structural/type errors while
-    # treating unbound symbols as placeholders (a bare name that isn't bound yet
-    # at validation time is fine; it will be bound at query time).
-    # syntax/type errors still surface. We swallow only Undecidable for *shape*:
-    # bare-name unbinding is a structural problem worth catching, but a name that
-    # simply isn't bound yet is fine for validation. So we re-run leniently:
+    # Dry-run the expression with unbound symbols as placeholder values to
+    # surface structural/eval errors at ingest (invariant §2.4). A placeholder
+    # of 1 (not 0) is load-bearing: a constraint like GQA's ``Hq % Hk == 0``
+    # (issue #104) has BOTH symbols unbound at validation time, and ``0 % 0``
+    # raises ZeroDivisionError — wrongly rejecting a valid ``symbol % symbol``
+    # constraint the grammar explicitly allows (``ast.Mod`` + ``ast.Name``).
+    # With placeholder 1, ``Hq % Hk == 0`` evaluates to ``1 % 1 == 0`` (no crash,
+    # result discarded — only crashes gate ingest), while a genuinely always-bad
+    # constraint like ``K % 0`` (a literal-zero divisor) still crashes and is
+    # correctly rejected. The boolean result is NOT used for accept/reject;
+    # real binding + evaluation happens at query time via ``evaluate``.
     _lenient_visit(tree)
 
 
@@ -154,7 +159,9 @@ class _LenientEvaluator(_Evaluator):
     """Same grammar, but treats any unbound name/dtype as a wildcard placeholder."""
 
     def visit_Name(self, node: ast.Name) -> Any:
-        return self._b.get(node.id, 0)
+        # Placeholder 1 (not 0): see validate_decidable — 0 % 0 crashes on
+        # ``symbol % symbol`` constraints (e.g. GQA ``Hq % Hk == 0``, #104).
+        return self._b.get(node.id, 1)
 
     def visit_Call(self, node: ast.Call) -> Any:
         if isinstance(node.func, ast.Name) and node.func.id == "dtype" and len(node.args) == 1:

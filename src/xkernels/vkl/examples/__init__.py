@@ -33,7 +33,7 @@ from .gemm_chain import gemm_chain
 from .paged_kv_gather import paged_kv_gather
 from .quant_fp8 import per_block_quant_fp8, per_token_group_quant_fp8
 from .rmsnorm import rmsnorm
-from .rope import apply_rope
+from .rope import apply_rope, apply_rope_gqa
 from .softmax import rowwise_softmax, temperature_softmax
 
 dual_rmsnorm_spec = spec_of(dual_rmsnorm)
@@ -47,6 +47,7 @@ packed_gelu_and_mul_spec = spec_of(packed_gelu_and_mul)
 per_token_group_quant_fp8_spec = spec_of(per_token_group_quant_fp8)
 per_block_quant_fp8_spec = spec_of(per_block_quant_fp8)
 apply_rope_spec = spec_of(apply_rope)
+apply_rope_gqa_spec = spec_of(apply_rope_gqa)
 paged_kv_gather_spec = spec_of(paged_kv_gather)
 temperature_softmax_spec = spec_of(temperature_softmax)
 rowwise_softmax_spec = spec_of(rowwise_softmax)
@@ -74,6 +75,8 @@ __all__ = [
     "per_block_quant_fp8_spec",
     "apply_rope",
     "apply_rope_spec",
+    "apply_rope_gqa",
+    "apply_rope_gqa_spec",
     "paged_kv_gather",
     "paged_kv_gather_spec",
     "temperature_softmax",

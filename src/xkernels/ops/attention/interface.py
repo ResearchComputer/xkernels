@@ -270,6 +270,47 @@ def apply_rope(
     )
 
 
+def apply_rope_gqa(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    positions: torch.Tensor,
+    cos_sin_cache: torch.Tensor,
+    *,
+    backend: Backend | str = "auto",
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Grouped-query RoPE from a precomputed cos/sin cache (issue #104).
+
+    Same GPT-NeoX rotate-half body as :func:`apply_rope`, but with DISTINCT head
+    counts: ``query`` has ``Hq = g * Hk`` heads while ``key`` keeps ``Hk`` (the
+    constraint ``Hq % Hk == 0`` is declared in the Op Spec). The cos/sin cache is
+    gathered once per token and broadcast over the head axis, so the larger query
+    head count and the smaller key head count are rotated in ONE launch instead
+    of two ``apply_rope`` calls (the mini-sglang serving adapter's old GQA path).
+
+    Args:
+        query: ``[T, Hq, D]`` (bf16 / fp16); rotated in fp32, cast back on store.
+        key: ``[T, Hk, D]`` (same dtype as ``query``), ``Hq % Hk == 0``.
+        positions: ``[T]`` int32 absolute token positions (< ``P``).
+        cos_sin_cache: ``[P, D]`` fp32 packed cache (cols ``[0,D/2)`` cos,
+            ``[D/2,D)`` sin over the ``D/2`` rotation frequencies).
+        backend: ``"auto"`` (triton when available, else reference) or a
+            ``Backend`` / its string value.
+
+    Returns:
+        ``(query_out [T, Hq, D], key_out [T, Hk, D])`` in the input dtype. When
+        ``Hq == Hk`` this is identical to :func:`apply_rope` (the GQA op
+        subsumes MHA).
+    """
+    return dispatch(
+        "apply_rope_gqa",
+        query=query,
+        key=key,
+        positions=positions,
+        cos_sin_cache=cos_sin_cache,
+        backend=backend,
+    )
+
+
 def paged_attention_prefill(
     q: torch.Tensor,
     k_cache: torch.Tensor,

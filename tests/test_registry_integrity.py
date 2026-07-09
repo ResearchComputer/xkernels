@@ -22,7 +22,7 @@ from xkernels.vkl.artifacts import managed_short_names
 # every managed op -- keeps the guard green in CPU CI while still proving the
 # registration *path* is wired (gemm_bf16 / paged_kv_gather / rowwise_softmax /
 # temperature_softmax legitimately omit TRITON until a GPU is present).
-_CPU_RUNNABLE_VKL = ["rmsnorm", "silu_and_mul", "apply_rope", "gelu_and_mul"]
+_CPU_RUNNABLE_VKL = ["rmsnorm", "silu_and_mul", "apply_rope", "gelu_and_mul", "apply_rope_gqa"]
 
 
 def test_managed_short_names_nonempty():

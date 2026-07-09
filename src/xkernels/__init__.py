@@ -11,6 +11,7 @@ from .ops.activation import (
 )
 from .ops.attention import (
     apply_rope,
+    apply_rope_gqa,
     dsa_indexer_logits,
     dsa_indexer_topk,
     dsa_indexer_topk_from_logits,
@@ -26,9 +27,10 @@ from .ops.comm import (
     build_topology_groups,
     flat_all_reduce,
     hierarchical_all_reduce,
+    residual_add,
     residual_rmsnorm,
 )
-from .ops.ffn import fused_ffn
+from .ops.ffn import fused_ffn, fused_xielu_ffn
 from .ops.gather import mxfp4_paged_gather
 from .ops.gemm import (
     mm_fp8_blockscale,
@@ -58,6 +60,7 @@ from .verify import verify, verify_parity
 __version__ = "0.0.1"
 __all__ = [
     "fused_ffn",
+    "fused_xielu_ffn",
     "fused_moe_int4_w4a16",
     "fused_moe_mxfp4",
     "moe_align_block_size",
@@ -81,6 +84,7 @@ __all__ = [
     "dsa_indexer_topk_from_logits",
     "sparse_mla_attention",
     "apply_rope",
+    "apply_rope_gqa",
     "paged_attention",
     "paged_attention_prefill",
     "flash_mla_sparse_fwd",
@@ -92,6 +96,7 @@ __all__ = [
     "flat_all_reduce",
     "hierarchical_all_reduce",
     "residual_rmsnorm",
+    "residual_add",
     "silu_and_mul",
     "gelu_and_mul",
     "packed_silu_and_mul",

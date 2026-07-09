@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from ....vkl import register_dsl, spec_of
 from ....vkl.examples import apply_rope
+from ....vkl.examples import apply_rope_gqa
 
 # Bind the DSL-authored apply_rope body to its generated Triton launcher.
 # ``register_dsl`` also (re)asserts the seeded input generator + graph-node
@@ -36,3 +37,17 @@ from ....vkl.examples import apply_rope
 # ``rope`` module -- ``vkl.examples`` re-exports the function, not the module
 # name, so ``spec_of`` needs the decorated callable.)
 register_dsl(spec_of(apply_rope), backend="triton")
+
+# Bind the GQA-native variant (issue #104). Same rotate-half body, distinct
+# head symbols (Hq query / Hk key, ``Hq % Hk == 0``), so mini-sglang's adapter
+# rotates query + key in ONE launch instead of two. The multi-dim codegen
+# (``_TritonGenMultiDim`` / ``_launch_multidim``) was extended (#104) so each
+# ``Store`` gets its OWN coord decomposition (from its own output shape) and
+# its OWN ``offs < numel_<out>`` mask, over a grid sized by ``max(numel)`` --
+# that is what makes different-sized outputs (``Hq != Hk``) safe (no OOB on the
+# smaller output). VERIFIED on GB10 (sm_121):
+# ``verify("apply_rope_gqa.triton@1.0.0", arch="nvidia_sm121")`` 5/5
+# (max_abs=1.5e-05), ``verify_parity`` agree (max_rel=0.0074 < 0.01). The
+# launcher registers safely without a GPU (registration builds only the host
+# launcher; the kernel is JIT-compiled on first call).
+register_dsl(spec_of(apply_rope_gqa), backend="triton")
