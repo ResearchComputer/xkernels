@@ -1599,6 +1599,16 @@ def _get_kernel(body: MathBody, out_dtype: str, *, pattern: str, precision: str 
     return _KERNEL_CACHE[key]
 
 
+# Shape-keyed cache for _symbol_values (hint #2, xkernels#104).  The symbol
+# resolution traverses the full IR graph (_concrete_shape builds a producer
+# map and recursively resolves shapes) on every call, but the result depends
+# only on the IR body and the input tensor SHAPES — never their contents.  For
+# serving decode the shapes are identical every token, so the cache hit rate is
+# ~100% after the first call, eliminating ~150 us of graph-traversal overhead.
+_SYMBOL_VALUES_CACHE: dict[tuple, dict[str, int]] = {}
+_SYMBOL_VALUES_CACHE_MAX = 256
+
+
 def _symbol_values(body: MathBody, inputs: dict[str, torch.Tensor]) -> dict[str, int]:
     """Map each decl subscript symbol to its concrete dim value.
 
@@ -1607,6 +1617,13 @@ def _symbol_values(body: MathBody, inputs: dict[str, torch.Tensor]) -> dict[str,
     (for example packed ``[M, 2K] -> [M, K]`` activation gates), so output-only
     symbols are filled from the concrete shape of the value stored to that output.
     """
+    cache_key = (
+        id(body),
+        tuple(sorted((name, tuple(t.shape)) for name, t in inputs.items())),
+    )
+    cached = _SYMBOL_VALUES_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     vals: dict[str, int] = {}
     for name, ref in body.in_decls.items():
         t = inputs.get(name)
@@ -1625,6 +1642,8 @@ def _symbol_values(body: MathBody, inputs: dict[str, torch.Tensor]) -> dict[str,
         for axis, sym in enumerate(out_ref.subscript):
             if axis < len(val_shape):
                 vals.setdefault(sym, val_shape[axis])
+    if len(_SYMBOL_VALUES_CACHE) < _SYMBOL_VALUES_CACHE_MAX:
+        _SYMBOL_VALUES_CACHE[cache_key] = vals
     return vals
 
 
